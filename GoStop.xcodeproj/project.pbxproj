@@ -1,0 +1,428 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0B20DD2801F7CBBF74EA9F8E /* Player.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D300F3C280AF301436D8732 /* Player.swift */; };
+		23D2B878BF856936154BE3BC /* GoStopTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D8325DC94A43A7AB5739F02 /* GoStopTests.swift */; };
+		59AAB1C8D0D8BED80BEFA314 /* GoStopApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7012D53468CE7DEC0511F7AE /* GoStopApp.swift */; };
+		62FCE0F439432138C743176A /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8C0FD4111DFE67FB4B8757A /* ContentView.swift */; };
+		808657D99FB2F8247B9D373F /* Deck.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C9DC8F2B463C152AB92172B /* Deck.swift */; };
+		B5EED1311F05C120AF7DA6E8 /* Card.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72B2E9B6CA4C4DB8CC0ED986 /* Card.swift */; };
+		E10C501280BC9C36380E8474 /* GameManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 116C189429DB2067520A3E08 /* GameManager.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		A3EE6C4843153C138A85C0E1 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 396C3B9A28819039C2F13C8A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A82194C81A40D4649BC7B765;
+			remoteInfo = GoStop;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		1159B74760341B7FD625C040 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		116C189429DB2067520A3E08 /* GameManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameManager.swift; sourceTree = "<group>"; };
+		1D8325DC94A43A7AB5739F02 /* GoStopTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoStopTests.swift; sourceTree = "<group>"; };
+		2C9DC8F2B463C152AB92172B /* Deck.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Deck.swift; sourceTree = "<group>"; };
+		7012D53468CE7DEC0511F7AE /* GoStopApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoStopApp.swift; sourceTree = "<group>"; };
+		72B2E9B6CA4C4DB8CC0ED986 /* Card.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Card.swift; sourceTree = "<group>"; };
+		8D300F3C280AF301436D8732 /* Player.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Player.swift; sourceTree = "<group>"; };
+		B67ACAB0F7C90D1925FA8BC6 /* GoStopTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = GoStopTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B8C0FD4111DFE67FB4B8757A /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		E802832BAB9D5CCCB8D64414 /* GoStop.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = GoStop.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		4324CA91F53CA59ECA362D5C /* GoStopTests */ = {
+			isa = PBXGroup;
+			children = (
+				1D8325DC94A43A7AB5739F02 /* GoStopTests.swift */,
+			);
+			path = GoStopTests;
+			sourceTree = "<group>";
+		};
+		4CB2446D2E2CFC1A122EFBB4 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				E802832BAB9D5CCCB8D64414 /* GoStop.app */,
+				B67ACAB0F7C90D1925FA8BC6 /* GoStopTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		53C4E3404BDA3921EE5B0201 /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				116C189429DB2067520A3E08 /* GameManager.swift */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+		A6E60CE93D76969F0E23DBF7 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				72B2E9B6CA4C4DB8CC0ED986 /* Card.swift */,
+				2C9DC8F2B463C152AB92172B /* Deck.swift */,
+				8D300F3C280AF301436D8732 /* Player.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		B1A19B794E9508A21B11D25C = {
+			isa = PBXGroup;
+			children = (
+				DB5D0F23A6190328CF3C4C0B /* GoStop */,
+				4324CA91F53CA59ECA362D5C /* GoStopTests */,
+				4CB2446D2E2CFC1A122EFBB4 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		DB5D0F23A6190328CF3C4C0B /* GoStop */ = {
+			isa = PBXGroup;
+			children = (
+				B8C0FD4111DFE67FB4B8757A /* ContentView.swift */,
+				7012D53468CE7DEC0511F7AE /* GoStopApp.swift */,
+				1159B74760341B7FD625C040 /* Info.plist */,
+				53C4E3404BDA3921EE5B0201 /* Core */,
+				A6E60CE93D76969F0E23DBF7 /* Models */,
+			);
+			path = GoStop;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A82194C81A40D4649BC7B765 /* GoStop */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3203AFEDDD860A4536CCB147 /* Build configuration list for PBXNativeTarget "GoStop" */;
+			buildPhases = (
+				F3EAB6DC9AFD7213A7BE4BEA /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = GoStop;
+			packageProductDependencies = (
+			);
+			productName = GoStop;
+			productReference = E802832BAB9D5CCCB8D64414 /* GoStop.app */;
+			productType = "com.apple.product-type.application";
+		};
+		D0155AA2A65007885136B7AA /* GoStopTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3B8DED20828C05F24596B873 /* Build configuration list for PBXNativeTarget "GoStopTests" */;
+			buildPhases = (
+				DFE11A0A723D9F00D73F6E17 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				02A8CA8EF495533FFBFB0C50 /* PBXTargetDependency */,
+			);
+			name = GoStopTests;
+			packageProductDependencies = (
+			);
+			productName = GoStopTests;
+			productReference = B67ACAB0F7C90D1925FA8BC6 /* GoStopTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		396C3B9A28819039C2F13C8A /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					A82194C81A40D4649BC7B765 = {
+						DevelopmentTeam = "";
+					};
+				};
+			};
+			buildConfigurationList = 27FBD34375465329B77CA194 /* Build configuration list for PBXProject "GoStop" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = B1A19B794E9508A21B11D25C;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A82194C81A40D4649BC7B765 /* GoStop */,
+				D0155AA2A65007885136B7AA /* GoStopTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		DFE11A0A723D9F00D73F6E17 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				23D2B878BF856936154BE3BC /* GoStopTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F3EAB6DC9AFD7213A7BE4BEA /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B5EED1311F05C120AF7DA6E8 /* Card.swift in Sources */,
+				62FCE0F439432138C743176A /* ContentView.swift in Sources */,
+				808657D99FB2F8247B9D373F /* Deck.swift in Sources */,
+				E10C501280BC9C36380E8474 /* GameManager.swift in Sources */,
+				59AAB1C8D0D8BED80BEFA314 /* GoStopApp.swift in Sources */,
+				0B20DD2801F7CBBF74EA9F8E /* Player.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		02A8CA8EF495533FFBFB0C50 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A82194C81A40D4649BC7B765 /* GoStop */;
+			targetProxy = A3EE6C4843153C138A85C0E1 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		11AD8B471FADE92A4510F7A5 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.antigravity.GoStopTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/GoStop.app/GoStop";
+			};
+			name = Release;
+		};
+		1B7FF8911BB79F9C08200693 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_PREVIEWS = YES;
+				INFOPLIST_FILE = GoStop/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = GoStop;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.antigravity.GoStop;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		1D3852510F7429481D85D049 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_PREVIEWS = YES;
+				INFOPLIST_FILE = GoStop/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = GoStop;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.antigravity.GoStop;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		324BC102F77F0107DBA11929 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		45BBD9C621F457EDB9C68C23 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.antigravity.GoStopTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/GoStop.app/GoStop";
+			};
+			name = Debug;
+		};
+		F50D944A0006DB62B46E7DF3 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		27FBD34375465329B77CA194 /* Build configuration list for PBXProject "GoStop" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				324BC102F77F0107DBA11929 /* Debug */,
+				F50D944A0006DB62B46E7DF3 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		3203AFEDDD860A4536CCB147 /* Build configuration list for PBXNativeTarget "GoStop" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1D3852510F7429481D85D049 /* Debug */,
+				1B7FF8911BB79F9C08200693 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		3B8DED20828C05F24596B873 /* Build configuration list for PBXNativeTarget "GoStopTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				45BBD9C621F457EDB9C68C23 /* Debug */,
+				11AD8B471FADE92A4510F7A5 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 396C3B9A28819039C2F13C8A /* Project object */;
+}

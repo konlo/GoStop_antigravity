@@ -1,0 +1,31 @@
+name: GoStop
+options:
+  bundleIdPrefix: com.antigravity
+  xcodeVersion: 15.0
+  deploymentTarget:
+    iOS: "16.0"
+targets:
+  GoStop:
+    type: application
+    platform: iOS
+    sources: [GoStop]
+    settings:
+      base:
+        INFOPLIST_KEY_CFBundleDisplayName: GoStop
+        ENABLE_PREVIEWS: YES
+        DEVELOPMENT_TEAM: ""
+        PRODUCT_BUNDLE_IDENTIFIER: com.antigravity.GoStop
+    info:
+      path: GoStop/Info.plist
+      properties:
+        UILaunchScreen: {}
+  GoStopTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [GoStopTests]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.antigravity.GoStopTests
+    dependencies:
+      - target: GoStop
