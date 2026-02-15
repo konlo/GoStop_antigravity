@@ -23,8 +23,8 @@ struct Card: Identifiable, Equatable, CustomStringConvertible {
     let id = UUID()
     let month: Month
     let type: CardType
+    let imageIndex: Int
     
-    // Helper to identify specific special cards
     var isBird: Bool {
         // February (Nightingale), April (Cuckoo), August (Geese)
         guard type == .animal else { return false }

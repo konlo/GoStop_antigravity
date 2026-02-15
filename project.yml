@@ -8,7 +8,9 @@ targets:
   GoStop:
     type: application
     platform: iOS
-    sources: [GoStop]
+    sources: 
+      - GoStop
+      - GoStop/Assets.xcassets
     settings:
       base:
         INFOPLIST_KEY_CFBundleDisplayName: GoStop

@@ -16,6 +16,7 @@
 		B5EED1311F05C120AF7DA6E8 /* Card.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72B2E9B6CA4C4DB8CC0ED986 /* Card.swift */; };
 		CA5E4294DC9C4A786488AA0C /* ScoringSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C817E2BC7A6C44D1434325E /* ScoringSystem.swift */; };
 		E10C501280BC9C36380E8474 /* GameManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 116C189429DB2067520A3E08 /* GameManager.swift */; };
+		F95644401EAA22B21356588D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 4A3C1F6EB55586E9BE2C8E36 /* Assets.xcassets */; };
 		FF8FF5B2CD92C35D053EDDDB /* CardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74DE360629BC09922C21C6DC /* CardView.swift */; };
 /* End PBXBuildFile section */
 
@@ -34,6 +35,7 @@
 		116C189429DB2067520A3E08 /* GameManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameManager.swift; sourceTree = "<group>"; };
 		1D8325DC94A43A7AB5739F02 /* GoStopTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoStopTests.swift; sourceTree = "<group>"; };
 		2C9DC8F2B463C152AB92172B /* Deck.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Deck.swift; sourceTree = "<group>"; };
+		4A3C1F6EB55586E9BE2C8E36 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		4C817E2BC7A6C44D1434325E /* ScoringSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoringSystem.swift; sourceTree = "<group>"; };
 		5BA63E4C6CDD8893D44DEAE5 /* GameView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameView.swift; sourceTree = "<group>"; };
 		7012D53468CE7DEC0511F7AE /* GoStopApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoStopApp.swift; sourceTree = "<group>"; };
@@ -103,6 +105,7 @@
 		DB5D0F23A6190328CF3C4C0B /* GoStop */ = {
 			isa = PBXGroup;
 			children = (
+				4A3C1F6EB55586E9BE2C8E36 /* Assets.xcassets */,
 				B8C0FD4111DFE67FB4B8757A /* ContentView.swift */,
 				7012D53468CE7DEC0511F7AE /* GoStopApp.swift */,
 				1159B74760341B7FD625C040 /* Info.plist */,
@@ -121,6 +124,7 @@
 			buildConfigurationList = 3203AFEDDD860A4536CCB147 /* Build configuration list for PBXNativeTarget "GoStop" */;
 			buildPhases = (
 				F3EAB6DC9AFD7213A7BE4BEA /* Sources */,
+				B50273A6F20F4DF3DEFEF993 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -184,6 +188,17 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		B50273A6F20F4DF3DEFEF993 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F95644401EAA22B21356588D /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		DFE11A0A723D9F00D73F6E17 /* Sources */ = {

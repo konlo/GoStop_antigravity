@@ -2,6 +2,7 @@ import SwiftUI
 
 struct GameView: View {
     @StateObject var gameManager = GameManager()
+    @Namespace private var cardAnimationNamespace
     
     var body: some View {
         ZStack {
@@ -91,7 +92,7 @@ struct GameView: View {
                     Spacer()
                     ZStack {
                         ForEach(0..<min(5, gameManager.deck.cards.count), id: \.self) { index in
-                             CardView(card: Card(month: .jan, type: .junk), isFaceUp: false)
+                             CardView(card: Card(month: .jan, type: .junk, imageIndex: 2), isFaceUp: false)
                                 .offset(x: CGFloat(index) * 2, y: CGFloat(index) * 2)
                         }
                     }
@@ -103,6 +104,7 @@ struct GameView: View {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 50))], spacing: 10) {
                     ForEach(gameManager.tableCards) { card in
                         CardView(card: card)
+                            .matchedGeometryEffect(id: card.id, in: cardAnimationNamespace)
                     }
                 }
                 .padding()
@@ -132,8 +134,11 @@ struct GameView: View {
                     HStack(spacing: -10) {
                         ForEach(player.hand) { card in
                             CardView(card: card)
+                                .matchedGeometryEffect(id: card.id, in: cardAnimationNamespace)
                                 .onTapGesture {
-                                    gameManager.playTurn(card: card)
+                                    withAnimation(.spring(response: 0.5, dampingFraction: 0.7)) {
+                                        gameManager.playTurn(card: card)
+                                    }
                                 }
                         }
                     }

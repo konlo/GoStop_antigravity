@@ -36,76 +36,76 @@ struct Deck {
         var deck: [Card] = []
         
         // January (Pine)
-        deck.append(Card(month: .jan, type: .bright))
-        deck.append(Card(month: .jan, type: .ribbon)) // Red Poetry
-        deck.append(Card(month: .jan, type: .junk))
-        deck.append(Card(month: .jan, type: .junk))
+        deck.append(Card(month: .jan, type: .bright, imageIndex: 0))
+        deck.append(Card(month: .jan, type: .ribbon, imageIndex: 1)) // Red Poetry
+        deck.append(Card(month: .jan, type: .junk, imageIndex: 2))
+        deck.append(Card(month: .jan, type: .junk, imageIndex: 3))
         
         // February (Plum Blossom)
-        deck.append(Card(month: .feb, type: .animal)) // Bird
-        deck.append(Card(month: .feb, type: .ribbon)) // Red Poetry
-        deck.append(Card(month: .feb, type: .junk))
-        deck.append(Card(month: .feb, type: .junk))
+        deck.append(Card(month: .feb, type: .animal, imageIndex: 0)) // Bird
+        deck.append(Card(month: .feb, type: .ribbon, imageIndex: 1)) // Red Poetry
+        deck.append(Card(month: .feb, type: .junk, imageIndex: 2))
+        deck.append(Card(month: .feb, type: .junk, imageIndex: 3))
         
         // March (Cherry Blossom)
-        deck.append(Card(month: .mar, type: .bright))
-        deck.append(Card(month: .mar, type: .ribbon)) // Red Poetry
-        deck.append(Card(month: .mar, type: .junk))
-        deck.append(Card(month: .mar, type: .junk))
+        deck.append(Card(month: .mar, type: .bright, imageIndex: 0))
+        deck.append(Card(month: .mar, type: .ribbon, imageIndex: 1)) // Red Poetry
+        deck.append(Card(month: .mar, type: .junk, imageIndex: 2))
+        deck.append(Card(month: .mar, type: .junk, imageIndex: 3))
         
         // April (Wisteria)
-        deck.append(Card(month: .apr, type: .animal)) // Bird
-        deck.append(Card(month: .apr, type: .ribbon)) // Red Grass
-        deck.append(Card(month: .apr, type: .junk))
-        deck.append(Card(month: .apr, type: .junk))
+        deck.append(Card(month: .apr, type: .animal, imageIndex: 0)) // Bird
+        deck.append(Card(month: .apr, type: .ribbon, imageIndex: 1)) // Red Grass
+        deck.append(Card(month: .apr, type: .junk, imageIndex: 2))
+        deck.append(Card(month: .apr, type: .junk, imageIndex: 3))
         
         // May (Iris)
-        deck.append(Card(month: .may, type: .animal))
-        deck.append(Card(month: .may, type: .ribbon)) // Red Grass
-        deck.append(Card(month: .may, type: .junk))
-        deck.append(Card(month: .may, type: .junk))
+        deck.append(Card(month: .may, type: .animal, imageIndex: 0))
+        deck.append(Card(month: .may, type: .ribbon, imageIndex: 1)) // Red Grass
+        deck.append(Card(month: .may, type: .junk, imageIndex: 2))
+        deck.append(Card(month: .may, type: .junk, imageIndex: 3))
         
         // June (Peony)
-        deck.append(Card(month: .jun, type: .animal)) // Butterfly
-        deck.append(Card(month: .jun, type: .ribbon)) // Blue
-        deck.append(Card(month: .jun, type: .junk))
-        deck.append(Card(month: .jun, type: .junk))
+        deck.append(Card(month: .jun, type: .animal, imageIndex: 0)) // Butterfly
+        deck.append(Card(month: .jun, type: .ribbon, imageIndex: 1)) // Blue
+        deck.append(Card(month: .jun, type: .junk, imageIndex: 2))
+        deck.append(Card(month: .jun, type: .junk, imageIndex: 3))
         
         // July (Bush Clover)
-        deck.append(Card(month: .jul, type: .animal)) // Boar
-        deck.append(Card(month: .jul, type: .ribbon)) // Red Grass
-        deck.append(Card(month: .jul, type: .junk))
-        deck.append(Card(month: .jul, type: .junk))
+        deck.append(Card(month: .jul, type: .animal, imageIndex: 0)) // Boar
+        deck.append(Card(month: .jul, type: .ribbon, imageIndex: 1)) // Red Grass
+        deck.append(Card(month: .jul, type: .junk, imageIndex: 2))
+        deck.append(Card(month: .jul, type: .junk, imageIndex: 3))
         
         // August (Moon/Susuk)
-        deck.append(Card(month: .aug, type: .bright)) // Moon
-        deck.append(Card(month: .aug, type: .animal)) // Geese
-        deck.append(Card(month: .aug, type: .junk))
-        deck.append(Card(month: .aug, type: .junk))
+        deck.append(Card(month: .aug, type: .bright, imageIndex: 0)) // Moon
+        deck.append(Card(month: .aug, type: .animal, imageIndex: 1)) // Geese
+        deck.append(Card(month: .aug, type: .junk, imageIndex: 2))
+        deck.append(Card(month: .aug, type: .junk, imageIndex: 3))
         
         // September (Chrysanthemum)
-        deck.append(Card(month: .sep, type: .animal)) // Sake Cup
-        deck.append(Card(month: .sep, type: .ribbon)) // Blue
-        deck.append(Card(month: .sep, type: .junk))
-        deck.append(Card(month: .sep, type: .junk))
+        deck.append(Card(month: .sep, type: .animal, imageIndex: 0)) // Sake Cup
+        deck.append(Card(month: .sep, type: .ribbon, imageIndex: 1)) // Blue
+        deck.append(Card(month: .sep, type: .junk, imageIndex: 2))
+        deck.append(Card(month: .sep, type: .junk, imageIndex: 3))
         
         // October (Maple)
-        deck.append(Card(month: .oct, type: .animal)) // Deer
-        deck.append(Card(month: .oct, type: .ribbon)) // Blue
-        deck.append(Card(month: .oct, type: .junk))
-        deck.append(Card(month: .oct, type: .junk))
+        deck.append(Card(month: .oct, type: .animal, imageIndex: 0)) // Deer
+        deck.append(Card(month: .oct, type: .ribbon, imageIndex: 1)) // Blue
+        deck.append(Card(month: .oct, type: .junk, imageIndex: 2))
+        deck.append(Card(month: .oct, type: .junk, imageIndex: 3))
         
         // November (Paulownia)
-        deck.append(Card(month: .nov, type: .bright)) // Phoenix
-        deck.append(Card(month: .nov, type: .doubleJunk)) // Colored
-        deck.append(Card(month: .nov, type: .junk))
-        deck.append(Card(month: .nov, type: .junk))
+        deck.append(Card(month: .nov, type: .bright, imageIndex: 0)) // Phoenix
+        deck.append(Card(month: .nov, type: .doubleJunk, imageIndex: 1)) // Colored
+        deck.append(Card(month: .nov, type: .junk, imageIndex: 2))
+        deck.append(Card(month: .nov, type: .junk, imageIndex: 3))
         
         // December (Rain)
-        deck.append(Card(month: .dec, type: .bright)) // Rain Man
-        deck.append(Card(month: .dec, type: .animal)) // Bird
-        deck.append(Card(month: .dec, type: .ribbon)) // Red
-        deck.append(Card(month: .dec, type: .doubleJunk)) // Double Junk
+        deck.append(Card(month: .dec, type: .bright, imageIndex: 0)) // Rain Man
+        deck.append(Card(month: .dec, type: .animal, imageIndex: 1)) // Bird
+        deck.append(Card(month: .dec, type: .ribbon, imageIndex: 2)) // Red
+        deck.append(Card(month: .dec, type: .doubleJunk, imageIndex: 3)) // Double Junk
         
         return deck
     }

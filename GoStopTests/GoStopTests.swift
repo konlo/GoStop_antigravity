@@ -37,9 +37,9 @@ final class GoStopTests: XCTestCase {
         
         // Test 3 Gwang (3 points)
         player.capturedCards = [
-            Card(month: .jan, type: .bright),
-            Card(month: .mar, type: .bright),
-            Card(month: .aug, type: .bright)
+            Card(month: .jan, type: .bright, imageIndex: 0),
+            Card(month: .mar, type: .bright, imageIndex: 0),
+            Card(month: .aug, type: .bright, imageIndex: 0)
         ]
         
         let score = ScoringSystem.calculateScore(for: player)
@@ -51,9 +51,9 @@ final class GoStopTests: XCTestCase {
         
         // Godori (5 points)
         player.capturedCards = [
-            Card(month: .feb, type: .animal), // Bird
-            Card(month: .apr, type: .animal), // Bird
-            Card(month: .aug, type: .animal)  // Geese
+            Card(month: .feb, type: .animal, imageIndex: 0), // Bird
+            Card(month: .apr, type: .animal, imageIndex: 0), // Bird
+            Card(month: .aug, type: .animal, imageIndex: 0)  // Geese
         ]
         
         // We need to ensure these are actually recognized as birds in isBird
@@ -67,20 +67,33 @@ final class GoStopTests: XCTestCase {
         let player = game.players[0]
         
         // Setup state for deterministic test
-        player.hand = [Card(month: .jan, type: .bright)] // Hold Jan Bright
-        game.tableCards = [Card(month: .jan, type: .junk)] // Table has Jan Junk
-        // Deck needs to be controlled or we mock it. 
-        // For simple integration test, we just check if playing the card captures the table card.
-        // But playTurn draws from deck too, which introduces randomness.
-        // We can check if table card count decreases or captured count increases at least by 2.
+        let myCard = Card(month: .jan, type: .bright, imageIndex: 0)
+        let tableCard = Card(month: .jan, type: .junk, imageIndex: 2)
         
+        player.hand = [myCard]
+        game.tableCards = [tableCard]
+        
+        // Capture initial count
         let initialCaptured = player.capturedCards.count
-        game.playTurn(card: player.hand[0])
         
-        // We expect at least the played card and table card to be captured (2 cards)
-        // Plus potentially what was drawn from deck.
+        // Play
+        game.playTurn(card: myCard)
+        
+        // Verify capture happened
         XCTAssertGreaterThan(player.capturedCards.count, initialCaptured)
-        // Table should not have the Jan Junk anymore
-        XCTAssertFalse(game.tableCards.contains { $0.month == .jan && $0.type == .junk })
+        
+        // Verify specifically that the initial table card is gone
+        // Card equality checks UUID, so even if another Jan Junk appears, it won't be this one.
+        XCTAssertFalse(game.tableCards.contains(tableCard), "The specific table card should be captured")
+    }
+    
+    func testAssetLoading() {
+        // GameManager is a class in the main module, so Bundle(for:) should point to the main bundle (or the framework bundle if modularized)
+        let bundle = Bundle(for: GameManager.self)
+        let sampleCards = ["Card_jan_0", "Card_dec_3", "Card_aug_0"]
+        for cardName in sampleCards {
+            let image = UIImage(named: cardName, in: bundle, compatibleWith: nil)
+            XCTAssertNotNil(image, "Failed to load image asset: \(cardName) from bundle: \(bundle.bundlePath)")
+        }
     }
 }
