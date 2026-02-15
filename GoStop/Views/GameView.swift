@@ -24,6 +24,9 @@ struct GameView: View {
                 playerArea
             }
             .padding()
+            
+            // Overlays
+            overlayArea
         }
     }
     
@@ -92,12 +95,6 @@ struct GameView: View {
                                 .offset(x: CGFloat(index) * 2, y: CGFloat(index) * 2)
                         }
                     }
-                    .onTapGesture {
-                        // Temp debug action
-                        withAnimation {
-                           // gameManager.flipDeckCard() // To be implemented
-                        }
-                    }
                     Spacer()
                 }
                 .frame(height: 80)
@@ -136,8 +133,7 @@ struct GameView: View {
                         ForEach(player.hand) { card in
                             CardView(card: card)
                                 .onTapGesture {
-                                    // Debug interaction
-                                    print("Tapped \(card)")
+                                    gameManager.playTurn(card: card)
                                 }
                         }
                     }
@@ -147,6 +143,38 @@ struct GameView: View {
         }
         .background(Color.black.opacity(0.3))
         .cornerRadius(15)
+    }
+    
+    // MARK: - Overlays
+    
+    @ViewBuilder
+    var overlayArea: some View {
+        if gameManager.gameState == .ready {
+            colorBackgroundOverlay(text: "Start Game", action: {
+                gameManager.startGame()
+            })
+        } else if gameManager.gameState == .ended {
+            colorBackgroundOverlay(text: "Game Over\nTap to Restart", action: {
+                gameManager.setupGame()
+                gameManager.startGame()
+            })
+        }
+    }
+    
+    func colorBackgroundOverlay(text: String, action: @escaping () -> Void) -> some View {
+        ZStack {
+            Color.black.opacity(0.4).ignoresSafeArea()
+            VStack {
+                Button(action: action) {
+                    Text(text)
+                        .font(.largeTitle)
+                        .fontWeight(.bold)
+                        .foregroundStyle(.white)
+                        .padding()
+                        .background(RoundedRectangle(cornerRadius: 15).fill(Color.blue))
+                }
+            }
+        }
     }
 }
 
