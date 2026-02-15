@@ -12,8 +12,11 @@
 		59AAB1C8D0D8BED80BEFA314 /* GoStopApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7012D53468CE7DEC0511F7AE /* GoStopApp.swift */; };
 		62FCE0F439432138C743176A /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8C0FD4111DFE67FB4B8757A /* ContentView.swift */; };
 		808657D99FB2F8247B9D373F /* Deck.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C9DC8F2B463C152AB92172B /* Deck.swift */; };
+		B597523E68A8A42654B8DD0F /* GameView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BA63E4C6CDD8893D44DEAE5 /* GameView.swift */; };
 		B5EED1311F05C120AF7DA6E8 /* Card.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72B2E9B6CA4C4DB8CC0ED986 /* Card.swift */; };
+		CA5E4294DC9C4A786488AA0C /* ScoringSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C817E2BC7A6C44D1434325E /* ScoringSystem.swift */; };
 		E10C501280BC9C36380E8474 /* GameManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 116C189429DB2067520A3E08 /* GameManager.swift */; };
+		FF8FF5B2CD92C35D053EDDDB /* CardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74DE360629BC09922C21C6DC /* CardView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -31,8 +34,11 @@
 		116C189429DB2067520A3E08 /* GameManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameManager.swift; sourceTree = "<group>"; };
 		1D8325DC94A43A7AB5739F02 /* GoStopTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoStopTests.swift; sourceTree = "<group>"; };
 		2C9DC8F2B463C152AB92172B /* Deck.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Deck.swift; sourceTree = "<group>"; };
+		4C817E2BC7A6C44D1434325E /* ScoringSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoringSystem.swift; sourceTree = "<group>"; };
+		5BA63E4C6CDD8893D44DEAE5 /* GameView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameView.swift; sourceTree = "<group>"; };
 		7012D53468CE7DEC0511F7AE /* GoStopApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoStopApp.swift; sourceTree = "<group>"; };
 		72B2E9B6CA4C4DB8CC0ED986 /* Card.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Card.swift; sourceTree = "<group>"; };
+		74DE360629BC09922C21C6DC /* CardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardView.swift; sourceTree = "<group>"; };
 		8D300F3C280AF301436D8732 /* Player.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Player.swift; sourceTree = "<group>"; };
 		B67ACAB0F7C90D1925FA8BC6 /* GoStopTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = GoStopTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B8C0FD4111DFE67FB4B8757A /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -40,6 +46,15 @@
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
+		39787C496A85E0AEDF6DA440 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				74DE360629BC09922C21C6DC /* CardView.swift */,
+				5BA63E4C6CDD8893D44DEAE5 /* GameView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
 		4324CA91F53CA59ECA362D5C /* GoStopTests */ = {
 			isa = PBXGroup;
 			children = (
@@ -61,6 +76,7 @@
 			isa = PBXGroup;
 			children = (
 				116C189429DB2067520A3E08 /* GameManager.swift */,
+				4C817E2BC7A6C44D1434325E /* ScoringSystem.swift */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -92,6 +108,7 @@
 				1159B74760341B7FD625C040 /* Info.plist */,
 				53C4E3404BDA3921EE5B0201 /* Core */,
 				A6E60CE93D76969F0E23DBF7 /* Models */,
+				39787C496A85E0AEDF6DA440 /* Views */,
 			);
 			path = GoStop;
 			sourceTree = "<group>";
@@ -182,11 +199,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				B5EED1311F05C120AF7DA6E8 /* Card.swift in Sources */,
+				FF8FF5B2CD92C35D053EDDDB /* CardView.swift in Sources */,
 				62FCE0F439432138C743176A /* ContentView.swift in Sources */,
 				808657D99FB2F8247B9D373F /* Deck.swift in Sources */,
 				E10C501280BC9C36380E8474 /* GameManager.swift in Sources */,
+				B597523E68A8A42654B8DD0F /* GameView.swift in Sources */,
 				59AAB1C8D0D8BED80BEFA314 /* GoStopApp.swift in Sources */,
 				0B20DD2801F7CBBF74EA9F8E /* Player.swift in Sources */,
+				CA5E4294DC9C4A786488AA0C /* ScoringSystem.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
