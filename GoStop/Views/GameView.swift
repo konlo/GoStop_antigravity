@@ -5,86 +5,105 @@ struct GameView: View {
     @Namespace private var cardAnimationNamespace
     
     var body: some View {
-        ZStack {
-            // Background
-            Color(red: 0.1, green: 0.5, blue: 0.2) // Felt Green
-                .ignoresSafeArea()
-            
-            VStack {
-                // Opponent Area (Top)
-                opponentArea
+        GeometryReader { geometry in
+            ZStack {
+                // Background
+                RadialGradient(gradient: Gradient(colors: [Color(red: 0.15, green: 0.55, blue: 0.25), Color(red: 0.05, green: 0.35, blue: 0.15)]), center: .center, startRadius: 50, endRadius: 600)
+                    .ignoresSafeArea()
                 
-                Spacer()
+                VStack(spacing: 0) {
+                    // Opponent Area (Top) - ~22% (Increased for Vertical Layout)
+                    opponentArea
+                        .frame(height: geometry.size.height * 0.22)
+                        .zIndex(1)
+                    
+                    // Table Area (Center) - ~38% (Reduced)
+                    tableArea
+                        .frame(height: geometry.size.height * 0.38)
+                        .zIndex(0)
+                    
+                    // Player Area (Bottom) - ~40%
+                    playerArea
+                        .frame(height: geometry.size.height * 0.40)
+                        .zIndex(2)
+                }
+                .frame(width: geometry.size.width, height: geometry.size.height)
+                .padding(.horizontal) // Fix for rounded corners clipping content
+                .position(x: geometry.size.width / 2, y: geometry.size.height / 2) // Strict centering to fix safe area shift
+                //.padding(.bottom, 20) // Removed safety padding that might cause issues with full bleed
                 
-                // Table Area (Center)
-                tableArea
-                
-                Spacer()
-                
-                // Player Area (Bottom)
-                playerArea
+                // Overlays
+                overlayArea
             }
-            .padding()
-            
-            // Overlays
-            overlayArea
         }
+        .ignoresSafeArea() // Critical fix: GeometryReader now starts at (0,0) screen coordinates
     }
     
     // MARK: - Subviews
     
     var opponentArea: some View {
-        HStack {
-            // Avatar / Info
-            VStack {
-                Image(systemName: "person.circle.fill")
-                    .resizable()
-                    .frame(width: 40, height: 40)
-                    .foregroundStyle(.white)
-                Text("Computer")
-                    .font(.caption)
-                    .foregroundStyle(.white)
-            }
-            
-            Spacer()
-            
-            // Hand (Face Down)
-            if gameManager.players.count > 1 {
-                let opponent = gameManager.players[1]
-                HStack(spacing: -20) {
-                    ForEach(opponent.hand) { card in
-                        CardView(card: card, isFaceUp: false)
+        VStack(spacing: 5) {
+            // Row 1: Info & Hand
+            HStack {
+                // Avatar / Info
+                VStack {
+                    Image(systemName: "person.circle.fill")
+                        .resizable()
+                        .frame(width: 40, height: 40)
+                        .foregroundStyle(.white)
+                    Text("Computer")
+                        .font(.caption)
+                        .foregroundStyle(.white)
+                }
+                
+                Spacer()
+                
+                // Hand (Face Down)
+                if gameManager.players.count > 1 {
+                    let opponent = gameManager.players[1]
+                    HStack(spacing: -20) {
+                        ForEach(opponent.hand) { card in
+                            CardView(card: card, isFaceUp: false)
+                        }
                     }
                 }
-            }
-            
-            Spacer()
-            
-            // Captured Cards
-            if gameManager.players.count > 1 {
-                 let opponent = gameManager.players[1]
-                 VStack {
+                
+                Spacer()
+                
+                // Score Label
+                if gameManager.players.count > 1 {
+                     let opponent = gameManager.players[1]
                      Text("Score: \(opponent.score)")
                          .foregroundStyle(.white)
                          .font(.caption)
-                     HStack(spacing: -30) {
-                         ForEach(opponent.capturedCards.suffix(5)) { card in
-                             CardView(card: card, isFaceUp: true)
-                                 .scaleEffect(0.6)
-                                 .frame(width: 30, height: 50)
-                         }
-                     }
-                 }
+                         .bold()
+                }
             }
+            .padding(.horizontal)
+            
+            // Row 2: Captured Cards
+            if gameManager.players.count > 1 {
+                 let opponent = gameManager.players[1]
+                 // Use wider spacing now that we have full width
+                 ScrollView(.horizontal, showsIndicators: false) {
+                     CapturedAreaView(capturedCards: opponent.capturedCards, isOpponent: true, spacing: 20)
+                         .scaleEffect(0.8) // Consistent scale with player
+                         .frame(height: 50)
+                 }
+                 .frame(maxWidth: .infinity, alignment: .leading) // Ensure it aligns start
+            }
+            
+            Spacer(minLength: 0)
         }
-        .frame(height: 100)
+        .padding(.top, 10) // Internal top padding
+        .background(Color.black.opacity(0.1)) // Subtle background to see area
     }
     
     var tableArea: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 20)
                 .fill(Color.white.opacity(0.1))
-                .frame(maxWidth: .infinity, maxHeight: 250)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             
             VStack {
                 // Deck
@@ -100,7 +119,7 @@ struct GameView: View {
                 }
                 .frame(height: 80)
                 
-                // Table Cards (Display 8 cards or more logic)
+                // Table Cards
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 50))], spacing: 10) {
                     ForEach(gameManager.tableCards) { card in
                         CardView(card: card)
@@ -126,7 +145,26 @@ struct GameView: View {
                         .fontWeight(.bold)
                 }
             }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(Material.thinMaterial)
+            .clipShape(Capsule())
+            .overlay(
+                Capsule().stroke(Color.white.opacity(0.3), lineWidth: 1)
+            )
             .padding(.horizontal)
+            .padding(.bottom, 5)
+            
+            // Captured Cards
+            if let player = gameManager.players.first {
+                ScrollView(.horizontal, showsIndicators: false) {
+                     CapturedAreaView(capturedCards: player.capturedCards, spacing: 30)
+                        .scaleEffect(0.8)
+                        .frame(height: 60)
+                        .padding(.bottom, 5)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
             
             // Hand
             ScrollView(.horizontal, showsIndicators: false) {
@@ -185,4 +223,5 @@ struct GameView: View {
 
 #Preview {
     GameView()
+        .ignoresSafeArea()
 }
