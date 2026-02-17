@@ -1,0 +1,116 @@
+{
+    "_comment": "Global Layout Configuration (전체 레이아웃 설정). Modifying this file changes the UI immediately upon reload. (이 파일을 수정하면 앱 재시작 시 UI가 변경됩니다.)",
+    "debug": {
+        "showGrid": false
+    },
+    "card": {
+        "_desc": "Base card size configuration. 'width' is ratio of Screen Width. 'aspectRatio' is Height/Width. (화투패 크기 설정.)",
+        "width": 0.15,
+        "aspectRatio": 1.6,
+        "cornerRadius": 0.1,
+        "shadowRadius": 2.0,
+        "backColor": "#CC3333",
+        "backCircleColor": "#991A1A"
+    },
+    "images": {
+        "prefix": "Card_"
+    },
+    "areas": {
+        "_desc": "Three main vertical areas: Opponent (Top), Center (Middle), Player (Bottom). (3개의 메인 영역 설정: 상대방(상단), 중앙(중단), 플레이어(하단).)",
+        "opponent": {
+            "heightRatio": 0.1,
+            "background": {
+                "color": "#FFEEEE",
+                "opacity": 0.1,
+                "cornerRadius": 0.0,
+                "widthRatio": 1.0
+            },
+            "elements": {
+                "hand": {
+                    "x": 0.5,
+                    "y": 0.3,
+                    "scale": 0.2,
+                    "grid": {
+                        "rows": 1,
+                        "maxCols": 10,
+                        "verticalSpacing": 0.0,
+                        "horizontalSpacing": 0.01
+                    }
+                },
+                "captured": {
+                    "x": 0.5,
+                    "y": 0.8,
+                    "scale": 0.6,
+                    "layout": {
+                        "groupSpacing": 10,
+                        "cardOverlap": 30
+                    }
+                }
+            }
+        },
+        "center": {
+            "heightRatio": 0.3,
+            "background": {
+                "color": "#000000",
+                "opacity": 0.2,
+                "cornerRadius": 20.0,
+                "widthRatio": 0.95
+            },
+            "elements": {
+                "table": {
+                    "x": 0.5,
+                    "y": 0.5,
+                    "scale": 0.7,
+                    "grid": {
+                        "rows": 2,
+                        "verticalSpacing": 0.025,
+                        "horizontalSpacing": 0.02,
+                        "stackOverlapRatio": 0.6
+                    }
+                },
+                "deck": {
+                    "x": 0.5,
+                    "y": 0.5,
+                    "scale": 0.9
+                }
+            }
+        },
+        "player": {
+            "heightRatio": 0.35,
+            "background": {
+                "color": "#EEFFEE",
+                "opacity": 0.1,
+                "cornerRadius": 0.0,
+                "widthRatio": 1.0
+            },
+            "elements": {
+                "captured": {
+                    "x": 0.5,
+                    "y": 0.25,
+                    "scale": 0.7,
+                    "layout": {
+                        "groupSpacing": 10,
+                        "cardOverlap": 30
+                    }
+                },
+                "hand": {
+                    "x": 0.5,
+                    "y": 0.75,
+                    "scale": 1.1,
+                    "grid": {
+                        "rows": 2,
+                        "maxCols": 5,
+                        "verticalSpacing": 0.01,
+                        "horizontalSpacing": 0.01,
+                        "background": {
+                            "color": "#FFFFFF",
+                            "opacity": 0.1,
+                            "cornerRadius": 15,
+                            "widthRatio": 0.9
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

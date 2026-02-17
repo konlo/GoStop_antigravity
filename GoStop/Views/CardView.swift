@@ -3,35 +3,38 @@ import SwiftUI
 struct CardView: View {
     let card: Card
     var isFaceUp: Bool = true
+    var scale: CGFloat = 1.0
+    @ObservedObject var config = ConfigManager.shared
     
     var body: some View {
+        let size = config.cardSize(scale: scale)
+        
         ZStack {
             if isFaceUp {
                 frontView
             } else {
-                backView
+                backView(size: size)
             }
         }
-        .frame(width: 50, height: 80) // Standard Hwatu ratio approx 5:8
-        .clipShape(RoundedRectangle(cornerRadius: 4))
-        .shadow(radius: 2)
+        .frame(width: size.width, height: size.height)
+        .clipShape(RoundedRectangle(cornerRadius: size.width * config.layout.card.cornerRadius)) // Relative corner radius
+        .shadow(radius: config.layout.card.shadowRadius)
     }
     
     var frontView: some View {
-        Image("Card_\(card.month)_\(card.imageIndex)")
+        Image("\(config.layout.images.prefix)\(card.month)_\(card.imageIndex)")
             .resizable()
-            .aspectRatio(contentMode: .fill)
             .background(Color.white)
     }
     
-    var backView: some View {
+    func backView(size: CGSize) -> some View {
         ZStack {
-            Color(red: 0.8, green: 0.2, blue: 0.2) // Red back
+            config.layout.card.backColorSwiftUI
             
             // Texture Pattern (Simple Circle)
             Circle()
-                .fill(Color(red: 0.6, green: 0.1, blue: 0.1))
-                .frame(width: 25, height: 25)
+                .fill(config.layout.card.backCircleColorSwiftUI)
+                .frame(width: size.width * 0.5, height: size.width * 0.5)
                 .overlay(
                     Circle().stroke(Color.black.opacity(0.2), lineWidth: 1)
                 )
