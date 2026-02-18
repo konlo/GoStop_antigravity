@@ -266,4 +266,5 @@ struct TableGridConfig: Codable, Equatable {
     let vSpacingCardRatio: CGFloat
     let hSpacingCardRatio: CGFloat
     let stackOverlapRatio: CGFloat
+    let stackDirection: String?
 }

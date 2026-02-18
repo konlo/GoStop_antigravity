@@ -302,8 +302,6 @@ struct CapturedAreaV2: View {
         // Negative spacing for overlap
         let startSpacing = -cardW * overlapRatio
         
-        let groupSpacing = cardW * layoutConfig.groupSpacingCardRatio
-        
         ScrollView(.horizontal, showsIndicators: false) {
              HStack(spacing: startSpacing) {
                  ForEach(Array(cards.enumerated()), id: \.element.id) { index, card in
@@ -400,10 +398,20 @@ struct TableFixedSlotsView: View {
                          let stack = manager.cards(at: slot.slotIndex)
                          if !stack.isEmpty {
                              ZStack {
-                                 ForEach(Array(stack.enumerated()), id: \.element.id) { i, card in
-                                     CardView(card: card, isFaceUp: true, scale: config.scale)
-                                         .offset(y: CGFloat(i) * (cardH * (1.0 - config.grid.stackOverlapRatio)))
-                                 }
+                                  ForEach(Array(stack.enumerated()), id: \.element.id) { i, card in
+                                      let direction = config.grid.stackDirection ?? "vertical"
+                                      let overlap = config.grid.stackOverlapRatio
+                                      
+                                      let isHorizontal = direction == "horizontal"
+                                      let isDiagonal = direction == "diagonal"
+                                      
+                                      let xOff = (isHorizontal || isDiagonal) ? CGFloat(i) * (cardW * (1.0 - overlap)) : 0
+                                      let yOff = (!isHorizontal) ? CGFloat(i) * (cardH * (1.0 - overlap)) : 0
+                                      
+                                      CardView(card: card, isFaceUp: true, scale: config.scale)
+                                          .offset(x: xOff, y: yOff)
+                                          .zIndex(Double(i))
+                                  }
                              }
                          } else {
                              Color.clear.contentShape(Rectangle())
