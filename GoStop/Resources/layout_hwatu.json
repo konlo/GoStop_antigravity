@@ -104,15 +104,15 @@
             }
         },
         "center": {
-            "heightRatio": 0.35,
+            "heightRatio": 0.4,
             "minHeightPt": 210,
             "maxHeightPt": 380,
             "flexWeight": 2,
             "background": {
-                "color": "#DCEDC8",
+                "color": "#62c522",
                 "opacity": 0.60,
                 "cornerRadiusPt": 18,
-                "widthRatio": 0.95
+                "widthRatio": 1.0
             },
             "elements": {
                 "table": {
@@ -213,7 +213,7 @@
                     "_desc": "덱(중앙)",
                     "x": 0.5,
                     "y": 0.5,
-                    "scale": 0.86,
+                    "scale": 0.7,
                     "zIndex": 50
                 }
             }
@@ -245,7 +245,7 @@
                     "_desc": "플레이어 손패(최대 10장). 10개 슬롯 고정 + 정렬 시 슬롯 간 이동만 허용 + 카드 사용 후 빈 슬롯 공간 유지.",
                     "x": 0.5,
                     "y": 0.60,
-                    "scale": 1.0,
+                    "scale": 0.9,
                     "zIndex": 20,
                     "_comment_mode": "grid는 배경/간격 기준값으로 유지하되, 배치는 fixedSlots10 모드가 슬롯 좌표를 소스 오브 트루스로 사용.",
                     "mode": "fixedSlots10",
