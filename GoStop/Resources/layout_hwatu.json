@@ -1,14 +1,45 @@
 {
-    "_comment": "Global Layout Configuration (전체 레이아웃 설정). Modifying this file changes the UI immediately upon reload. (이 파일을 수정하면 앱 재시작 시 UI가 변경됩니다.)",
+    "_comment": "Global Layout Configuration v2. Safe-area 기반 반응형 레이아웃. (이 파일 수정 후 재시작/리로드 시 UI 반영)",
+    "version": 2,
     "debug": {
-        "showGrid": false
+        "showGrid": true,
+        "showSafeArea": true,
+        "showElementBounds": true
+    },
+    "_units": {
+        "_desc": "ratio: 0..1 (컨테이너 정규화 좌표/비율). pt: referenceCanvas 기준 포인트(전역 스케일 적용). spacing/overlap ratio는 cardWidth 기준."
+    },
+    "referenceCanvas": {
+        "_desc": "전역 스케일 계산용 기준 캔버스(포인트). iPhone 계열의 대표값으로 설정.",
+        "widthPt": 390,
+        "heightPt": 844
+    },
+    "scaling": {
+        "_desc": "globalScale = clamp(min(safeW/refW, safeH/refH), min, max). pt 단위 값에 곱해짐.",
+        "min": 0.65,
+        "max": 1.20
+    },
+    "tokens": {
+        "_desc": "pt 값들은 globalScale이 곱해져 기기별로 자동 조정됨.",
+        "outerInsetPt": 48,
+        "areaGapPt": 12,
+        "panelPaddingPt": 10,
+        "panelCornerRadiusPt": 18
     },
     "card": {
-        "_desc": "Base card size configuration. 'width' is ratio of Screen Width. 'aspectRatio' is Height/Width. (화투패 크기 설정.)",
-        "width": 0.15,
+        "_desc": "카드 기준 크기. baseWidthRatio는 safeW 대비 비율(1차값)이며, 최종 폭은 코드에서 hand-fit 조건으로 추가 조정 권장.",
+        "baseWidthRatio": 0.155,
+        "minWidthPt": 34,
+        "maxWidthPt": 70,
         "aspectRatio": 1.6,
-        "cornerRadius": 0.1,
-        "shadowRadius": 2.0,
+        "_descCorner": "cornerRadiusRatio는 (cornerRadius = cardWidth * ratio).",
+        "cornerRadiusRatio": 0.12,
+        "shadow": {
+            "_desc": "pt 기반: globalScale 곱 적용.",
+            "radiusPt": 2.0,
+            "yOffsetPt": 1.0,
+            "opacity": 0.25
+        },
         "backColor": "#CC3333",
         "backCircleColor": "#991A1A"
     },
@@ -16,97 +47,123 @@
         "prefix": "Card_"
     },
     "areas": {
-        "_desc": "Three main vertical areas: Opponent (Top), Center (Middle), Player (Bottom). (3개의 메인 영역 설정: 상대방(상단), 중앙(중단), 플레이어(하단).)",
+        "_desc": "Opponent / Center / Player 3영역. heightRatio 합이 1.0이 되도록 구성. 각 영역은 ratio 기반 + min/max(권장)로 안정화.",
         "opponent": {
-            "heightRatio": 0.1,
+            "heightRatio": 0.18,
+            "minHeightPt": 96,
+            "maxHeightPt": 180,
+            "flexWeight": 1,
             "background": {
                 "color": "#FFEEEE",
-                "opacity": 0.1,
-                "cornerRadius": 0.0,
+                "opacity": 0.08,
+                "cornerRadiusPt": 0,
                 "widthRatio": 1.0
             },
             "elements": {
                 "hand": {
+                    "_desc": "상대 손패(보통 10장). 겹침으로 ‘크기는 키우고 폭은 줄이기’.",
                     "x": 0.5,
-                    "y": 0.3,
-                    "scale": 0.2,
+                    "y": 0.25,
+                    "scale": 0.45,
+                    "zIndex": 10,
                     "grid": {
                         "rows": 1,
                         "maxCols": 10,
-                        "verticalSpacing": 0.0,
-                        "horizontalSpacing": 0.01
+                        "_descSpacing": "cardWidth 기준 비율",
+                        "hSpacingCardRatio": 0.04,
+                        "_descOverlap": "0.62 = 62% 겹침 (다음 카드의 이동량은 (1-overlap)*cardWidth로 계산)",
+                        "overlapRatio": 0.62
                     }
                 },
                 "captured": {
+                    "_desc": "상대 획득패",
                     "x": 0.5,
-                    "y": 0.8,
-                    "scale": 0.6,
+                    "y": 0.78,
+                    "scale": 0.62,
+                    "zIndex": 5,
                     "layout": {
-                        "groupSpacing": 10,
-                        "cardOverlap": 30
+                        "groupSpacingCardRatio": 0.26,
+                        "cardOverlapRatio": 0.62
                     }
                 }
             }
         },
         "center": {
-            "heightRatio": 0.3,
+            "heightRatio": 0.34,
+            "minHeightPt": 210,
+            "maxHeightPt": 380,
+            "flexWeight": 2,
             "background": {
                 "color": "#000000",
-                "opacity": 0.2,
-                "cornerRadius": 20.0,
+                "opacity": 0.18,
+                "cornerRadiusPt": 18,
                 "widthRatio": 0.95
             },
             "elements": {
                 "table": {
+                    "_desc": "바닥 패(보통 2행 배치). cols를 명시해 카드 폭 역산/검증 가능",
                     "x": 0.5,
-                    "y": 0.5,
-                    "scale": 0.7,
+                    "y": 0.52,
+                    "scale": 0.86,
+                    "zIndex": 1,
                     "grid": {
                         "rows": 2,
-                        "verticalSpacing": 0.025,
-                        "horizontalSpacing": 0.02,
-                        "stackOverlapRatio": 0.6
+                        "cols": 4,
+                        "vSpacingCardRatio": 0.10,
+                        "hSpacingCardRatio": 0.12,
+                        "_desc": "동일 월(쌍패) 스택 겹침 비율",
+                        "stackOverlapRatio": 0.60
                     }
                 },
                 "deck": {
-                    "x": 0.5,
-                    "y": 0.5,
-                    "scale": 0.9
+                    "_desc": "덱(중앙 우측으로 살짝 이동해 테이블과 구분)",
+                    "x": 0.86,
+                    "y": 0.52,
+                    "scale": 0.95,
+                    "zIndex": 50
                 }
             }
         },
         "player": {
-            "heightRatio": 0.35,
+            "heightRatio": 0.48,
+            "minHeightPt": 240,
+            "maxHeightPt": 520,
+            "flexWeight": 2,
             "background": {
                 "color": "#EEFFEE",
-                "opacity": 0.1,
-                "cornerRadius": 0.0,
+                "opacity": 0.08,
+                "cornerRadiusPt": 0,
                 "widthRatio": 1.0
             },
             "elements": {
                 "captured": {
+                    "_desc": "플레이어 획득패",
                     "x": 0.5,
-                    "y": 0.25,
-                    "scale": 0.7,
+                    "y": 0.28,
+                    "scale": 0.68,
+                    "zIndex": 5,
                     "layout": {
-                        "groupSpacing": 10,
-                        "cardOverlap": 30
+                        "groupSpacingCardRatio": 0.26,
+                        "cardOverlapRatio": 0.62
                     }
                 },
                 "hand": {
+                    "_desc": "플레이어 손패(2행×5열). 이 그리드가 '기준 카드 폭'을 결정하는 핵심 제약.",
                     "x": 0.5,
-                    "y": 0.75,
-                    "scale": 1.1,
+                    "y": 0.78,
+                    "scale": 1.0,
+                    "zIndex": 20,
                     "grid": {
                         "rows": 2,
                         "maxCols": 5,
-                        "verticalSpacing": 0.01,
-                        "horizontalSpacing": 0.01,
+                        "vSpacingCardRatio": 0.08,
+                        "hSpacingCardRatio": 0.08,
                         "background": {
                             "color": "#FFFFFF",
-                            "opacity": 0.1,
-                            "cornerRadius": 15,
-                            "widthRatio": 0.9
+                            "opacity": 0.10,
+                            "cornerRadiusPt": 16,
+                            "widthRatio": 0.94,
+                            "paddingPt": 10
                         }
                     }
                 }

@@ -3,11 +3,22 @@ import Foundation
 class ConfigManager: ObservableObject {
     static let shared = ConfigManager()
     
+    // V2 System
+    @Published var layoutV2: LayoutConfigV2?
+    @Published var layoutContext: LayoutContext?
+    
+    // Legacy System (Deprecated - Kept for compilation until full migration)
     @Published var layout: LayoutConfig
-    @Published var gameSize: CGSize = CGSize(width: 393, height: 852) // Default to iPhone 15 size to avoid 0
+    
+    @Published var gameSize: CGSize = CGSize(width: 393, height: 852) // Default to iPhone 15 size
     
     // Helper to calculate constant card size based on current layout and game size
     func cardSize(scale: CGFloat = 1.0) -> CGSize {
+        // V2 Adapter: Use Context if available
+        if let ctx = layoutContext {
+            return CGSize(width: ctx.cardSize.width * scale, height: ctx.cardSize.height * scale)
+        }
+        // Fallback to Legacy
         let width = gameSize.width * layout.card.width * scale
         let height = width * layout.card.aspectRatio
         return CGSize(width: width, height: height)
@@ -19,12 +30,23 @@ class ConfigManager: ObservableObject {
             print("Updating Game Size: \(size)")
             DispatchQueue.main.async {
                 self.gameSize = size
+                self.updateLayoutContext()
             }
         }
     }
     
+    private func updateLayoutContext() {
+        guard let v2 = layoutV2 else { return }
+        self.layoutContext = LayoutContext(config: v2, safeAreaSize: self.gameSize)
+        print("LayoutContext Updated [GlobalScale: \(self.layoutContext?.globalScale ?? 0)]")
+    }
+    
     // Helper for vertical spacing ratio
     func verticalSpacing(_ ratio: CGFloat) -> CGFloat {
+        if let _ = layoutContext {
+            // In V2, most spacing is handled inside Context or Token, but helper might be useful
+             return gameSize.height * ratio // Logic remains similar for simple ratio
+        }
         return gameSize.height * ratio
     }
     
@@ -34,93 +56,72 @@ class ConfigManager: ObservableObject {
     }
 
     private init() {
-        self.layout = ConfigManager.loadLayoutConfig()
+        // Load V2
+        self.layoutV2 = ConfigManager.loadLayoutV2()
+        
+        // Initialize Legacy with Default (since JSON is V2, V1 decode will fail)
+        self.layout = ConfigManager.defaultLegacyLayout()
+        
+        // Initial Context
+        self.updateLayoutContext()
     }
     
-    static func loadLayoutConfig() -> LayoutConfig {
+    static func loadLayoutV2() -> LayoutConfigV2? {
         guard let url = Bundle.main.url(forResource: "layout_hwatu", withExtension: "json") else {
-            print("Layout config file not found, using default values.")
-            return LayoutConfig(
-                debug: DebugConfig(showGrid: true),
-                card: CardConfig(width: 0.15, aspectRatio: 1.6, cornerRadius: 0.1, shadowRadius: 2, backColor: "#CC3333", backCircleColor: "#991A1A"),
-                images: ImageConfig(prefix: "Card_"),
-                areas: AreasConfig(
-                    opponent: AreaSectionConfig(
-                        heightRatio: 0.25,
-                        background: AreaBackgroundConfig(color: "#FFEEEE", opacity: 0.1, cornerRadius: 0, widthRatio: 1.0),
-                        elements: AreaElementsConfig(
-                            hand: ElementPositionConfig(x: 0.5, y: 0.3, scale: 0.8, grid: GridConfig(rows: 1, maxCols: 10, verticalSpacing: 0, horizontalSpacing: 0.03, stackOverlapRatio: nil, background: nil), layout: nil),
-                            captured: ElementPositionConfig(x: 0.5, y: 0.8, scale: 0.85, grid: nil, layout: CapturedLayoutConfig(groupSpacing: 10, cardOverlap: 30)),
-                            table: nil, deck: nil
-                        )
-                    ),
-                    center: AreaSectionConfig(
-                        heightRatio: 0.40,
-                        background: AreaBackgroundConfig(color: "#000000", opacity: 0.2, cornerRadius: 20, widthRatio: 0.95),
-                        elements: AreaElementsConfig(
-                            hand: nil, captured: nil,
-                            table: ElementPositionConfig(x: 0.5, y: 0.5, scale: 1.0, grid: GridConfig(rows: 2, maxCols: nil, verticalSpacing: 0.025, horizontalSpacing: 0.02, stackOverlapRatio: 0.6, background: nil), layout: nil),
-                            deck: ElementPositionConfig(x: 0.5, y: 0.5, scale: 0.9, grid: nil, layout: nil)
-                        )
-                    ),
-                    player: AreaSectionConfig(
-                        heightRatio: 0.35,
-                        background: AreaBackgroundConfig(color: "#EEFFEE", opacity: 0.1, cornerRadius: 0, widthRatio: 1.0),
-                        elements: AreaElementsConfig(
-                            hand: ElementPositionConfig(x: 0.5, y: 0.75, scale: 1.1, grid: GridConfig(rows: 2, maxCols: 5, verticalSpacing: 0.01, horizontalSpacing: 0.05, stackOverlapRatio: nil, background: AreaBackgroundConfig(color: "#FFFFFF", opacity: 0.1, cornerRadius: 15, widthRatio: 0.9)), layout: nil),
-                            captured: ElementPositionConfig(x: 0.5, y: 0.25, scale: 0.85, grid: nil, layout: CapturedLayoutConfig(groupSpacing: 10, cardOverlap: 30)),
-                            table: nil, deck: nil
-                        )
-                    )
-                )
-            )
+            print("Layout config file not found.")
+            return nil
         }
         
         do {
             let data = try Data(contentsOf: url)
             let decoder = JSONDecoder()
-            return try decoder.decode(LayoutConfig.self, from: data)
+            return try decoder.decode(LayoutConfigV2.self, from: data)
         } catch {
-            print("Error decoding layout config: \(error)")
-            // Fallback default
-             return LayoutConfig(
-                debug: DebugConfig(showGrid: true),
-                card: CardConfig(width: 0.15, aspectRatio: 1.6, cornerRadius: 0.1, shadowRadius: 2, backColor: "#CC3333", backCircleColor: "#991A1A"),
-                images: ImageConfig(prefix: "Card_"),
-                areas: AreasConfig(
-                    opponent: AreaSectionConfig(
-                        heightRatio: 0.25,
-                        background: AreaBackgroundConfig(color: "#FFEEEE", opacity: 0.1, cornerRadius: 0, widthRatio: 1.0),
-                        elements: AreaElementsConfig(
-                            hand: ElementPositionConfig(x: 0.5, y: 0.3, scale: 0.8, grid: GridConfig(rows: 1, maxCols: 10, verticalSpacing: 0, horizontalSpacing: 0.03, stackOverlapRatio: nil, background: nil), layout: nil),
-                            captured: ElementPositionConfig(x: 0.5, y: 0.8, scale: 0.85, grid: nil, layout: CapturedLayoutConfig(groupSpacing: 10, cardOverlap: 30)),
-                            table: nil, deck: nil
-                        )
-                    ),
-                    center: AreaSectionConfig(
-                        heightRatio: 0.40,
-                        background: AreaBackgroundConfig(color: "#000000", opacity: 0.2, cornerRadius: 20, widthRatio: 0.95),
-                        elements: AreaElementsConfig(
-                            hand: nil, captured: nil,
-                            table: ElementPositionConfig(x: 0.5, y: 0.5, scale: 1.0, grid: GridConfig(rows: 2, maxCols: nil, verticalSpacing: 0.025, horizontalSpacing: 0.02, stackOverlapRatio: 0.6, background: nil), layout: nil),
-                            deck: ElementPositionConfig(x: 0.5, y: 0.5, scale: 0.9, grid: nil, layout: nil)
-                        )
-                    ),
-                    player: AreaSectionConfig(
-                        heightRatio: 0.35,
-                        background: AreaBackgroundConfig(color: "#EEFFEE", opacity: 0.1, cornerRadius: 0, widthRatio: 1.0),
-                        elements: AreaElementsConfig(
-                            hand: ElementPositionConfig(x: 0.5, y: 0.75, scale: 1.1, grid: GridConfig(rows: 2, maxCols: 5, verticalSpacing: 0.01, horizontalSpacing: 0.05, stackOverlapRatio: nil, background: AreaBackgroundConfig(color: "#FFFFFF", opacity: 0.1, cornerRadius: 15, widthRatio: 0.9)), layout: nil),
-                            captured: ElementPositionConfig(x: 0.5, y: 0.25, scale: 0.85, grid: nil, layout: CapturedLayoutConfig(groupSpacing: 10, cardOverlap: 30)),
-                            table: nil, deck: nil
-                        )
-                    )
-                )
-            )
+            print("Error decoding Layout V2: \(error)")
+            return nil
         }
     }
     
+    // Legacy Loader (Removed, replaced with default generator)
+    static func defaultLegacyLayout() -> LayoutConfig {
+         return LayoutConfig(
+            debug: DebugConfig(showGrid: true),
+            card: CardConfig(width: 0.15, aspectRatio: 1.6, cornerRadius: 0.1, shadowRadius: 2, backColor: "#CC3333", backCircleColor: "#991A1A"),
+            images: ImageConfig(prefix: "Card_"),
+            areas: AreasConfig(
+                opponent: AreaSectionConfig(
+                    heightRatio: 0.25,
+                    background: AreaBackgroundConfig(color: "#FFEEEE", opacity: 0.1, cornerRadius: 0, widthRatio: 1.0),
+                    elements: AreaElementsConfig(
+                        hand: ElementPositionConfig(x: 0.5, y: 0.3, scale: 0.8, grid: GridConfig(rows: 1, maxCols: 10, verticalSpacing: 0, horizontalSpacing: 0.03, stackOverlapRatio: nil, background: nil), layout: nil),
+                        captured: ElementPositionConfig(x: 0.5, y: 0.8, scale: 0.85, grid: nil, layout: CapturedLayoutConfig(groupSpacing: 10, cardOverlap: 30)),
+                        table: nil, deck: nil
+                    )
+                ),
+                center: AreaSectionConfig(
+                    heightRatio: 0.40,
+                    background: AreaBackgroundConfig(color: "#000000", opacity: 0.2, cornerRadius: 20, widthRatio: 0.95),
+                    elements: AreaElementsConfig(
+                        hand: nil, captured: nil,
+                        table: ElementPositionConfig(x: 0.5, y: 0.5, scale: 1.0, grid: GridConfig(rows: 2, maxCols: nil, verticalSpacing: 0.025, horizontalSpacing: 0.02, stackOverlapRatio: 0.6, background: nil), layout: nil),
+                        deck: ElementPositionConfig(x: 0.5, y: 0.5, scale: 0.9, grid: nil, layout: nil)
+                    )
+                ),
+                player: AreaSectionConfig(
+                    heightRatio: 0.35,
+                    background: AreaBackgroundConfig(color: "#EEFFEE", opacity: 0.1, cornerRadius: 0, widthRatio: 1.0),
+                    elements: AreaElementsConfig(
+                        hand: ElementPositionConfig(x: 0.5, y: 0.75, scale: 1.1, grid: GridConfig(rows: 2, maxCols: 5, verticalSpacing: 0.01, horizontalSpacing: 0.05, stackOverlapRatio: nil, background: AreaBackgroundConfig(color: "#FFFFFF", opacity: 0.1, cornerRadius: 15, widthRatio: 0.9)), layout: nil),
+                        captured: ElementPositionConfig(x: 0.5, y: 0.25, scale: 0.85, grid: nil, layout: CapturedLayoutConfig(groupSpacing: 10, cardOverlap: 30)),
+                        table: nil, deck: nil
+                    )
+                )
+            )
+        )
+    }
+    
     func reloadConfig() {
-        self.layout = ConfigManager.loadLayoutConfig()
+        self.layoutV2 = ConfigManager.loadLayoutV2()
+        self.updateLayoutContext()
     }
 }

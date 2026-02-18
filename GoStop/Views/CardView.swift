@@ -9,6 +9,35 @@ struct CardView: View {
     var body: some View {
         let size = config.cardSize(scale: scale)
         
+        // V2 Layout Values
+        let cornerRadius: CGFloat = {
+            if let ctx = config.layoutContext {
+                return size.width * ctx.config.card.cornerRadiusRatio
+            }
+            return size.width * config.layout.card.cornerRadius
+        }()
+        
+        let shadowRadius: CGFloat = {
+            if let ctx = config.layoutContext {
+                return ctx.scaledTokens.cardShadowRadius
+            }
+            return config.layout.card.shadowRadius
+        }()
+        
+        let shadowOpacity: Double = {
+            if let ctx = config.layoutContext {
+                return ctx.config.card.shadow.opacity
+            }
+            return 0.33
+        }()
+        
+        let shadowY: CGFloat = {
+            if let ctx = config.layoutContext {
+                return ctx.scaledTokens.cardShadowY
+            }
+            return 0
+        }()
+        
         ZStack {
             if isFaceUp {
                 frontView
@@ -17,8 +46,8 @@ struct CardView: View {
             }
         }
         .frame(width: size.width, height: size.height)
-        .clipShape(RoundedRectangle(cornerRadius: size.width * config.layout.card.cornerRadius)) // Relative corner radius
-        .shadow(radius: config.layout.card.shadowRadius)
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+        .shadow(color: Color.black.opacity(shadowOpacity), radius: shadowRadius, x: 0, y: shadowY)
     }
     
     var frontView: some View {

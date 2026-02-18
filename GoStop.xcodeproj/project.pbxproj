@@ -7,15 +7,17 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		0619CE56B9ED932808B91B92 /* CapturedAreaView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2170DA92D06B5E64C0981C9 /* CapturedAreaView.swift */; };
 		0A51A5C805AD7B89B9629632 /* layout_hwatu.json in Resources */ = {isa = PBXBuildFile; fileRef = 7FBDDC028B566FC10259D51C /* layout_hwatu.json */; };
 		0B20DD2801F7CBBF74EA9F8E /* Player.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D300F3C280AF301436D8732 /* Player.swift */; };
-		124A68FF334D30A5ECE88700 /* TableHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = F30E6ED57DAC583A624BD520 /* TableHelpers.swift */; };
+		1C3280E8402A7ECBDC98D1BA /* DebugLayoutOverlayV2.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6121B38C070C592434D33A1 /* DebugLayoutOverlayV2.swift */; };
 		23D2B878BF856936154BE3BC /* GoStopTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D8325DC94A43A7AB5739F02 /* GoStopTests.swift */; };
+		29E2F53E72ED922B7A2956C2 /* LayoutContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08DC9353031FD0D4F7EDF917 /* LayoutContext.swift */; };
 		59AAB1C8D0D8BED80BEFA314 /* GoStopApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7012D53468CE7DEC0511F7AE /* GoStopApp.swift */; };
 		60B025C8886D9FE3C4D8B010 /* ConfigManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2857725433426BA8E4DE2D7C /* ConfigManager.swift */; };
 		62FCE0F439432138C743176A /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8C0FD4111DFE67FB4B8757A /* ContentView.swift */; };
+		7191E1B975ABC707C15A1FF2 /* GameAreaViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A6AE872E752608836265117 /* GameAreaViews.swift */; };
 		808657D99FB2F8247B9D373F /* Deck.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C9DC8F2B463C152AB92172B /* Deck.swift */; };
+		A8E8EE127772993DF00F279D /* LayoutConfigV2.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3085BB433FB735CFD683B342 /* LayoutConfigV2.swift */; };
 		B597523E68A8A42654B8DD0F /* GameView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BA63E4C6CDD8893D44DEAE5 /* GameView.swift */; };
 		B5EED1311F05C120AF7DA6E8 /* Card.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72B2E9B6CA4C4DB8CC0ED986 /* Card.swift */; };
 		CA5E4294DC9C4A786488AA0C /* ScoringSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C817E2BC7A6C44D1434325E /* ScoringSystem.swift */; };
@@ -36,11 +38,13 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		08DC9353031FD0D4F7EDF917 /* LayoutContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutContext.swift; sourceTree = "<group>"; };
 		1159B74760341B7FD625C040 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		116C189429DB2067520A3E08 /* GameManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameManager.swift; sourceTree = "<group>"; };
 		1D8325DC94A43A7AB5739F02 /* GoStopTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoStopTests.swift; sourceTree = "<group>"; };
 		2857725433426BA8E4DE2D7C /* ConfigManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigManager.swift; sourceTree = "<group>"; };
 		2C9DC8F2B463C152AB92172B /* Deck.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Deck.swift; sourceTree = "<group>"; };
+		3085BB433FB735CFD683B342 /* LayoutConfigV2.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutConfigV2.swift; sourceTree = "<group>"; };
 		4A3C1F6EB55586E9BE2C8E36 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		4C817E2BC7A6C44D1434325E /* ScoringSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoringSystem.swift; sourceTree = "<group>"; };
 		5BA63E4C6CDD8893D44DEAE5 /* GameView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameView.swift; sourceTree = "<group>"; };
@@ -48,23 +52,23 @@
 		7012D53468CE7DEC0511F7AE /* GoStopApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoStopApp.swift; sourceTree = "<group>"; };
 		72B2E9B6CA4C4DB8CC0ED986 /* Card.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Card.swift; sourceTree = "<group>"; };
 		74DE360629BC09922C21C6DC /* CardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardView.swift; sourceTree = "<group>"; };
+		7A6AE872E752608836265117 /* GameAreaViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameAreaViews.swift; sourceTree = "<group>"; };
 		7FBDDC028B566FC10259D51C /* layout_hwatu.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = layout_hwatu.json; sourceTree = "<group>"; };
 		8D300F3C280AF301436D8732 /* Player.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Player.swift; sourceTree = "<group>"; };
-		A2170DA92D06B5E64C0981C9 /* CapturedAreaView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CapturedAreaView.swift; sourceTree = "<group>"; };
 		B67ACAB0F7C90D1925FA8BC6 /* GoStopTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = GoStopTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B8C0FD4111DFE67FB4B8757A /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		E6121B38C070C592434D33A1 /* DebugLayoutOverlayV2.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugLayoutOverlayV2.swift; sourceTree = "<group>"; };
 		E802832BAB9D5CCCB8D64414 /* GoStop.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = GoStop.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		F30E6ED57DAC583A624BD520 /* TableHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TableHelpers.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
 		39787C496A85E0AEDF6DA440 /* Views */ = {
 			isa = PBXGroup;
 			children = (
-				A2170DA92D06B5E64C0981C9 /* CapturedAreaView.swift */,
 				74DE360629BC09922C21C6DC /* CardView.swift */,
+				E6121B38C070C592434D33A1 /* DebugLayoutOverlayV2.swift */,
+				7A6AE872E752608836265117 /* GameAreaViews.swift */,
 				5BA63E4C6CDD8893D44DEAE5 /* GameView.swift */,
-				F30E6ED57DAC583A624BD520 /* TableHelpers.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -91,6 +95,7 @@
 			children = (
 				2857725433426BA8E4DE2D7C /* ConfigManager.swift */,
 				116C189429DB2067520A3E08 /* GameManager.swift */,
+				08DC9353031FD0D4F7EDF917 /* LayoutContext.swift */,
 				4C817E2BC7A6C44D1434325E /* ScoringSystem.swift */,
 			);
 			path = Core;
@@ -102,6 +107,7 @@
 				72B2E9B6CA4C4DB8CC0ED986 /* Card.swift */,
 				2C9DC8F2B463C152AB92172B /* Deck.swift */,
 				5D0615E5D598D1F92B7FAF92 /* LayoutConfig.swift */,
+				3085BB433FB735CFD683B342 /* LayoutConfigV2.swift */,
 				8D300F3C280AF301436D8732 /* Player.swift */,
 			);
 			path = Models;
@@ -237,19 +243,21 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				0619CE56B9ED932808B91B92 /* CapturedAreaView.swift in Sources */,
 				B5EED1311F05C120AF7DA6E8 /* Card.swift in Sources */,
 				FF8FF5B2CD92C35D053EDDDB /* CardView.swift in Sources */,
 				60B025C8886D9FE3C4D8B010 /* ConfigManager.swift in Sources */,
 				62FCE0F439432138C743176A /* ContentView.swift in Sources */,
+				1C3280E8402A7ECBDC98D1BA /* DebugLayoutOverlayV2.swift in Sources */,
 				808657D99FB2F8247B9D373F /* Deck.swift in Sources */,
+				7191E1B975ABC707C15A1FF2 /* GameAreaViews.swift in Sources */,
 				E10C501280BC9C36380E8474 /* GameManager.swift in Sources */,
 				B597523E68A8A42654B8DD0F /* GameView.swift in Sources */,
 				59AAB1C8D0D8BED80BEFA314 /* GoStopApp.swift in Sources */,
 				F79C65E2DC08F09BBA61EFE8 /* LayoutConfig.swift in Sources */,
+				A8E8EE127772993DF00F279D /* LayoutConfigV2.swift in Sources */,
+				29E2F53E72ED922B7A2956C2 /* LayoutContext.swift in Sources */,
 				0B20DD2801F7CBBF74EA9F8E /* Player.swift in Sources */,
 				CA5E4294DC9C4A786488AA0C /* ScoringSystem.swift in Sources */,
-				124A68FF334D30A5ECE88700 /* TableHelpers.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
