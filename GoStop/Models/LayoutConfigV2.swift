@@ -2,7 +2,7 @@ import Foundation
 import SwiftUI
 
 // MARK: - Root Config
-struct LayoutConfigV2: Codable {
+struct LayoutConfigV2: Codable, Equatable {
     let version: Int
     let debug: DebugConfigV2
     let referenceCanvas: ReferenceCanvasConfig
@@ -14,25 +14,31 @@ struct LayoutConfigV2: Codable {
 }
 
 // MARK: - Debug
-struct DebugConfigV2: Codable {
+struct DebugConfigV2: Codable, Equatable {
     let showGrid: Bool
     let showSafeArea: Bool
     let showElementBounds: Bool
+    let player: DebugPlayerConfig?
+}
+
+struct DebugPlayerConfig: Codable, Equatable {
+    let handSlotGrid: Bool
+    let sortedOrderOverlay: Bool
 }
 
 // MARK: - Reference & Scaling
-struct ReferenceCanvasConfig: Codable {
+struct ReferenceCanvasConfig: Codable, Equatable {
     let widthPt: CGFloat
     let heightPt: CGFloat
 }
 
-struct ScalingConfig: Codable {
+struct ScalingConfig: Codable, Equatable {
     let min: CGFloat
     let max: CGFloat
 }
 
 // MARK: - Tokens
-struct LayoutTokens: Codable {
+struct LayoutTokens: Codable, Equatable {
     let outerInsetPt: CGFloat
     let areaGapPt: CGFloat
     let panelPaddingPt: CGFloat
@@ -42,7 +48,7 @@ struct LayoutTokens: Codable {
 }
 
 // MARK: - Card
-struct CardConfigV2: Codable {
+struct CardConfigV2: Codable, Equatable {
     let baseWidthRatio: CGFloat
     let minWidthPt: CGFloat
     let maxWidthPt: CGFloat
@@ -56,19 +62,19 @@ struct CardConfigV2: Codable {
     var backCircleColorSwiftUI: Color { Color(hex: backCircleColor) }
 }
 
-struct ShadowConfig: Codable {
+struct ShadowConfig: Codable, Equatable {
     let radiusPt: CGFloat
     let yOffsetPt: CGFloat
     let opacity: Double
 }
 
 // MARK: - Images
-struct ImageConfigV2: Codable {
+struct ImageConfigV2: Codable, Equatable {
     let prefix: String
 }
 
 // MARK: - Areas
-struct AreasConfigV2: Codable {
+struct AreasConfigV2: Codable, Equatable {
     let opponent: AreaSectionConfigV2
     let center: CenterSectionConfigV2 // Center area might differ slightly (no captured/hand)
     let player: AreaSectionConfigV2
@@ -83,7 +89,7 @@ struct AreasConfigV2: Codable {
 // The 'elements' is a dictionary in JSON, but keys differ.
 // Let's use specific structs for strict typing.
 
-struct AreaSectionConfigV2: Codable {
+struct AreaSectionConfigV2: Codable, Equatable {
     let heightRatio: CGFloat
     let minHeightPt: CGFloat
     let maxHeightPt: CGFloat
@@ -92,7 +98,7 @@ struct AreaSectionConfigV2: Codable {
     let elements: OpponentPlayerElements // Shared for Opponent/Player for now, or split if needed
 }
 
-struct CenterSectionConfigV2: Codable {
+struct CenterSectionConfigV2: Codable, Equatable {
     let heightRatio: CGFloat
     let minHeightPt: CGFloat
     let maxHeightPt: CGFloat
@@ -101,22 +107,23 @@ struct CenterSectionConfigV2: Codable {
     let elements: CenterElements
 }
 
-struct AreaBackgroundConfigV2: Codable {
+struct AreaBackgroundConfigV2: Codable, Equatable {
     let color: String
     let opacity: Double
     let cornerRadiusPt: CGFloat
     let widthRatio: CGFloat
+    let paddingPt: CGFloat?
     
     var colorSwiftUI: Color { Color(hex: color).opacity(opacity) }
 }
 
 // MARK: - Elements
-struct OpponentPlayerElements: Codable {
+struct OpponentPlayerElements: Codable, Equatable {
     let hand: ElementHandConfig
     let captured: ElementCapturedConfig
 }
 
-struct CenterElements: Codable {
+struct CenterElements: Codable, Equatable {
     let table: ElementTableConfig
     let deck: ElementDeckConfig
 }
@@ -129,15 +136,67 @@ protocol LayoutElement {
     var zIndex: Double { get }
 }
 
-struct ElementHandConfig: Codable, LayoutElement {
+struct ElementHandConfig: Codable, LayoutElement, Equatable {
     let x: CGFloat
     let y: CGFloat
     let scale: CGFloat
     let zIndex: Double
-    let grid: HandGridConfig
+    
+    // Grid Mode (Optional in V2 fixedSlots)
+    let grid: HandGridConfig?
+    let layoutAlignment: String?
+    let leadingAnchorXRatio: CGFloat?
+    
+    // Fixed Slots Mode
+    let mode: String?
+    let fixedSlots: HandFixedSlotsConfig?
+    let slotPlacementPolicy: HandSlotPlacementPolicy?
+    let slotConstraints: HandSlotConstraints?
+    
+    let sorting: HandSortingConfig?
 }
 
-struct ElementCapturedConfig: Codable, LayoutElement {
+struct HandFixedSlotsConfig: Codable, Equatable {
+    let count: Int
+    let slotIndexing: String?
+    let slots: [HandFixedSlot]
+}
+
+struct HandFixedSlot: Codable, Equatable {
+    let slotIndex: Int
+    let row: Int
+    let col: Int
+    let anchorX: CGFloat
+    let anchorY: CGFloat
+    let maxCardScale: CGFloat
+    let occupied: Bool
+    let preserveOnRemove: Bool
+}
+
+struct HandSlotPlacementPolicy: Codable, Equatable {
+    let preserveEmptySlots: Bool
+    let preserveSlotCoordinates: Bool
+    let assignmentOnSort: String?
+    let occupiedSlotSequence: [Int]?
+    let fillOnDraw: String?
+}
+
+struct HandSlotConstraints: Codable, Equatable {
+    let slotOverlapAllowed: Bool
+    let slotMinGapRatio: CGFloat
+}
+
+struct HandSortingConfig: Codable, Equatable {
+    let enabled: Bool
+    let primaryKey: String?
+    let secondaryKey: String?
+    let typeOrder: [String]? // "bright", "animal", "ribbon", "pi"
+    let stableTieBreak: String? // "drawOrder" - implies using original index
+    let produceSortedIndicesMapping: Bool?
+    let sortedIndicesKey: String?
+}
+
+struct ElementCapturedConfig: Codable, LayoutElement, Equatable {
     let x: CGFloat
     let y: CGFloat
     let scale: CGFloat
@@ -145,15 +204,41 @@ struct ElementCapturedConfig: Codable, LayoutElement {
     let layout: CapturedLayoutConfigV2
 }
 
-struct ElementTableConfig: Codable, LayoutElement {
+struct ElementTableConfig: Codable, LayoutElement, Equatable {
     let x: CGFloat
     let y: CGFloat
     let scale: CGFloat
     let zIndex: Double
     let grid: TableGridConfig
+    let slots: [TableSlotConfig]? 
+    
+    let mode: String?
+    let fixedSlots: TableFixedSlotsConfig?
 }
 
-struct ElementDeckConfig: Codable, LayoutElement {
+struct TableFixedSlotsConfig: Codable, Equatable {
+    let slots: [TableFixedSlot]
+    let fillPolicy: String?
+}
+
+struct TableFixedSlot: Codable, Equatable {
+    let slotIndex: Int
+    let anchorX: CGFloat
+    let anchorY: CGFloat
+    let preserveOnRemove: Bool
+}
+
+struct TableSlotConfig: Codable, Equatable {
+    let slotIndex: Int
+    let anchorXRatio: CGFloat
+    let anchorYRatio: CGFloat
+    let anchorXOffsetPt: CGFloat
+    let anchorYOffsetPt: CGFloat
+    let anchorXOffsetCardWidthMul: CGFloat
+    let anchorYOffsetCardHeightMul: CGFloat
+}
+
+struct ElementDeckConfig: Codable, LayoutElement, Equatable {
     let x: CGFloat
     let y: CGFloat
     let scale: CGFloat
@@ -161,7 +246,7 @@ struct ElementDeckConfig: Codable, LayoutElement {
 }
 
 // MARK: - Grids & Layouts
-struct HandGridConfig: Codable {
+struct HandGridConfig: Codable, Equatable {
     let rows: Int
     let maxCols: Int
     let vSpacingCardRatio: CGFloat? // Optional because opponent hand has 0
@@ -170,12 +255,12 @@ struct HandGridConfig: Codable {
     let overlapRatio: CGFloat? // Opponent hand uses overlap
 }
 
-struct CapturedLayoutConfigV2: Codable {
+struct CapturedLayoutConfigV2: Codable, Equatable {
     let groupSpacingCardRatio: CGFloat
     let cardOverlapRatio: CGFloat
 }
 
-struct TableGridConfig: Codable {
+struct TableGridConfig: Codable, Equatable {
     let rows: Int
     let cols: Int
     let vSpacingCardRatio: CGFloat

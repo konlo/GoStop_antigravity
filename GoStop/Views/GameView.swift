@@ -4,6 +4,8 @@ struct GameView: View {
     @StateObject var gameManager = GameManager()
     @Namespace private var cardAnimationNamespace
     @ObservedObject var config: ConfigManager = .shared
+    @State private var playerHandSlotManager: PlayerHandSlotManager?
+    @State private var tableSlotManager: TableSlotManager?
     
     var body: some View {
         GeometryReader { geometry in
@@ -34,7 +36,7 @@ struct GameView: View {
                     
                     // 2. Center Area
                     let centerFrame = ctx.frame(for: .center)
-                    CenterAreaV2(ctx: ctx, gameManager: gameManager)
+                    CenterAreaV2(ctx: ctx, gameManager: gameManager, tableSlotManager: tableSlotManager)
                         .frame(width: centerFrame.width, height: centerFrame.height)
                         .position(x: safeArea.leading + centerFrame.midX,
                                   y: safeArea.top + centerFrame.midY)
@@ -42,7 +44,7 @@ struct GameView: View {
                     
                     // 3. Player Area
                     let playerFrame = ctx.frame(for: .player)
-                    PlayerAreaV2(ctx: ctx, gameManager: gameManager)
+                    PlayerAreaV2(ctx: ctx, gameManager: gameManager, slotManager: playerHandSlotManager)
                         .frame(width: playerFrame.width, height: playerFrame.height)
                         .position(x: safeArea.leading + playerFrame.midX,
                                   y: safeArea.top + playerFrame.midY)
@@ -69,6 +71,36 @@ struct GameView: View {
             .coordinateSpace(name: "GameSpace")
         }
         .ignoresSafeArea()
+        .onAppear {
+            if let configV2 = config.layoutV2 {
+                self.playerHandSlotManager = PlayerHandSlotManager(config: configV2)
+                if let hand = gameManager.players.first?.hand {
+                    self.playerHandSlotManager?.sync(with: hand)
+                }
+                
+                self.tableSlotManager = TableSlotManager(config: configV2)
+                self.tableSlotManager?.sync(with: gameManager.tableCards)
+            }
+        }
+        .onChange(of: config.layoutV2) { newConfig in
+            if let cfg = newConfig {
+                 self.playerHandSlotManager = PlayerHandSlotManager(config: cfg)
+                 if let hand = gameManager.players.first?.hand {
+                     self.playerHandSlotManager?.sync(with: hand)
+                 }
+                 
+                 self.tableSlotManager = TableSlotManager(config: cfg)
+                 self.tableSlotManager?.sync(with: gameManager.tableCards)
+            }
+        }
+        .onChange(of: gameManager.players.first?.hand) { newHand in
+            if let hand = newHand {
+                playerHandSlotManager?.sync(with: hand)
+            }
+        }
+        .onChange(of: gameManager.tableCards) { newTableCards in
+            tableSlotManager?.sync(with: newTableCards)
+        }
     }
     
     // MARK: - Subviews

@@ -4,10 +4,16 @@
     "debug": {
         "showGrid": true,
         "showSafeArea": true,
-        "showElementBounds": true
+        "showElementBounds": true,
+        "_comment_player": "플레이어 손패 슬롯/정렬 디버그 시각화",
+        "player": {
+            "handSlotGrid": true,
+            "sortedOrderOverlay": true
+        }
     },
     "_units": {
-        "_desc": "ratio: 0..1 (컨테이너 정규화 좌표/비율). pt: referenceCanvas 기준 포인트(전역 스케일 적용). spacing/overlap ratio는 cardWidth 기준."
+        "_desc": "ratio: 0..1 (컨테이너 정규화 좌표/비율). pt: referenceCanvas 기준 포인트(전역 스케일 적용). spacing/overlap ratio는 cardWidth 기준.",
+        "_desc_slots": "fixedSlots: 슬롯은 항상 고정된 좌표를 가지며, occupied=false가 되어도 슬롯 좌표는 변하지 않음(preserveOnRemove=true)."
     },
     "referenceCanvas": {
         "_desc": "전역 스케일 계산용 기준 캔버스(포인트). iPhone 계열의 대표값으로 설정.",
@@ -43,7 +49,14 @@
             "opacity": 0.25
         },
         "backColor": "#CC3333",
-        "backCircleColor": "#991A1A"
+        "backCircleColor": "#991A1A",
+        "_comment_clamp": "손패 10슬롯이 겹치지 않게 cardWidth를 clamp하는 규칙(권장). 구현에서 적용.",
+        "clampRules": {
+            "playerHandFixedSlots": {
+                "slotOverlapAllowed": false,
+                "slotMinGapRatio": 0.08
+            }
+        }
     },
     "images": {
         "prefix": "Card_"
@@ -103,25 +116,103 @@
             },
             "elements": {
                 "table": {
-                    "_desc": "바닥 패(보통 2행 배치). cols를 명시해 카드 폭 역산/검증 가능",
+                    "_desc": "바닥 패(12 Fixed Slots). Deck 중심 좌우 6개씩 배치.",
                     "x": 0.5,
-                    "y": 0.52,
+                    "y": 0.5,
                     "scale": 0.86,
                     "zIndex": 1,
+                    "mode": "fixedSlots12",
                     "grid": {
                         "rows": 2,
-                        "cols": 4,
+                        "cols": 8,
                         "vSpacingCardRatio": 0.10,
                         "hSpacingCardRatio": 0.12,
-                        "_desc": "동일 월(쌍패) 스택 겹침 비율",
+                        "_desc": "Legacy grid properties kept for fallback",
                         "stackOverlapRatio": 0.60
+                    },
+                    "fixedSlots": {
+                        "fillPolicy": "centerOutwards",
+                        "slots": [
+                            {
+                                "slotIndex": 1,
+                                "anchorX": 0.08,
+                                "anchorY": 0.30,
+                                "preserveOnRemove": true
+                            },
+                            {
+                                "slotIndex": 2,
+                                "anchorX": 0.22,
+                                "anchorY": 0.30,
+                                "preserveOnRemove": true
+                            },
+                            {
+                                "slotIndex": 3,
+                                "anchorX": 0.36,
+                                "anchorY": 0.30,
+                                "preserveOnRemove": true
+                            },
+                            {
+                                "slotIndex": 4,
+                                "anchorX": 0.08,
+                                "anchorY": 0.70,
+                                "preserveOnRemove": true
+                            },
+                            {
+                                "slotIndex": 5,
+                                "anchorX": 0.22,
+                                "anchorY": 0.70,
+                                "preserveOnRemove": true
+                            },
+                            {
+                                "slotIndex": 6,
+                                "anchorX": 0.36,
+                                "anchorY": 0.70,
+                                "preserveOnRemove": true
+                            },
+                            {
+                                "slotIndex": 7,
+                                "anchorX": 0.64,
+                                "anchorY": 0.30,
+                                "preserveOnRemove": true
+                            },
+                            {
+                                "slotIndex": 8,
+                                "anchorX": 0.78,
+                                "anchorY": 0.30,
+                                "preserveOnRemove": true
+                            },
+                            {
+                                "slotIndex": 9,
+                                "anchorX": 0.92,
+                                "anchorY": 0.30,
+                                "preserveOnRemove": true
+                            },
+                            {
+                                "slotIndex": 10,
+                                "anchorX": 0.64,
+                                "anchorY": 0.70,
+                                "preserveOnRemove": true
+                            },
+                            {
+                                "slotIndex": 11,
+                                "anchorX": 0.78,
+                                "anchorY": 0.70,
+                                "preserveOnRemove": true
+                            },
+                            {
+                                "slotIndex": 12,
+                                "anchorX": 0.92,
+                                "anchorY": 0.70,
+                                "preserveOnRemove": true
+                            }
+                        ]
                     }
                 },
                 "deck": {
-                    "_desc": "덱(중앙 우측으로 살짝 이동해 테이블과 구분)",
-                    "x": 0.86,
-                    "y": 0.52,
-                    "scale": 0.95,
+                    "_desc": "덱(중앙)",
+                    "x": 0.5,
+                    "y": 0.5,
+                    "scale": 0.86,
                     "zIndex": 50
                 }
             }
@@ -150,11 +241,13 @@
                     }
                 },
                 "hand": {
-                    "_desc": "플레이어 손패(2행×5열). 이 그리드가 '기준 카드 폭'을 결정하는 핵심 제약.",
+                    "_desc": "플레이어 손패(최대 10장). 10개 슬롯 고정 + 정렬 시 슬롯 간 이동만 허용 + 카드 사용 후 빈 슬롯 공간 유지.",
                     "x": 0.5,
                     "y": 0.78,
                     "scale": 1.0,
                     "zIndex": 20,
+                    "_comment_mode": "grid는 배경/간격 기준값으로 유지하되, 배치는 fixedSlots10 모드가 슬롯 좌표를 소스 오브 트루스로 사용.",
+                    "mode": "fixedSlots10",
                     "grid": {
                         "rows": 2,
                         "maxCols": 5,
@@ -167,6 +260,153 @@
                             "widthRatio": 0.94,
                             "paddingPt": 10
                         }
+                    },
+                    "sorting": {
+                        "_comment": "정렬 규칙: 월(1..12) → 등급/타입([광,동물,리본,피]) → 동일 월/타입은 드로우 순서 유지(stable).",
+                        "enabled": true,
+                        "primaryKey": "month",
+                        "secondaryKey": "type",
+                        "typeOrder": [
+                            "gwang",
+                            "animal",
+                            "ribbon",
+                            "pi"
+                        ],
+                        "stableTieBreak": "drawOrder",
+                        "_comment_indices": "디버그/애니메이션을 위해 정렬 인덱스 매핑을 생성하도록 요청",
+                        "produceSortedIndicesMapping": true,
+                        "sortedIndicesKey": "sortedIndices"
+                    },
+                    "slotPlacementPolicy": {
+                        "_comment": "핵심: 슬롯은 10개 고정. 카드 사용 후 빈 슬롯 이동(Compaction).",
+                        "preserveEmptySlots": false,
+                        "preserveSlotCoordinates": true,
+                        "assignmentOnSort": "reassignWithinOccupiedSlots",
+                        "occupiedSlotSequence": [
+                            1,
+                            2,
+                            3,
+                            4,
+                            5,
+                            6,
+                            7,
+                            8,
+                            9,
+                            10
+                        ],
+                        "_comment_draw": "새 카드(드로우)로 hand에 추가될 때 빈 슬롯을 채우는 규칙(권장: 앞에서부터 첫 빈 슬롯)",
+                        "fillOnDraw": "firstEmptyFromStart"
+                    },
+                    "slotConstraints": {
+                        "slotOverlapAllowed": false,
+                        "slotMinGapRatio": 0.08
+                    },
+                    "fixedSlots": {
+                        "_comment": "슬롯 좌표는 hand 컨테이너(배경 패널) 내부 정규화 좌표로 해석(0..1). occupied=false여도 슬롯은 남음.",
+                        "count": 10,
+                        "slotIndexing": "rowMajorLeading",
+                        "slots": [
+                            {
+                                "slotIndex": 1,
+                                "row": 0,
+                                "col": 0,
+                                "anchorX": 0.12,
+                                "anchorY": 0.30,
+                                "maxCardScale": 1.0,
+                                "occupied": false,
+                                "preserveOnRemove": true
+                            },
+                            {
+                                "slotIndex": 2,
+                                "row": 0,
+                                "col": 1,
+                                "anchorX": 0.30,
+                                "anchorY": 0.30,
+                                "maxCardScale": 1.0,
+                                "occupied": false,
+                                "preserveOnRemove": true
+                            },
+                            {
+                                "slotIndex": 3,
+                                "row": 0,
+                                "col": 2,
+                                "anchorX": 0.48,
+                                "anchorY": 0.30,
+                                "maxCardScale": 1.0,
+                                "occupied": false,
+                                "preserveOnRemove": true
+                            },
+                            {
+                                "slotIndex": 4,
+                                "row": 0,
+                                "col": 3,
+                                "anchorX": 0.66,
+                                "anchorY": 0.30,
+                                "maxCardScale": 1.0,
+                                "occupied": false,
+                                "preserveOnRemove": true
+                            },
+                            {
+                                "slotIndex": 5,
+                                "row": 0,
+                                "col": 4,
+                                "anchorX": 0.84,
+                                "anchorY": 0.30,
+                                "maxCardScale": 1.0,
+                                "occupied": false,
+                                "preserveOnRemove": true
+                            },
+                            {
+                                "slotIndex": 6,
+                                "row": 1,
+                                "col": 0,
+                                "anchorX": 0.12,
+                                "anchorY": 0.72,
+                                "maxCardScale": 1.0,
+                                "occupied": false,
+                                "preserveOnRemove": true
+                            },
+                            {
+                                "slotIndex": 7,
+                                "row": 1,
+                                "col": 1,
+                                "anchorX": 0.30,
+                                "anchorY": 0.72,
+                                "maxCardScale": 1.0,
+                                "occupied": false,
+                                "preserveOnRemove": true
+                            },
+                            {
+                                "slotIndex": 8,
+                                "row": 1,
+                                "col": 2,
+                                "anchorX": 0.48,
+                                "anchorY": 0.72,
+                                "maxCardScale": 1.0,
+                                "occupied": false,
+                                "preserveOnRemove": true
+                            },
+                            {
+                                "slotIndex": 9,
+                                "row": 1,
+                                "col": 3,
+                                "anchorX": 0.66,
+                                "anchorY": 0.72,
+                                "maxCardScale": 1.0,
+                                "occupied": false,
+                                "preserveOnRemove": true
+                            },
+                            {
+                                "slotIndex": 10,
+                                "row": 1,
+                                "col": 4,
+                                "anchorX": 0.84,
+                                "anchorY": 0.72,
+                                "maxCardScale": 1.0,
+                                "occupied": false,
+                                "preserveOnRemove": true
+                            }
+                        ]
                     }
                 }
             }

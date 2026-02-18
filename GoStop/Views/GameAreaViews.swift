@@ -44,6 +44,7 @@ struct OpponentAreaV2: View {
 struct CenterAreaV2: View {
     let ctx: LayoutContext
     @ObservedObject var gameManager: GameManager
+    var tableSlotManager: TableSlotManager?
     
     var body: some View {
         let areaConfig = ctx.config.areas.center
@@ -59,7 +60,7 @@ struct CenterAreaV2: View {
             
             // Table
             let tableConfig = areaConfig.elements.table
-            TableAreaV2(ctx: ctx, config: tableConfig, cards: gameManager.tableCards)
+            TableAreaV2(ctx: ctx, config: tableConfig, cards: gameManager.tableCards, slotManager: tableSlotManager)
                 .position(x: frame.width * tableConfig.x, y: frame.height * tableConfig.y)
                 .zIndex(tableConfig.zIndex)
             
@@ -76,6 +77,7 @@ struct CenterAreaV2: View {
 struct PlayerAreaV2: View {
     let ctx: LayoutContext
     @ObservedObject var gameManager: GameManager
+    var slotManager: PlayerHandSlotManager?
     
     var body: some View {
         let areaConfig = ctx.config.areas.player
@@ -92,7 +94,7 @@ struct PlayerAreaV2: View {
             // Hand (Player)
             let handConfig = areaConfig.elements.hand
             if let player = gameManager.players.first {
-                PlayerHandV2(ctx: ctx, config: handConfig, gameManager: gameManager, hand: player.hand)
+                PlayerHandV2(ctx: ctx, config: handConfig, gameManager: gameManager, slotManager: slotManager, hand: player.hand)
                     .position(x: frame.width * handConfig.x, y: frame.height * handConfig.y)
                     .zIndex(handConfig.zIndex)
             }
@@ -103,6 +105,22 @@ struct PlayerAreaV2: View {
                 CapturedAreaV2(ctx: ctx, layoutConfig: capConfig.layout, cards: player.capturedCards, scale: capConfig.scale, alignLeading: true)
                     .position(x: frame.width * capConfig.x, y: frame.height * capConfig.y)
                     .zIndex(capConfig.zIndex)
+            }
+            
+            // Debug Sort Button
+            if handConfig.sorting?.enabled == true && slotManager != nil {
+                Button(action: {
+                    slotManager?.sort()
+                }) {
+                    Text("Sort")
+                        .font(.custom("Courier", size: 10))
+                        .padding(6)
+                        .background(Color.blue.opacity(0.8))
+                        .foregroundColor(.white)
+                        .cornerRadius(6)
+                }
+                .position(x: frame.width * 0.92, y: frame.height * 0.08)
+                .zIndex(100)
             }
         }
     }
@@ -125,7 +143,7 @@ struct OpponentHandV2: View {
         // "overlapRatio: 0.62 = 62% overlap" -> spacing = cardW * (1 - 0.62) = cardW * 0.38
         
         let cardW = ctx.cardSize.width * handConfig.scale
-        let overlap = handConfig.grid.overlapRatio ?? 0.0
+        let overlap = handConfig.grid?.overlapRatio ?? 0.0
         let spacing = cardW * (1.0 - overlap)
         // If overlap is 0, use hSpacingCardRatio?
         // JSON has both: "hSpacingCardRatio": 0.04, "overlapRatio": 0.62.
@@ -147,33 +165,115 @@ struct PlayerHandV2: View {
     let ctx: LayoutContext
     let config: ElementHandConfig
     @ObservedObject var gameManager: GameManager
+    var slotManager: PlayerHandSlotManager?
     let hand: [Card]
-    @Namespace private var nspace // Animation namespace needs to be passed or accessed via Environment
-    // For now assuming implicit animation or no matched geometry for layout test
-    // To support matchedGeometry, we need to pass namespace from GameView
     
     var body: some View {
-        // Grid: 2 rows, 5 cols
-        // Spacing: vSpacingCardRatio, hSpacingCardRatio
+        Group {
+            if config.mode == "fixedSlots10", let manager = slotManager {
+                PlayerHandFixedSlotsView(ctx: ctx, config: config, manager: manager, gameManager: gameManager)
+            } else {
+                PlayerHandGridV1(ctx: ctx, config: config, gameManager: gameManager, hand: hand)
+            }
+        }
+    }
+}
+
+struct PlayerHandFixedSlotsView: View {
+    let ctx: LayoutContext
+    let config: ElementHandConfig
+    @ObservedObject var manager: PlayerHandSlotManager
+    @ObservedObject var gameManager: GameManager
+    
+    var body: some View {
+        let cardW = ctx.cardSize.width * config.scale
+        let cardH = ctx.cardSize.height * config.scale
+        
+        ZStack {
+             if let fixedSlots = config.fixedSlots {
+                 ForEach(fixedSlots.slots, id: \.slotIndex) { slot in
+                     let absFrame = ctx.playerHandSlotFrames[slot.slotIndex] ?? .zero
+                     
+                     // Convert to Local Coordinates
+                     let pFrame = ctx.frame(for: .player)
+                     let handCenterX = pFrame.minX + (pFrame.width * config.x)
+                     let handCenterY = pFrame.minY + (pFrame.height * config.y)
+                     
+                     let localX = absFrame.midX - handCenterX
+                     let localY = absFrame.midY - handCenterY
+
+                     Group {
+                         // Debug Grid
+                         if ctx.config.debug.player?.handSlotGrid == true {
+                             ZStack {
+                                 Rectangle()
+                                     .strokeBorder(Color.red.opacity(manager.slots[slot.slotIndex]?.isOccupied == true ? 0.8 : 0.3), lineWidth: 1)
+                                 Text("\(slot.slotIndex)")
+                                     .font(.caption2)
+                                     .foregroundColor(.red)
+                             }
+                             .frame(width: cardW, height: cardH)
+                         }
+                         
+                         // Card
+                         if let card = manager.card(at: slot.slotIndex) {
+                             ZStack {
+                                 CardView(card: card, isFaceUp: true, scale: config.scale)
+                                     .onTapGesture {
+                                         gameManager.playTurn(card: card)
+                                     }
+                                     .shadow(color: Color.black.opacity(0.3), radius: 2, x: 0, y: 1)
+                                     
+                                 // Debug Sort Info
+                                 if ctx.config.debug.player?.sortedOrderOverlay == true {
+                                     VStack(spacing: 0) {
+                                         Text("M:\(card.month.rawValue)")
+                                         Text("T:\(card.type)")
+                                     }
+                                     .font(.system(size: 8))
+                                     .padding(2)
+                                     .background(Color.black.opacity(0.7))
+                                     .foregroundColor(.white)
+                                     .offset(y: -cardH/2 + 10)
+                                 }
+                             }
+                         } else {
+                             Color.clear.contentShape(Rectangle())
+                         }
+                     }
+                     .frame(width: cardW, height: cardH)
+                     .offset(x: localX, y: localY)
+                 }
+             }
+        }
+    }
+}
+
+struct PlayerHandGridV1: View {
+    let ctx: LayoutContext
+    let config: ElementHandConfig
+    @ObservedObject var gameManager: GameManager
+    let hand: [Card]
+    
+    var body: some View {
         let cardSize = ctx.cardSize
-        let scale = config.scale // Should be 1.0 or close
+        let scale = config.scale
         let scaledW = cardSize.width * scale
         let scaledH = cardSize.height * scale
         
-        let vSpacing = scaledH * (config.grid.vSpacingCardRatio ?? 0.05)
-        let hSpacing = scaledW * config.grid.hSpacingCardRatio
+        let vSpacing = scaledH * (config.grid?.vSpacingCardRatio ?? 0.05)
+        let hSpacing = scaledW * (config.grid?.hSpacingCardRatio ?? 0.0)
         
-        // Background for hand grid
         ZStack {
-            if let bg = config.grid.background {
-                RoundedRectangle(cornerRadius: ctx.scaledTokens.panelCornerRadius) // Or specific radius in Tokens?
+            if let bg = config.grid?.background {
+                RoundedRectangle(cornerRadius: ctx.scaledTokens.panelCornerRadius)
                     .fill(bg.colorSwiftUI)
                     .frame(width: ctx.safeArea.width * bg.widthRatio, height: (scaledH * 2) + vSpacing + (ctx.scaledTokens.panelPadding * 2))
             }
             
-            // 2 Rows
             VStack(spacing: vSpacing) {
-                let chunks = hand.chunked(into: config.grid.maxCols)
+                let cols = config.grid?.maxCols ?? 5
+                let chunks = hand.chunked(into: cols)
                 ForEach(0..<chunks.count, id: \.self) { rowIndex in
                     HStack(spacing: hSpacing) {
                          ForEach(chunks[rowIndex]) { card in
@@ -221,28 +321,32 @@ struct TableAreaV2: View {
     let ctx: LayoutContext
     let config: ElementTableConfig
     let cards: [Card]
+    var slotManager: TableSlotManager?
     
     var body: some View {
-        // Grid of stacks (12 months = 12 stacks max, or less if empty)
-        // Usually 2 rows.
-        // Group cards by month.
+        Group {
+            if config.mode == "fixedSlots12", let manager = slotManager {
+                TableFixedSlotsView(ctx: ctx, config: config, manager: manager)
+            } else {
+                legacyGrid
+            }
+        }
+    }
+    
+    var legacyGrid: some View {
         let groups = Dictionary(grouping: cards, by: { $0.month }).values.sorted(by: { $0.first!.month.rawValue < $1.first!.month.rawValue })
         
         let cardW = ctx.cardSize.width * config.scale
         let cardH = ctx.cardSize.height * config.scale
-        let hSpacing = cardW * config.grid.hSpacingCardRatio
-        let vSpacing = cardH * config.grid.vSpacingCardRatio
+        let hSpacing = cardW * (config.grid.hSpacingCardRatio)
+        let vSpacing = cardH * (config.grid.vSpacingCardRatio)
         
         let cols = config.grid.cols
         let rows = config.grid.rows
         
-        // Simple Grid Layout
-        // We can use LazyVGrid or LazyHGrid?
-        // Or manual VStack/HStack.
-        
         let columns = Array(repeating: GridItem(.fixed(cardW), spacing: hSpacing), count: cols)
         
-        LazyVGrid(columns: columns, spacing: vSpacing) {
+        return LazyVGrid(columns: columns, spacing: vSpacing) {
             ForEach(0..<min(groups.count, rows * cols), id: \.self) { index in
                 let stack = groups[index]
                 ZStack {
@@ -253,6 +357,62 @@ struct TableAreaV2: View {
                 }
                 .frame(width: cardW, height: cardH) // Fixed frame for stack base
             }
+        }
+    }
+}
+
+struct TableFixedSlotsView: View {
+    let ctx: LayoutContext
+    let config: ElementTableConfig
+    @ObservedObject var manager: TableSlotManager
+    
+    var body: some View {
+        let cardW = ctx.cardSize.width * config.scale
+        let cardH = ctx.cardSize.height * config.scale
+        
+        ZStack {
+             if let fixedSlots = config.fixedSlots {
+                 ForEach(fixedSlots.slots, id: \.slotIndex) { slot in
+                     let absFrame = ctx.centerSlotFrames[slot.slotIndex] ?? .zero
+                     
+                     // Convert to Local Coordinates
+                     let cFrame = ctx.frame(for: .center)
+                     let tableCenterX = cFrame.minX + (cFrame.width * config.x)
+                     let tableCenterY = cFrame.minY + (cFrame.height * config.y)
+                     
+                     let localX = absFrame.midX - tableCenterX
+                     let localY = absFrame.midY - tableCenterY
+
+                     Group {
+                         // Debug Grid
+                         if ctx.config.debug.showGrid {
+                             ZStack {
+                                 Rectangle()
+                                     .strokeBorder(Color.blue.opacity(0.3), lineWidth: 1)
+                                 Text("\(slot.slotIndex)")
+                                     .font(.caption2)
+                                     .foregroundColor(.blue)
+                             }
+                             .frame(width: cardW, height: cardH)
+                         }
+                         
+                         // Cards Stack
+                         let stack = manager.cards(at: slot.slotIndex)
+                         if !stack.isEmpty {
+                             ZStack {
+                                 ForEach(Array(stack.enumerated()), id: \.element.id) { i, card in
+                                     CardView(card: card, isFaceUp: true, scale: config.scale)
+                                         .offset(y: CGFloat(i) * (cardH * (1.0 - config.grid.stackOverlapRatio)))
+                                 }
+                             }
+                         } else {
+                             Color.clear.contentShape(Rectangle())
+                         }
+                     }
+                     .frame(width: cardW, height: cardH)
+                     .offset(x: localX, y: localY)
+                 }
+             }
         }
     }
 }
