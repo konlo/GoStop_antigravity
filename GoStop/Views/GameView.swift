@@ -64,6 +64,7 @@ struct GameView: View {
                 
                 // Overlays (Global)
                 overlayArea
+                    .zIndex(200)
             }
             .coordinateSpace(name: "GameSpace")
         }

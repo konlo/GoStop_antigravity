@@ -47,6 +47,8 @@ class LayoutContext: ObservableObject {
         let panelRadius = config.tokens.panelCornerRadiusPt * gScale
         let cardShadowR = config.card.shadow.radiusPt * gScale
         let cardShadowY = config.card.shadow.yOffsetPt * gScale
+        let topPadding = (config.tokens.safeAreaTopPaddingPt ?? 0) * gScale
+        let bottomPadding = (config.tokens.safeAreaBottomPaddingPt ?? 0) * gScale
         
         // 3. Calculate Card Size (Hand-Fit Logic)
         let baseWidth = safeAreaSize.width * config.card.baseWidthRatio
@@ -83,7 +85,8 @@ class LayoutContext: ObservableObject {
         
         // 5. Calculate Area Frames (Vertical Distribution)
         let totalGap = areaGap * 2
-        let availableHeight = safeAreaSize.height - (outerInset * 2) - totalGap
+        // Available height must account for top padding extra shift
+        let availableHeight = safeAreaSize.height - (outerInset * 2) - totalGap - topPadding - bottomPadding
         
         // Calculate Target Heights
         let opponentH = availableHeight * config.areas.opponent.heightRatio
@@ -114,7 +117,8 @@ class LayoutContext: ObservableObject {
         
         // Assign Frames
         let x = outerInset
-        let yStart = outerInset
+        // Start Y is shifted down by topPadding
+        let yStart = outerInset + topPadding
         let w = safeAreaSize.width - (outerInset * 2)
         
         self.areaFrames = [

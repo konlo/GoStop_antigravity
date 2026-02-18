@@ -37,6 +37,8 @@ struct LayoutTokens: Codable {
     let areaGapPt: CGFloat
     let panelPaddingPt: CGFloat
     let panelCornerRadiusPt: CGFloat
+    let safeAreaTopPaddingPt: CGFloat?
+    let safeAreaBottomPaddingPt: CGFloat?
 }
 
 // MARK: - Card

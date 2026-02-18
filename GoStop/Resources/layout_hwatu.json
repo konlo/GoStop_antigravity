@@ -21,10 +21,12 @@
     },
     "tokens": {
         "_desc": "pt 값들은 globalScale이 곱해져 기기별로 자동 조정됨.",
-        "outerInsetPt": 48,
-        "areaGapPt": 12,
+        "outerInsetPt": 16,
+        "areaGapPt": 8,
         "panelPaddingPt": 10,
-        "panelCornerRadiusPt": 18
+        "panelCornerRadiusPt": 18,
+        "safeAreaTopPaddingPt": 44,
+        "safeAreaBottomPaddingPt": 22
     },
     "card": {
         "_desc": "카드 기준 크기. baseWidthRatio는 safeW 대비 비율(1차값)이며, 최종 폭은 코드에서 hand-fit 조건으로 추가 조정 권장.",
@@ -49,7 +51,7 @@
     "areas": {
         "_desc": "Opponent / Center / Player 3영역. heightRatio 합이 1.0이 되도록 구성. 각 영역은 ratio 기반 + min/max(권장)로 안정화.",
         "opponent": {
-            "heightRatio": 0.18,
+            "heightRatio": 0.2,
             "minHeightPt": 96,
             "maxHeightPt": 180,
             "flexWeight": 1,
@@ -89,7 +91,7 @@
             }
         },
         "center": {
-            "heightRatio": 0.34,
+            "heightRatio": 0.35,
             "minHeightPt": 210,
             "maxHeightPt": 380,
             "flexWeight": 2,
@@ -125,7 +127,7 @@
             }
         },
         "player": {
-            "heightRatio": 0.48,
+            "heightRatio": 0.45,
             "minHeightPt": 240,
             "maxHeightPt": 520,
             "flexWeight": 2,
