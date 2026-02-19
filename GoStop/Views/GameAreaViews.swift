@@ -32,8 +32,18 @@ struct OpponentAreaV2: View {
             // Captured (Opponent)
             let capConfig = areaConfig.elements.captured
             if gameManager.players.count > 1 {
+                // Auto-Layout Constraint: Clamp Y position to stay within bounds
+                let cardHeight = ctx.cardSize.height * capConfig.scale
+                let desiredY = frame.height * capConfig.y
+                let halfHeight = cardHeight / 2.0
+                let padding = ctx.scaledTokens.panelPadding
+                
+                // Ensure bottom edge (y + halfHeight) <= frame.height - padding/2
+                let maxY = frame.height - halfHeight - (padding / 2)
+                let finalY = min(desiredY, maxY)
+                
                 CapturedAreaV2(ctx: ctx, layoutConfig: capConfig.layout, cards: gameManager.players[1].capturedCards, scale: capConfig.scale, alignLeading: true)
-                    .position(x: frame.width * capConfig.x, y: frame.height * capConfig.y)
+                    .position(x: frame.width * capConfig.x, y: finalY)
                     .zIndex(capConfig.zIndex)
             }
         }
@@ -374,13 +384,8 @@ struct TableFixedSlotsView: View {
                      let absFrame = ctx.centerSlotFrames[slot.slotIndex] ?? .zero
                      
                      // Convert to Local Coordinates
-                     let cFrame = ctx.frame(for: .center)
-                     let tableCenterX = cFrame.minX + (cFrame.width * config.x)
-                     let tableCenterY = cFrame.minY + (cFrame.height * config.y)
-                     
-                     let localX = absFrame.midX - tableCenterX
-                     let localY = absFrame.midY - tableCenterY
-
+                     let pos = calculateClampedPosition(slot: slot, ctx: ctx, config: config, manager: manager)
+ 
                      Group {
                          // Debug Grid
                          if ctx.config.debug.showGrid {
@@ -418,12 +423,69 @@ struct TableFixedSlotsView: View {
                          }
                      }
                      .frame(width: cardW, height: cardH)
-                     .offset(x: localX, y: localY)
+                     .offset(x: pos.x, y: pos.y)
                  }
              }
         }
     }
+    
+    private func calculateClampedPosition(slot: TableFixedSlot, ctx: LayoutContext, config: ElementTableConfig, manager: TableSlotManager) -> CGPoint {
+        let cardW = ctx.cardSize.width * config.scale
+        let cardH = ctx.cardSize.height * config.scale
+        
+        let absFrame = ctx.centerSlotFrames[slot.slotIndex] ?? .zero
+        let cFrame = ctx.frame(for: .center)
+        let tableCenterX = cFrame.minX + (cFrame.width * config.x)
+        let tableCenterY = cFrame.minY + (cFrame.height * config.y)
+        
+        var localX = absFrame.midX - tableCenterX
+        var localY = absFrame.midY - tableCenterY
+        
+        // Auto-Layout: Clamp Stack to Center Area Bounds
+        let stack = manager.cards(at: slot.slotIndex)
+        if !stack.isEmpty {
+            let count = stack.count
+            let direction = config.grid.stackDirection ?? "vertical"
+            let overlap = config.grid.stackOverlapRatio
+            let padding = ctx.scaledTokens.panelPadding
+            
+            let isHorizontal = direction == "horizontal" || direction == "diagonal"
+            let isVertical = direction == "vertical" || direction == "diagonal"
+            
+            // Calculate Stack Extents relative to center
+            let maxIndex = CGFloat(max(0, count - 1))
+            let maxOffsetX = isHorizontal ? maxIndex * (cardW * (1.0 - overlap)) : 0
+            let maxOffsetY = isVertical ? maxIndex * (cardH * (1.0 - overlap)) : 0
+            
+            // Calculate Edges in Local Coords
+            let rightEdge = localX + (cardW / 2.0) + maxOffsetX
+            let bottomEdge = localY + (cardH / 2.0) + maxOffsetY
+            let leftEdge = localX - (cardW / 2.0)
+            let topEdge = localY - (cardH / 2.0)
+            
+            // Area Bounds (Half-width/height from center 0,0)
+            let boundW = (cFrame.width / 2.0) - padding
+            let boundH = (cFrame.height / 2.0) - padding
+            
+            // Clamp X
+            if rightEdge > boundW {
+                localX -= (rightEdge - boundW)
+            } else if leftEdge < -boundW {
+                localX += (-boundW - leftEdge)
+            }
+            
+            // Clamp Y
+            if bottomEdge > boundH {
+                localY -= (bottomEdge - boundH)
+            } else if topEdge < -boundH {
+                localY += (-boundH - topEdge)
+            }
+        }
+        
+        return CGPoint(x: localX, y: localY)
+    }
 }
+
 
 struct DeckAreaV2: View {
     let ctx: LayoutContext

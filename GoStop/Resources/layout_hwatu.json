@@ -93,8 +93,8 @@
                 "captured": {
                     "_desc": "상대 획득패",
                     "x": 0.5,
-                    "y": 0.78,
-                    "scale": 0.5,
+                    "y": 0.60,
+                    "scale": 0.45,
                     "zIndex": 5,
                     "layout": {
                         "groupSpacingCardRatio": 0.26,

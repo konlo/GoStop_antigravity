@@ -46,6 +46,7 @@ struct CardView: View {
             }
         }
         .frame(width: size.width, height: size.height)
+        .background(config.layout.card.backColorSwiftUI) // Ensure background fills
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
         .shadow(color: Color.black.opacity(shadowOpacity), radius: shadowRadius, x: 0, y: shadowY)
     }
@@ -53,6 +54,7 @@ struct CardView: View {
     var frontView: some View {
         Image("\(config.layout.images.prefix)\(card.month)_\(card.imageIndex)")
             .resizable()
+            .scaledToFit()
             .background(Color.white)
     }
     
