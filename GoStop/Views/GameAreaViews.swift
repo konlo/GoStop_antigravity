@@ -3,6 +3,55 @@ import SwiftUI
 // MARK: - V2 Area Implementations
 // These views consume LayoutContext directly.
 
+// MARK: - Setting Area V2
+struct SettingAreaV2: View {
+    let ctx: LayoutContext
+    let config: SettingSectionConfigV2?
+    let onExitTapped: () -> Void
+    
+    var body: some View {
+        if let settingConfig = config {
+            ZStack {
+                // Background
+                if settingConfig.background.opacity > 0 || settingConfig.background.color != "#FFFFFF" {
+                    RoundedRectangle(cornerRadius: settingConfig.background.cornerRadiusPt * ctx.globalScale)
+                        .fill(settingConfig.background.colorSwiftUI)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                
+                // Content: Settings Icon and Exit Button (right aligned)
+                HStack {
+                    Spacer()
+                    
+                    HStack(spacing: 15) {
+                        // Exit/Restart Button
+                        Button(action: onExitTapped) {
+                            Image(systemName: "rectangle.portrait.and.arrow.right")
+                                .font(.title3)
+                                .foregroundColor(.white)
+                                .padding(8)
+                                .background(Color.red.opacity(0.8))
+                                .cornerRadius(8)
+                                .shadow(radius: 2)
+                        }
+
+                        // Future Settings Button
+                        Button(action: {
+                            // TODO: Add settings functionality
+                            print("Settings icon tapped")
+                        }) {
+                            Image(systemName: "gearshape.fill")
+                                .font(.title3)
+                                .foregroundColor(.gray)
+                        }
+                    }
+                    .padding(.trailing, 10)
+                }
+            }
+        }
+    }
+}
+
 // MARK: - Opponent Area V2
 struct OpponentAreaV2: View {
     let ctx: LayoutContext

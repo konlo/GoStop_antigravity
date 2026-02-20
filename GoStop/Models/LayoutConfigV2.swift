@@ -75,6 +75,7 @@ struct ImageConfigV2: Codable, Equatable {
 
 // MARK: - Areas
 struct AreasConfigV2: Codable, Equatable {
+    let setting: SettingSectionConfigV2?
     let opponent: AreaSectionConfigV2
     let center: CenterSectionConfigV2 // Center area might differ slightly (no captured/hand)
     let player: AreaSectionConfigV2
@@ -96,6 +97,14 @@ struct AreaSectionConfigV2: Codable, Equatable {
     let flexWeight: CGFloat
     let background: AreaBackgroundConfigV2
     let elements: OpponentPlayerElements // Shared for Opponent/Player for now, or split if needed
+}
+
+struct SettingSectionConfigV2: Codable, Equatable {
+    let heightRatio: CGFloat
+    let minHeightPt: CGFloat
+    let maxHeightPt: CGFloat
+    let flexWeight: CGFloat
+    let background: AreaBackgroundConfigV2
 }
 
 struct CenterSectionConfigV2: Codable, Equatable {

@@ -27,7 +27,7 @@
     },
     "tokens": {
         "_desc": "pt 값들은 globalScale이 곱해져 기기별로 자동 조정됨.",
-        "outerInsetPt": 16,
+        "outerInsetPt": 1,
         "areaGapPt": 8,
         "panelPaddingPt": 10,
         "panelCornerRadiusPt": 18,
@@ -62,7 +62,19 @@
         "prefix": "Card_"
     },
     "areas": {
-        "_desc": "Opponent / Center / Player 3영역. heightRatio 합이 1.0이 되도록 구성. 각 영역은 ratio 기반 + min/max(권장)로 안정화.",
+        "_desc": "Setting / Opponent / Center / Player 4영역.",
+        "setting": {
+            "heightRatio": 0.05,
+            "minHeightPt": 30,
+            "maxHeightPt": 60,
+            "flexWeight": 0,
+            "background": {
+                "color": "#FFFFFF",
+                "opacity": 0.0,
+                "cornerRadiusPt": 0,
+                "widthRatio": 1.0
+            }
+        },
         "opponent": {
             "heightRatio": 0.1,
             "minHeightPt": 50,
@@ -78,7 +90,7 @@
                 "hand": {
                     "_desc": "상대 손패(보통 10장). 겹침으로 ‘크기는 키우고 폭은 줄이기’.",
                     "x": 0.5,
-                    "y": 0.25,
+                    "y": 0.20,
                     "scale": 0.2,
                     "zIndex": 10,
                     "grid": {
@@ -87,7 +99,7 @@
                         "_descSpacing": "cardWidth 기준 비율",
                         "hSpacingCardRatio": 0.04,
                         "_descOverlap": "0.62 = 62% 겹침 (다음 카드의 이동량은 (1-overlap)*cardWidth로 계산)",
-                        "overlapRatio": 0.62
+                        "overlapRatio": 0.0
                     }
                 },
                 "captured": {
@@ -137,25 +149,25 @@
                             {
                                 "slotIndex": 1,
                                 "anchorX": 0.20,
-                                "anchorY": 0.20,
+                                "anchorY": 0.15,
                                 "preserveOnRemove": true
                             },
                             {
                                 "slotIndex": 2,
                                 "anchorX": 0.40,
-                                "anchorY": 0.20,
+                                "anchorY": 0.15,
                                 "preserveOnRemove": true
                             },
                             {
                                 "slotIndex": 3,
                                 "anchorX": 0.60,
-                                "anchorY": 0.20,
+                                "anchorY": 0.15,
                                 "preserveOnRemove": true
                             },
                             {
                                 "slotIndex": 4,
                                 "anchorX": 0.80,
-                                "anchorY": 0.20,
+                                "anchorY": 0.15,
                                 "preserveOnRemove": true
                             },
                             {
@@ -185,25 +197,25 @@
                             {
                                 "slotIndex": 9,
                                 "anchorX": 0.20,
-                                "anchorY": 0.80,
+                                "anchorY": 0.85,
                                 "preserveOnRemove": true
                             },
                             {
                                 "slotIndex": 10,
                                 "anchorX": 0.40,
-                                "anchorY": 0.80,
+                                "anchorY": 0.85,
                                 "preserveOnRemove": true
                             },
                             {
                                 "slotIndex": 11,
                                 "anchorX": 0.60,
-                                "anchorY": 0.80,
+                                "anchorY": 0.85,
                                 "preserveOnRemove": true
                             },
                             {
                                 "slotIndex": 12,
                                 "anchorX": 0.80,
-                                "anchorY": 0.80,
+                                "anchorY": 0.85,
                                 "preserveOnRemove": true
                             }
                         ]

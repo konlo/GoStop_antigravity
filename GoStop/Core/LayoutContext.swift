@@ -15,7 +15,7 @@ class LayoutContext: ObservableObject {
     let scaledTokens: ScaledTokens
     
     enum AreaType {
-        case opponent, center, player
+        case setting, opponent, center, player
     }
     
     struct ScaledTokens {
@@ -52,27 +52,35 @@ class LayoutContext: ObservableObject {
         let bottomPadding = (config.tokens.safeAreaBottomPaddingPt ?? 0) * gScale
         
         // 3. Calculate Area Frames (Heights)
-        let totalGap = areaGap * 2
+        let hasSetting = config.areas.setting != nil
+        let numGaps = hasSetting ? 3 : 2
+        let totalGap = areaGap * CGFloat(numGaps)
         let availableHeight = safeAreaSize.height - (outerInset * 2) - totalGap - topPadding - bottomPadding
         
         func calculateHeight(_ ratio: CGFloat, _ minPt: CGFloat, _ maxPt: CGFloat) -> CGFloat {
             return max(minPt * gScale, min(availableHeight * ratio, maxPt * gScale))
         }
         
+        var finalSettingH: CGFloat = 0
+        if let settingConfig = config.areas.setting {
+            finalSettingH = calculateHeight(settingConfig.heightRatio, settingConfig.minHeightPt, settingConfig.maxHeightPt)
+        }
         var finalOpponentH = calculateHeight(config.areas.opponent.heightRatio, config.areas.opponent.minHeightPt, config.areas.opponent.maxHeightPt)
         var finalCenterH = calculateHeight(config.areas.center.heightRatio, config.areas.center.minHeightPt, config.areas.center.maxHeightPt)
         var finalPlayerH = calculateHeight(config.areas.player.heightRatio, config.areas.player.minHeightPt, config.areas.player.maxHeightPt)
         
         // Distribute Remaining (Flex)
-        let currentTotal = finalOpponentH + finalCenterH + finalPlayerH
+        let currentTotal = finalSettingH + finalOpponentH + finalCenterH + finalPlayerH
         let diff = availableHeight - currentTotal
         if abs(diff) > 1 {
+            let setFlex = config.areas.setting?.flexWeight ?? 0
             let oppFlex = config.areas.opponent.flexWeight
             let cenFlex = config.areas.center.flexWeight
             let plaFlex = config.areas.player.flexWeight
-            let totalFlex = oppFlex + cenFlex + plaFlex
+            let totalFlex = setFlex + oppFlex + cenFlex + plaFlex
             
             if totalFlex > 0 {
+                finalSettingH += diff * (setFlex / totalFlex)
                 finalOpponentH += diff * (oppFlex / totalFlex)
                 finalCenterH += diff * (cenFlex / totalFlex)
                 finalPlayerH += diff * (plaFlex / totalFlex)
@@ -80,14 +88,29 @@ class LayoutContext: ObservableObject {
         }
         
         let x = outerInset
-        let yStart = outerInset + topPadding
+        var currentY = outerInset + topPadding
         let w = safeAreaSize.width - (outerInset * 2)
         
-        let oppFrame = CGRect(x: x, y: yStart, width: w, height: finalOpponentH)
-        let cenFrame = CGRect(x: x, y: yStart + finalOpponentH + areaGap, width: w, height: finalCenterH)
-        let plaFrame = CGRect(x: x, y: yStart + finalOpponentH + areaGap + finalCenterH + areaGap, width: w, height: finalPlayerH)
+        var areaDict = [AreaType: CGRect]()
         
-        self.areaFrames = [.opponent: oppFrame, .center: cenFrame, .player: plaFrame]
+        if finalSettingH > 0 {
+            let setFrame = CGRect(x: x, y: currentY, width: w, height: finalSettingH)
+            areaDict[.setting] = setFrame
+            currentY += finalSettingH + areaGap
+        }
+        
+        let oppFrame = CGRect(x: x, y: currentY, width: w, height: finalOpponentH)
+        areaDict[.opponent] = oppFrame
+        currentY += finalOpponentH + areaGap
+        
+        let cenFrame = CGRect(x: x, y: currentY, width: w, height: finalCenterH)
+        areaDict[.center] = cenFrame
+        currentY += finalCenterH + areaGap
+        
+        let plaFrame = CGRect(x: x, y: currentY, width: w, height: finalPlayerH)
+        areaDict[.player] = plaFrame
+        
+        self.areaFrames = areaDict
         
         // 4. Calculate Card Size
         let baseWidth = safeAreaSize.width * config.card.baseWidthRatio

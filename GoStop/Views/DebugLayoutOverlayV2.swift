@@ -74,9 +74,10 @@ struct DebugLayoutOverlayV2: View {
 extension LayoutContext.AreaType: Hashable {
     func hash(into hasher: inout Hasher) {
         switch self {
-        case .opponent: hasher.combine(0)
-        case .center: hasher.combine(1)
-        case .player: hasher.combine(2)
+        case .setting: hasher.combine(0)
+        case .opponent: hasher.combine(1)
+        case .center: hasher.combine(2)
+        case .player: hasher.combine(3)
         }
     }
 }

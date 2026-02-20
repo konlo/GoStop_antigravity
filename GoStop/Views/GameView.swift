@@ -6,6 +6,7 @@ struct GameView: View {
     @ObservedObject var config: ConfigManager = .shared
     @State private var playerHandSlotManager: PlayerHandSlotManager?
     @State private var tableSlotManager: TableSlotManager?
+    @State private var showingRestartAlert = false
     
     var body: some View {
         GeometryReader { geometry in
@@ -26,6 +27,17 @@ struct GameView: View {
                     .ignoresSafeArea()
                 
                 if let ctx = layoutContext {
+                    // 0. Setting Area
+                    if let settingFrame = ctx.areaFrames[.setting], settingFrame.height > 0 {
+                        SettingAreaV2(ctx: ctx, config: ctx.config.areas.setting, onExitTapped: {
+                            showingRestartAlert = true
+                        })
+                            .frame(width: settingFrame.width, height: settingFrame.height)
+                            .position(x: safeArea.leading + settingFrame.midX,
+                                      y: safeArea.top + settingFrame.midY)
+                            .zIndex(0)
+                    }
+                    
                     // 1. Opponent Area
                     let opponentFrame = ctx.frame(for: .opponent)
                     OpponentAreaV2(ctx: ctx, gameManager: gameManager)
@@ -69,6 +81,18 @@ struct GameView: View {
                     .zIndex(200)
             }
             .coordinateSpace(name: "GameSpace")
+            .alert("재시작 확인", isPresented: $showingRestartAlert) {
+                Button("취소", role: .cancel) {
+                    // Do nothing, resume game
+                }
+                Button("확인", role: .destructive) {
+                    // Restart logic
+                    gameManager.setupGame()
+                    gameManager.startGame()
+                }
+            } message: {
+                Text("게임을 다시 시작하시겠습니까?")
+            }
         }
         .ignoresSafeArea()
         .onAppear {
