@@ -1,1 +1,7 @@
 .DS_Store
+build/
+DerivedData/
+*.xcodeproj/
+*.xcworkspace/
+.build/
+tests/test_agent/artifacts/

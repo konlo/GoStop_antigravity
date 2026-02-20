@@ -1,0 +1,200 @@
+{
+  "players": [
+    {
+      "score": 0,
+      "id": "E13F0C42-987A-4DD5-AA64-5310E07FD224",
+      "lastGoScore": 0,
+      "goCount": 0,
+      "hand": [
+        {
+          "id": "B161683F-DDD8-4C86-A45B-6209FD1550D3",
+          "month": 3,
+          "imageIndex": 1,
+          "type": "ribbon"
+        },
+        {
+          "id": "5178076D-DA70-419A-A24B-4FBF3394F5C2",
+          "month": 10,
+          "imageIndex": 2,
+          "type": "junk"
+        },
+        {
+          "id": "8504877E-8679-426C-99EB-02B556F43F17",
+          "month": 1,
+          "imageIndex": 3,
+          "type": "junk"
+        },
+        {
+          "id": "9212D55C-1C1B-48F9-9D0D-86C6B9030C25",
+          "month": 3,
+          "imageIndex": 0,
+          "type": "bright"
+        },
+        {
+          "id": "0EF5656D-FF39-4FE5-BC27-DF9488021CDE",
+          "month": 7,
+          "imageIndex": 1,
+          "type": "ribbon"
+        },
+        {
+          "id": "0BD8348B-0294-433E-982C-0A2F543D1784",
+          "month": 4,
+          "imageIndex": 2,
+          "type": "junk"
+        },
+        {
+          "id": "01714444-18E3-42E3-8CB6-F089C6418BB1",
+          "month": 1,
+          "imageIndex": 1,
+          "type": "ribbon"
+        },
+        {
+          "id": "953B481E-EE69-407D-97C4-1864B306C0E5",
+          "month": 4,
+          "imageIndex": 0,
+          "type": "animal"
+        },
+        {
+          "id": "B11144F8-7377-49AD-ABDE-E9B26959F59A",
+          "month": 8,
+          "imageIndex": 3,
+          "type": "junk"
+        },
+        {
+          "id": "85B8D5D4-8CF7-4868-BA0A-B67FA671DC03",
+          "month": 9,
+          "imageIndex": 2,
+          "type": "junk"
+        }
+      ],
+      "capturedCards": [],
+      "name": "Player 1",
+      "money": 10000
+    },
+    {
+      "score": 0,
+      "id": "D4A55C35-389C-4D26-A4D3-0DB46CA5E23F",
+      "lastGoScore": 0,
+      "goCount": 0,
+      "hand": [
+        {
+          "id": "4C122843-C080-4B76-81A0-D61BB96764EF",
+          "imageIndex": 2,
+          "type": "junk",
+          "month": 11
+        },
+        {
+          "id": "67F1E07B-0091-4EFF-8F65-D657144A026A",
+          "imageIndex": 0,
+          "type": "animal",
+          "month": 9
+        },
+        {
+          "id": "E580A6D7-01C6-48B5-AEF0-03C6C2ACFE25",
+          "imageIndex": 3,
+          "type": "doubleJunk",
+          "month": 12
+        },
+        {
+          "id": "5199087F-76BE-4664-9C2D-80239D2ABC9E",
+          "imageIndex": 3,
+          "type": "junk",
+          "month": 5
+        },
+        {
+          "id": "4A09FE3A-4151-4F1A-8E43-A7BB275B4859",
+          "imageIndex": 1,
+          "type": "ribbon",
+          "month": 2
+        },
+        {
+          "id": "FE470762-25D4-4B36-9BB5-2AF186827F60",
+          "imageIndex": 3,
+          "type": "junk",
+          "month": 3
+        },
+        {
+          "id": "23634B6E-B5CE-47E2-B741-4B0E82EC6CEC",
+          "imageIndex": 2,
+          "type": "junk",
+          "month": 6
+        },
+        {
+          "id": "D8F59A73-B434-45AF-8B20-C97D7B950549",
+          "imageIndex": 0,
+          "type": "bright",
+          "month": 8
+        },
+        {
+          "id": "548040D1-CC33-4B84-8029-A9B6FB78AA12",
+          "imageIndex": 0,
+          "type": "bright",
+          "month": 1
+        },
+        {
+          "id": "DC1B32C1-97B9-4BC0-BC65-D0DBF956EBD7",
+          "imageIndex": 1,
+          "type": "ribbon",
+          "month": 10
+        }
+      ],
+      "capturedCards": [],
+      "name": "Computer",
+      "money": 10000
+    }
+  ],
+  "deckCount": 20,
+  "tableCards": [
+    {
+      "id": "B4190C34-B669-4F0D-AAAD-A49DDE8D6BB8",
+      "month": 9,
+      "type": "junk",
+      "imageIndex": 3
+    },
+    {
+      "id": "FAB1730E-A85B-4737-B8EB-363CF0008641",
+      "month": 4,
+      "type": "junk",
+      "imageIndex": 3
+    },
+    {
+      "id": "6BAB4441-0201-4E3E-83EF-6D89CF33991F",
+      "imageIndex": 0,
+      "month": 10,
+      "type": "animal"
+    },
+    {
+      "id": "D7ED448D-F260-4A99-9159-8290EE483A62",
+      "imageIndex": 0,
+      "month": 12,
+      "type": "bright"
+    },
+    {
+      "id": "97716111-9204-4475-89AC-206052ABFF6B",
+      "imageIndex": 3,
+      "month": 7,
+      "type": "junk"
+    },
+    {
+      "id": "641F20FE-B3DF-4E29-B34F-B7F9FA997EEF",
+      "imageIndex": 1,
+      "month": 5,
+      "type": "ribbon"
+    },
+    {
+      "id": "5A7FBE03-8A14-454F-917E-58097250DD5F",
+      "imageIndex": 1,
+      "month": 11,
+      "type": "doubleJunk"
+    },
+    {
+      "id": "F546B97C-2E8C-4BD6-87D7-6455B5E938D7",
+      "imageIndex": 2,
+      "month": 3,
+      "type": "junk"
+    }
+  ],
+  "currentTurnIndex": 0,
+  "status": "ok",
+  "gameState": "ready"
+}

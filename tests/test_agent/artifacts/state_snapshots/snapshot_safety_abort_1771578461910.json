@@ -1,0 +1,200 @@
+{
+  "deckCount": 20,
+  "tableCards": [
+    {
+      "id": "F1FB8513-4F19-4393-A073-3CD458AF84A4",
+      "month": 9,
+      "imageIndex": 3,
+      "type": "junk"
+    },
+    {
+      "id": "3F5C30DB-01E7-4C95-B61F-8ACA2BDAEC1E",
+      "month": 4,
+      "imageIndex": 3,
+      "type": "junk"
+    },
+    {
+      "id": "8D4B9E0C-5222-4968-BEE4-CB0AF53B0CC8",
+      "month": 10,
+      "imageIndex": 0,
+      "type": "animal"
+    },
+    {
+      "id": "D4FC28C4-BA7A-4687-B57F-E1777A282406",
+      "month": 12,
+      "imageIndex": 0,
+      "type": "bright"
+    },
+    {
+      "id": "4191FD54-2ACE-4944-8B1E-5FD7C3C3B749",
+      "month": 7,
+      "imageIndex": 3,
+      "type": "junk"
+    },
+    {
+      "id": "0F326817-2BD7-4987-9312-1FF9A6905D0E",
+      "month": 5,
+      "imageIndex": 1,
+      "type": "ribbon"
+    },
+    {
+      "id": "8F686D6A-0BE6-45F3-BC74-4A0F235FEC10",
+      "month": 11,
+      "imageIndex": 1,
+      "type": "doubleJunk"
+    },
+    {
+      "id": "EA4048DB-AA62-45AE-89AA-CFF80A532302",
+      "month": 3,
+      "imageIndex": 2,
+      "type": "junk"
+    }
+  ],
+  "gameState": "ready",
+  "status": "ok",
+  "players": [
+    {
+      "score": 0,
+      "goCount": 0,
+      "id": "DE1468AA-6E36-412F-B202-0AE433FCB997",
+      "lastGoScore": 0,
+      "hand": [
+        {
+          "id": "46454D84-4D20-47DB-826A-91F32881E914",
+          "month": 3,
+          "type": "ribbon",
+          "imageIndex": 1
+        },
+        {
+          "id": "20C0BA8D-07F2-469A-9072-1FF5043EE973",
+          "month": 10,
+          "type": "junk",
+          "imageIndex": 2
+        },
+        {
+          "id": "CFCBA113-1C32-4AC5-A31D-0B7C773342B1",
+          "month": 1,
+          "type": "junk",
+          "imageIndex": 3
+        },
+        {
+          "id": "9461BCE4-C84C-46E5-8DB4-A800A83CB913",
+          "month": 3,
+          "type": "bright",
+          "imageIndex": 0
+        },
+        {
+          "id": "1252A8D8-0E8C-4688-9BA0-2E78CB9FE126",
+          "month": 7,
+          "type": "ribbon",
+          "imageIndex": 1
+        },
+        {
+          "id": "003033A7-9FBF-45AF-A0FB-4958C9EA34B1",
+          "month": 4,
+          "type": "junk",
+          "imageIndex": 2
+        },
+        {
+          "id": "BFE66565-5182-4761-91D9-071955B7E91D",
+          "month": 1,
+          "type": "ribbon",
+          "imageIndex": 1
+        },
+        {
+          "id": "AA783842-F348-494B-A94D-FAB0B41C6ACB",
+          "month": 4,
+          "type": "animal",
+          "imageIndex": 0
+        },
+        {
+          "id": "94D3BF08-9FAF-4330-8BB7-80215F997D99",
+          "month": 8,
+          "type": "junk",
+          "imageIndex": 3
+        },
+        {
+          "id": "312BB3C8-8D75-44F1-8A3A-DF75502E38C6",
+          "month": 9,
+          "type": "junk",
+          "imageIndex": 2
+        }
+      ],
+      "capturedCards": [],
+      "money": 10000,
+      "name": "Player 1"
+    },
+    {
+      "score": 0,
+      "goCount": 0,
+      "id": "8C46EED6-0469-47FC-AABE-B3DAFD45210F",
+      "lastGoScore": 0,
+      "hand": [
+        {
+          "id": "576A7F0B-5ADA-4E4F-B5BD-D64EEEE4ABF3",
+          "type": "junk",
+          "month": 11,
+          "imageIndex": 2
+        },
+        {
+          "id": "D4DE0B27-F93E-4FF2-815A-37E7C5D1C46E",
+          "type": "animal",
+          "month": 9,
+          "imageIndex": 0
+        },
+        {
+          "id": "CB377A90-BC4A-435D-9C2E-49A1E4C0CF3E",
+          "type": "doubleJunk",
+          "month": 12,
+          "imageIndex": 3
+        },
+        {
+          "id": "48054B10-6A0B-4FFF-8B23-A3C84E4C8D0F",
+          "type": "junk",
+          "month": 5,
+          "imageIndex": 3
+        },
+        {
+          "id": "BBFD2436-6ACA-4CFE-AA98-7512701AA0E5",
+          "type": "ribbon",
+          "month": 2,
+          "imageIndex": 1
+        },
+        {
+          "id": "664EFD98-EBD4-469C-9854-145DDA93C643",
+          "type": "junk",
+          "month": 3,
+          "imageIndex": 3
+        },
+        {
+          "id": "70C0CDEB-29DE-4B90-B19C-4B5CE7E69F79",
+          "type": "junk",
+          "month": 6,
+          "imageIndex": 2
+        },
+        {
+          "id": "06CACCFE-302B-4008-894D-1D084DBC374A",
+          "type": "bright",
+          "month": 8,
+          "imageIndex": 0
+        },
+        {
+          "id": "7A02442D-7C57-4C91-9709-19D8EC89B171",
+          "type": "bright",
+          "month": 1,
+          "imageIndex": 0
+        },
+        {
+          "id": "8472F1D1-A003-4FDF-9690-21CF50BD2D40",
+          "type": "ribbon",
+          "month": 10,
+          "imageIndex": 1
+        }
+      ],
+      "capturedCards": [],
+      "money": 10000,
+      "name": "Computer"
+    }
+  ],
+  "currentTurnIndex": 0
+}

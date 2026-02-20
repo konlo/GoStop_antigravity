@@ -37,3 +37,15 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.antigravity.GoStopTests
     dependencies:
       - target: GoStop
+  GoStopCLI:
+    type: tool
+    platform: macOS
+    sources:
+      - GoStopCLI
+      - GoStop/Models
+      - GoStop/Core
+    dependencies:
+      - package: Yams
+    settings:
+      base:
+        PRODUCT_NAME: GoStopCLI

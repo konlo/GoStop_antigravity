@@ -7,13 +7,35 @@ struct Deck {
         self.reset()
     }
     
-    mutating func reset() {
+    mutating func reset(seed: Int? = nil) {
         self.cards = Deck.createStandardDeck()
-        self.shuffle()
+        if let seed = seed {
+            self.shuffle(seed: seed)
+        } else {
+            self.shuffle()
+        }
     }
     
     mutating func shuffle() {
         cards.shuffle()
+    }
+    
+    mutating func shuffle(seed: Int) {
+        var generator = SeededGenerator(seed: UInt64(seed))
+        cards.shuffle(using: &generator)
+    }
+    
+    struct SeededGenerator: RandomNumberGenerator {
+        private var state: UInt64
+        init(seed: UInt64) {
+            self.state = seed
+        }
+        mutating func next() -> UInt64 {
+            // Basic LCG for determinism
+            state = state &+ 0x6003294610F4E683
+            state = state &* 0x853c49e6748fea9b
+            return state
+        }
     }
     
     mutating func draw() -> Card? {

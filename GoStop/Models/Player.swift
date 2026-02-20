@@ -1,7 +1,7 @@
 import Foundation
 
-class Player: ObservableObject, Identifiable {
-    let id = UUID()
+class Player: ObservableObject, Identifiable, Codable {
+    let id: UUID
     let name: String
     @Published var hand: [Card] = []
     @Published var capturedCards: [Card] = []
@@ -10,7 +10,36 @@ class Player: ObservableObject, Identifiable {
     @Published var goCount: Int = 0
     @Published var lastGoScore: Int = 0
     
-    init(name: String, money: Int = 10000) {
+    enum CodingKeys: String, CodingKey {
+        case id, name, hand, capturedCards, score, money, goCount, lastGoScore
+    }
+    
+    required init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        hand = try container.decode([Card].self, forKey: .hand)
+        capturedCards = try container.decode([Card].self, forKey: .capturedCards)
+        score = try container.decode(Int.self, forKey: .score)
+        money = try container.decode(Int.self, forKey: .money)
+        goCount = try container.decode(Int.self, forKey: .goCount)
+        lastGoScore = try container.decode(Int.self, forKey: .lastGoScore)
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(hand, forKey: .hand)
+        try container.encode(capturedCards, forKey: .capturedCards)
+        try container.encode(score, forKey: .score)
+        try container.encode(money, forKey: .money)
+        try container.encode(goCount, forKey: .goCount)
+        try container.encode(lastGoScore, forKey: .lastGoScore)
+    }
+
+    init(id: UUID = UUID(), name: String, money: Int = 10000) {
+        self.id = id
         self.name = name
         self.money = money
     }

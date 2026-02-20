@@ -1,0 +1,1112 @@
+2026-02-20 18:07:29,667 - TestAgent - INFO - TestAgent initialized with mode: cli
+2026-02-20 18:07:29,667 - TestAgent - INFO - Starting test run. Total scenarios: 4, Repeat count: 3
+2026-02-20 18:07:29,667 - TestAgent - INFO - --- Starting Iteration 1/3 ---
+2026-02-20 18:07:29,667 - TestAgent - INFO - Running Scenario 1: scenario_basic_launch_and_read
+2026-02-20 18:07:29,667 - TestAgent - INFO - Starting app at ../../build/Build/Products/Debug/GoStopCLI
+2026-02-20 18:07:30,674 - TestAgent - INFO - Setting specific condition: {'rng_seed': 42}
+2026-02-20 18:07:30,675 - TestAgent - DEBUG - Sending command: {'action': 'set_condition', 'data': {'rng_seed': 42}}
+2026-02-20 18:07:30,678 - TestAgent - DEBUG - Received response: {'status': 'ok', 'message': 'Condition set'}
+2026-02-20 18:07:30,678 - TestAgent.Scenarios - INFO - Running basic launch and read...
+2026-02-20 18:07:30,678 - TestAgent - INFO - Requesting all information from app.
+2026-02-20 18:07:30,678 - TestAgent - DEBUG - Sending command: {'action': 'get_state'}
+2026-02-20 18:07:30,680 - TestAgent - DEBUG - Received response: {'tableCards': [{'id': 'E1C95015-5BFC-4C5E-88CD-66478FECC6D8', 'month': 9, 'type': 'junk', 'imageIndex': 3}, {'id': '9F5E8379-AAE8-41D2-9E55-70837F072AF7', 'month': 4, 'type': 'junk', 'imageIndex': 3}, {'id': '368E2458-171C-44F0-AEF7-E49201F638B8', 'month': 10, 'type': 'animal', 'imageIndex': 0}, {'id': '6B32B2CB-EB85-4EBA-A500-A9E028AB82A3', 'month': 12, 'type': 'bright', 'imageIndex': 0}, {'id': '7EAAC209-E288-4CD0-B645-AF268782C9F6', 'month': 7, 'type': 'junk', 'imageIndex': 3}, {'id': 'FAD72FA9-770E-4C8F-907C-3416DE05C5F0', 'month': 5, 'type': 'ribbon', 'imageIndex': 1}, {'id': '6E58DA83-0007-44B8-A19A-A7B281B26709', 'month': 11, 'type': 'doubleJunk', 'imageIndex': 1}, {'id': '601BBFE0-82CA-42CF-AFBD-6ADE05BA7C8E', 'month': 3, 'type': 'junk', 'imageIndex': 2}], 'players': [{'score': 0, 'id': 'D7ACECC3-A19C-4CC2-AFA1-080F29C23E1D', 'goCount': 0, 'lastGoScore': 0, 'hand': [{'id': '01422EC8-4B12-4B04-ADCB-EF2F8CFB35C2', 'month': 3, 'type': 'ribbon', 'imageIndex': 1}, {'id': '0B28AB63-E0D0-460B-926F-EF12AAF8AD9B', 'month': 10, 'type': 'junk', 'imageIndex': 2}, {'id': '8ED1FDFF-C80E-448C-B9A4-15518AC4CC55', 'month': 1, 'type': 'junk', 'imageIndex': 3}, {'id': 'C65FF3FC-EC61-4CFA-821E-1566642164F4', 'month': 3, 'type': 'bright', 'imageIndex': 0}, {'id': '50AE6A80-66A6-4B6C-B31E-8A0FD47ED804', 'month': 7, 'type': 'ribbon', 'imageIndex': 1}, {'id': '673B7FBE-4CDD-46FD-8753-C1844EFF9199', 'month': 4, 'type': 'junk', 'imageIndex': 2}, {'id': '8A3BC5AC-3E70-4F0C-8B71-F8934E9D9089', 'month': 1, 'type': 'ribbon', 'imageIndex': 1}, {'id': '638BF2F5-62C7-429B-86BF-8A3F8483EF38', 'month': 4, 'type': 'animal', 'imageIndex': 0}, {'id': '564084A3-A4AA-4741-BDF2-D968D352439A', 'month': 8, 'type': 'junk', 'imageIndex': 3}, {'id': '30E36F5F-19C2-469E-9A44-2778524159FB', 'month': 9, 'type': 'junk', 'imageIndex': 2}], 'capturedCards': [], 'name': 'Player 1', 'money': 10000}, {'score': 0, 'goCount': 0, 'lastGoScore': 0, 'id': '7078F143-CA60-43F6-8D53-89B13D9B8AAF', 'hand': [{'id': 'D9B7EB5E-20DD-4033-98C4-06C404D973C0', 'type': 'junk', 'month': 11, 'imageIndex': 2}, {'id': '9A03F02B-E7E2-4677-A999-BB8738394A03', 'type': 'animal', 'month': 9, 'imageIndex': 0}, {'id': '60187419-F12C-41FE-95A7-7EAFA202D53B', 'type': 'doubleJunk', 'month': 12, 'imageIndex': 3}, {'id': '19DEF35B-BC8B-455D-982C-9CAF38108852', 'type': 'junk', 'month': 5, 'imageIndex': 3}, {'id': '73A594FF-4B65-4035-8DF8-7AB1A85F386B', 'type': 'ribbon', 'month': 2, 'imageIndex': 1}, {'id': '71FDD5A2-E368-4501-8732-A0BF8CDB8CA7', 'type': 'junk', 'month': 3, 'imageIndex': 3}, {'id': '06206424-D2B1-41CB-B879-62AEB49F92D6', 'type': 'junk', 'month': 6, 'imageIndex': 2}, {'id': '2C97CC75-2E14-4C93-8009-4F893B375E52', 'type': 'bright', 'month': 8, 'imageIndex': 0}, {'id': 'A6D8C426-9CFC-43AC-B78F-CC2EE3C2851F', 'type': 'bright', 'month': 1, 'imageIndex': 0}, {'id': '674D12F3-9631-46B0-BAB6-404E79C637AD', 'type': 'ribbon', 'month': 10, 'imageIndex': 1}], 'capturedCards': [], 'name': 'Computer', 'money': 10000}], 'currentTurnIndex': 0, 'gameState': 'ready', 'deckCount': 20, 'status': 'ok'}
+2026-02-20 18:07:30,680 - TestAgent.Scenarios - INFO - State successfully validated: {'tableCards': [{'id': 'E1C95015-5BFC-4C5E-88CD-66478FECC6D8', 'month': 9, 'type': 'junk', 'imageIndex': 3}, {'id': '9F5E8379-AAE8-41D2-9E55-70837F072AF7', 'month': 4, 'type': 'junk', 'imageIndex': 3}, {'id': '368E2458-171C-44F0-AEF7-E49201F638B8', 'month': 10, 'type': 'animal', 'imageIndex': 0}, {'id': '6B32B2CB-EB85-4EBA-A500-A9E028AB82A3', 'month': 12, 'type': 'bright', 'imageIndex': 0}, {'id': '7EAAC209-E288-4CD0-B645-AF268782C9F6', 'month': 7, 'type': 'junk', 'imageIndex': 3}, {'id': 'FAD72FA9-770E-4C8F-907C-3416DE05C5F0', 'month': 5, 'type': 'ribbon', 'imageIndex': 1}, {'id': '6E58DA83-0007-44B8-A19A-A7B281B26709', 'month': 11, 'type': 'doubleJunk', 'imageIndex': 1}, {'id': '601BBFE0-82CA-42CF-AFBD-6ADE05BA7C8E', 'month': 3, 'type': 'junk', 'imageIndex': 2}], 'players': [{'score': 0, 'id': 'D7ACECC3-A19C-4CC2-AFA1-080F29C23E1D', 'goCount': 0, 'lastGoScore': 0, 'hand': [{'id': '01422EC8-4B12-4B04-ADCB-EF2F8CFB35C2', 'month': 3, 'type': 'ribbon', 'imageIndex': 1}, {'id': '0B28AB63-E0D0-460B-926F-EF12AAF8AD9B', 'month': 10, 'type': 'junk', 'imageIndex': 2}, {'id': '8ED1FDFF-C80E-448C-B9A4-15518AC4CC55', 'month': 1, 'type': 'junk', 'imageIndex': 3}, {'id': 'C65FF3FC-EC61-4CFA-821E-1566642164F4', 'month': 3, 'type': 'bright', 'imageIndex': 0}, {'id': '50AE6A80-66A6-4B6C-B31E-8A0FD47ED804', 'month': 7, 'type': 'ribbon', 'imageIndex': 1}, {'id': '673B7FBE-4CDD-46FD-8753-C1844EFF9199', 'month': 4, 'type': 'junk', 'imageIndex': 2}, {'id': '8A3BC5AC-3E70-4F0C-8B71-F8934E9D9089', 'month': 1, 'type': 'ribbon', 'imageIndex': 1}, {'id': '638BF2F5-62C7-429B-86BF-8A3F8483EF38', 'month': 4, 'type': 'animal', 'imageIndex': 0}, {'id': '564084A3-A4AA-4741-BDF2-D968D352439A', 'month': 8, 'type': 'junk', 'imageIndex': 3}, {'id': '30E36F5F-19C2-469E-9A44-2778524159FB', 'month': 9, 'type': 'junk', 'imageIndex': 2}], 'capturedCards': [], 'name': 'Player 1', 'money': 10000}, {'score': 0, 'goCount': 0, 'lastGoScore': 0, 'id': '7078F143-CA60-43F6-8D53-89B13D9B8AAF', 'hand': [{'id': 'D9B7EB5E-20DD-4033-98C4-06C404D973C0', 'type': 'junk', 'month': 11, 'imageIndex': 2}, {'id': '9A03F02B-E7E2-4677-A999-BB8738394A03', 'type': 'animal', 'month': 9, 'imageIndex': 0}, {'id': '60187419-F12C-41FE-95A7-7EAFA202D53B', 'type': 'doubleJunk', 'month': 12, 'imageIndex': 3}, {'id': '19DEF35B-BC8B-455D-982C-9CAF38108852', 'type': 'junk', 'month': 5, 'imageIndex': 3}, {'id': '73A594FF-4B65-4035-8DF8-7AB1A85F386B', 'type': 'ribbon', 'month': 2, 'imageIndex': 1}, {'id': '71FDD5A2-E368-4501-8732-A0BF8CDB8CA7', 'type': 'junk', 'month': 3, 'imageIndex': 3}, {'id': '06206424-D2B1-41CB-B879-62AEB49F92D6', 'type': 'junk', 'month': 6, 'imageIndex': 2}, {'id': '2C97CC75-2E14-4C93-8009-4F893B375E52', 'type': 'bright', 'month': 8, 'imageIndex': 0}, {'id': 'A6D8C426-9CFC-43AC-B78F-CC2EE3C2851F', 'type': 'bright', 'month': 1, 'imageIndex': 0}, {'id': '674D12F3-9631-46B0-BAB6-404E79C637AD', 'type': 'ribbon', 'month': 10, 'imageIndex': 1}], 'capturedCards': [], 'name': 'Computer', 'money': 10000}], 'currentTurnIndex': 0, 'gameState': 'ready', 'deckCount': 20, 'status': 'ok'}
+2026-02-20 18:07:30,681 - TestAgent - INFO - Scenario scenario_basic_launch_and_read completed successfully.
+2026-02-20 18:07:30,681 - TestAgent - INFO - Stopping the app...
+2026-02-20 18:07:30,682 - TestAgent - INFO - Running Scenario 2: scenario_setup_condition_and_act
+2026-02-20 18:07:30,682 - TestAgent - INFO - Starting app at ../../build/Build/Products/Debug/GoStopCLI
+2026-02-20 18:07:31,690 - TestAgent - INFO - Setting specific condition: {'rng_seed': 42}
+2026-02-20 18:07:31,691 - TestAgent - DEBUG - Sending command: {'action': 'set_condition', 'data': {'rng_seed': 42}}
+2026-02-20 18:07:31,692 - TestAgent - DEBUG - Received response: {'message': 'Condition set', 'status': 'ok'}
+2026-02-20 18:07:31,692 - TestAgent.Scenarios - INFO - Running condition setup and act scenario...
+2026-02-20 18:07:31,693 - TestAgent - INFO - Setting specific condition: {'mock_scenario': 'game_over', 'player1_score': 100, 'player2_score': 50}
+2026-02-20 18:07:31,693 - TestAgent - DEBUG - Sending command: {'action': 'set_condition', 'data': {'mock_scenario': 'game_over', 'player1_score': 100, 'player2_score': 50}}
+2026-02-20 18:07:31,693 - TestAgent - DEBUG - Received response: {'message': 'Condition set', 'status': 'ok'}
+2026-02-20 18:07:31,693 - TestAgent.Scenarios - INFO - Condition set result: {'message': 'Condition set', 'status': 'ok'}
+2026-02-20 18:07:31,693 - TestAgent - INFO - Requesting all information from app.
+2026-02-20 18:07:31,693 - TestAgent - DEBUG - Sending command: {'action': 'get_state'}
+2026-02-20 18:07:31,695 - TestAgent - DEBUG - Received response: {'players': [{'score': 100, 'id': 'C6B60E2D-8599-404E-A804-0351F0474A8F', 'lastGoScore': 0, 'goCount': 0, 'hand': [{'id': '922B9F5C-5117-4FF6-A053-B3B6A400635B', 'type': 'ribbon', 'imageIndex': 1, 'month': 3}, {'id': '6F08251D-A599-448A-92AD-EF0E24975606', 'type': 'junk', 'imageIndex': 2, 'month': 10}, {'id': 'F927CC63-D819-42C4-A2A2-BD70AF824289', 'type': 'junk', 'imageIndex': 3, 'month': 1}, {'id': '70BEB6AB-22D1-4FFF-BA18-FE6F7DD9A7DE', 'type': 'bright', 'imageIndex': 0, 'month': 3}, {'id': '35E73E8F-386E-4A58-BE23-C3525CC27443', 'type': 'ribbon', 'imageIndex': 1, 'month': 7}, {'id': '0F0CE817-4549-465F-A24F-E5B77DBF5571', 'type': 'junk', 'imageIndex': 2, 'month': 4}, {'id': 'B87ECE81-7775-44FE-91DE-9607D366F166', 'type': 'ribbon', 'imageIndex': 1, 'month': 1}, {'id': 'E23D7BB2-6728-433B-BED3-F7310F72A1E1', 'type': 'animal', 'imageIndex': 0, 'month': 4}, {'id': 'B1227A7D-512A-4CB8-9415-2021F1FB5D64', 'type': 'junk', 'imageIndex': 3, 'month': 8}, {'id': 'C044FC15-FD07-4FB8-BE1C-1ADE120383E2', 'type': 'junk', 'imageIndex': 2, 'month': 9}], 'capturedCards': [], 'name': 'Player 1', 'money': 10000}, {'score': 50, 'goCount': 0, 'lastGoScore': 0, 'id': 'A9CA00B3-6315-4042-B508-D09381FE56C2', 'hand': [{'id': '622E8086-E900-425F-830D-5FCE4C4F757E', 'month': 11, 'imageIndex': 2, 'type': 'junk'}, {'id': '0DCFD9E3-54A8-4BBB-BF4F-7A1DBC404259', 'month': 9, 'imageIndex': 0, 'type': 'animal'}, {'id': '07C68143-88F6-4742-8062-6CB4780FFBD2', 'month': 12, 'imageIndex': 3, 'type': 'doubleJunk'}, {'id': 'DD7D9B97-0D03-457A-8999-B9F843C27D89', 'month': 5, 'imageIndex': 3, 'type': 'junk'}, {'id': '3A0B6C30-CD66-4E66-8C6C-684A43ABCB24', 'month': 2, 'imageIndex': 1, 'type': 'ribbon'}, {'id': '93B4C02A-6E74-44E7-A94D-D2E407A17745', 'month': 3, 'imageIndex': 3, 'type': 'junk'}, {'id': '7F6DB8B1-1849-4046-80AD-843B79DD9BEF', 'month': 6, 'imageIndex': 2, 'type': 'junk'}, {'id': '555BC5CD-F138-4F38-B888-54AA46ABBA5C', 'month': 8, 'imageIndex': 0, 'type': 'bright'}, {'id': '819B139F-28B8-4B60-89D7-917FDC2A225E', 'month': 1, 'imageIndex': 0, 'type': 'bright'}, {'id': '1DA6A085-8A4C-4F72-93C6-73D7DBCE55A4', 'month': 10, 'imageIndex': 1, 'type': 'ribbon'}], 'capturedCards': [], 'name': 'Computer', 'money': 10000}], 'deckCount': 20, 'tableCards': [{'id': 'DC65B1F6-B631-4AAE-ACCF-8FF665A236D7', 'type': 'junk', 'imageIndex': 3, 'month': 9}, {'id': 'DF317DEE-07CA-438F-AE62-A9F1345F8698', 'type': 'junk', 'imageIndex': 3, 'month': 4}, {'id': '6925553D-DE04-43B4-988B-48F60C31341E', 'type': 'animal', 'imageIndex': 0, 'month': 10}, {'id': '7CFE07A8-A6EC-4AA0-ABA8-4D13372837DA', 'type': 'bright', 'imageIndex': 0, 'month': 12}, {'id': '7DB65381-7BF0-4860-A3B6-CFB58D755359', 'type': 'junk', 'imageIndex': 3, 'month': 7}, {'id': 'A7B02E0C-4AC1-487A-AE32-8FC196ECD071', 'type': 'ribbon', 'imageIndex': 1, 'month': 5}, {'id': '2E0281E3-C688-411F-9A24-A2F5B7AC5DA4', 'type': 'doubleJunk', 'imageIndex': 1, 'month': 11}, {'id': '2DE59128-97C2-4C99-AA3D-8327A92EA60C', 'type': 'junk', 'imageIndex': 2, 'month': 3}], 'currentTurnIndex': 0, 'status': 'ok', 'gameState': 'ended'}
+2026-02-20 18:07:31,696 - TestAgent - INFO - Snapshot saved: artifacts/state_snapshots/snapshot_pre_action_1771578451695.json
+2026-02-20 18:07:31,696 - TestAgent - INFO - Sending user action: click_restart_button with data: None
+2026-02-20 18:07:31,696 - TestAgent - DEBUG - Sending command: {'action': 'click_restart_button'}
+2026-02-20 18:07:31,697 - TestAgent - DEBUG - Received response: {'action': 'click_restart_button', 'status': 'action executed'}
+2026-02-20 18:07:31,697 - TestAgent - INFO - Requesting all information from app.
+2026-02-20 18:07:31,697 - TestAgent - DEBUG - Sending command: {'action': 'get_state'}
+2026-02-20 18:07:31,697 - TestAgent - DEBUG - Received response: {'players': [{'score': 0, 'id': 'E13F0C42-987A-4DD5-AA64-5310E07FD224', 'lastGoScore': 0, 'goCount': 0, 'hand': [{'id': 'B161683F-DDD8-4C86-A45B-6209FD1550D3', 'month': 3, 'imageIndex': 1, 'type': 'ribbon'}, {'id': '5178076D-DA70-419A-A24B-4FBF3394F5C2', 'month': 10, 'imageIndex': 2, 'type': 'junk'}, {'id': '8504877E-8679-426C-99EB-02B556F43F17', 'month': 1, 'imageIndex': 3, 'type': 'junk'}, {'id': '9212D55C-1C1B-48F9-9D0D-86C6B9030C25', 'month': 3, 'imageIndex': 0, 'type': 'bright'}, {'id': '0EF5656D-FF39-4FE5-BC27-DF9488021CDE', 'month': 7, 'imageIndex': 1, 'type': 'ribbon'}, {'id': '0BD8348B-0294-433E-982C-0A2F543D1784', 'month': 4, 'imageIndex': 2, 'type': 'junk'}, {'id': '01714444-18E3-42E3-8CB6-F089C6418BB1', 'month': 1, 'imageIndex': 1, 'type': 'ribbon'}, {'id': '953B481E-EE69-407D-97C4-1864B306C0E5', 'month': 4, 'imageIndex': 0, 'type': 'animal'}, {'id': 'B11144F8-7377-49AD-ABDE-E9B26959F59A', 'month': 8, 'imageIndex': 3, 'type': 'junk'}, {'id': '85B8D5D4-8CF7-4868-BA0A-B67FA671DC03', 'month': 9, 'imageIndex': 2, 'type': 'junk'}], 'capturedCards': [], 'name': 'Player 1', 'money': 10000}, {'score': 0, 'id': 'D4A55C35-389C-4D26-A4D3-0DB46CA5E23F', 'lastGoScore': 0, 'goCount': 0, 'hand': [{'id': '4C122843-C080-4B76-81A0-D61BB96764EF', 'imageIndex': 2, 'type': 'junk', 'month': 11}, {'id': '67F1E07B-0091-4EFF-8F65-D657144A026A', 'imageIndex': 0, 'type': 'animal', 'month': 9}, {'id': 'E580A6D7-01C6-48B5-AEF0-03C6C2ACFE25', 'imageIndex': 3, 'type': 'doubleJunk', 'month': 12}, {'id': '5199087F-76BE-4664-9C2D-80239D2ABC9E', 'imageIndex': 3, 'type': 'junk', 'month': 5}, {'id': '4A09FE3A-4151-4F1A-8E43-A7BB275B4859', 'imageIndex': 1, 'type': 'ribbon', 'month': 2}, {'id': 'FE470762-25D4-4B36-9BB5-2AF186827F60', 'imageIndex': 3, 'type': 'junk', 'month': 3}, {'id': '23634B6E-B5CE-47E2-B741-4B0E82EC6CEC', 'imageIndex': 2, 'type': 'junk', 'month': 6}, {'id': 'D8F59A73-B434-45AF-8B20-C97D7B950549', 'imageIndex': 0, 'type': 'bright', 'month': 8}, {'id': '548040D1-CC33-4B84-8029-A9B6FB78AA12', 'imageIndex': 0, 'type': 'bright', 'month': 1}, {'id': 'DC1B32C1-97B9-4BC0-BC65-D0DBF956EBD7', 'imageIndex': 1, 'type': 'ribbon', 'month': 10}], 'capturedCards': [], 'name': 'Computer', 'money': 10000}], 'deckCount': 20, 'tableCards': [{'id': 'B4190C34-B669-4F0D-AAAD-A49DDE8D6BB8', 'month': 9, 'type': 'junk', 'imageIndex': 3}, {'id': 'FAB1730E-A85B-4737-B8EB-363CF0008641', 'month': 4, 'type': 'junk', 'imageIndex': 3}, {'id': '6BAB4441-0201-4E3E-83EF-6D89CF33991F', 'imageIndex': 0, 'month': 10, 'type': 'animal'}, {'id': 'D7ED448D-F260-4A99-9159-8290EE483A62', 'imageIndex': 0, 'month': 12, 'type': 'bright'}, {'id': '97716111-9204-4475-89AC-206052ABFF6B', 'imageIndex': 3, 'month': 7, 'type': 'junk'}, {'id': '641F20FE-B3DF-4E29-B34F-B7F9FA997EEF', 'imageIndex': 1, 'month': 5, 'type': 'ribbon'}, {'id': '5A7FBE03-8A14-454F-917E-58097250DD5F', 'imageIndex': 1, 'month': 11, 'type': 'doubleJunk'}, {'id': 'F546B97C-2E8C-4BD6-87D7-6455B5E938D7', 'imageIndex': 2, 'month': 3, 'type': 'junk'}], 'currentTurnIndex': 0, 'status': 'ok', 'gameState': 'ready'}
+2026-02-20 18:07:31,698 - TestAgent - INFO - Snapshot saved: artifacts/state_snapshots/snapshot_post_action_1771578451698.json
+2026-02-20 18:07:31,698 - TestAgent.Scenarios - INFO - Action result: {'action': 'click_restart_button', 'status': 'action executed'}
+2026-02-20 18:07:31,698 - TestAgent - INFO - Requesting all information from app.
+2026-02-20 18:07:31,698 - TestAgent - DEBUG - Sending command: {'action': 'get_state'}
+2026-02-20 18:07:31,699 - TestAgent - DEBUG - Received response: {'status': 'ok', 'gameState': 'ready', 'currentTurnIndex': 0, 'tableCards': [{'id': 'B4190C34-B669-4F0D-AAAD-A49DDE8D6BB8', 'imageIndex': 3, 'month': 9, 'type': 'junk'}, {'id': 'FAB1730E-A85B-4737-B8EB-363CF0008641', 'type': 'junk', 'imageIndex': 3, 'month': 4}, {'id': '6BAB4441-0201-4E3E-83EF-6D89CF33991F', 'type': 'animal', 'imageIndex': 0, 'month': 10}, {'id': 'D7ED448D-F260-4A99-9159-8290EE483A62', 'type': 'bright', 'imageIndex': 0, 'month': 12}, {'id': '97716111-9204-4475-89AC-206052ABFF6B', 'type': 'junk', 'imageIndex': 3, 'month': 7}, {'id': '641F20FE-B3DF-4E29-B34F-B7F9FA997EEF', 'type': 'ribbon', 'imageIndex': 1, 'month': 5}, {'id': '5A7FBE03-8A14-454F-917E-58097250DD5F', 'type': 'doubleJunk', 'imageIndex': 1, 'month': 11}, {'id': 'F546B97C-2E8C-4BD6-87D7-6455B5E938D7', 'type': 'junk', 'imageIndex': 2, 'month': 3}], 'deckCount': 20, 'players': [{'score': 0, 'goCount': 0, 'lastGoScore': 0, 'id': 'E13F0C42-987A-4DD5-AA64-5310E07FD224', 'hand': [{'id': 'B161683F-DDD8-4C86-A45B-6209FD1550D3', 'type': 'ribbon', 'month': 3, 'imageIndex': 1}, {'id': '5178076D-DA70-419A-A24B-4FBF3394F5C2', 'type': 'junk', 'month': 10, 'imageIndex': 2}, {'id': '8504877E-8679-426C-99EB-02B556F43F17', 'type': 'junk', 'month': 1, 'imageIndex': 3}, {'id': '9212D55C-1C1B-48F9-9D0D-86C6B9030C25', 'type': 'bright', 'month': 3, 'imageIndex': 0}, {'id': '0EF5656D-FF39-4FE5-BC27-DF9488021CDE', 'type': 'ribbon', 'month': 7, 'imageIndex': 1}, {'id': '0BD8348B-0294-433E-982C-0A2F543D1784', 'type': 'junk', 'month': 4, 'imageIndex': 2}, {'id': '01714444-18E3-42E3-8CB6-F089C6418BB1', 'type': 'ribbon', 'month': 1, 'imageIndex': 1}, {'id': '953B481E-EE69-407D-97C4-1864B306C0E5', 'type': 'animal', 'month': 4, 'imageIndex': 0}, {'id': 'B11144F8-7377-49AD-ABDE-E9B26959F59A', 'type': 'junk', 'month': 8, 'imageIndex': 3}, {'id': '85B8D5D4-8CF7-4868-BA0A-B67FA671DC03', 'type': 'junk', 'month': 9, 'imageIndex': 2}], 'capturedCards': [], 'money': 10000, 'name': 'Player 1'}, {'score': 0, 'goCount': 0, 'lastGoScore': 0, 'id': 'D4A55C35-389C-4D26-A4D3-0DB46CA5E23F', 'hand': [{'id': '4C122843-C080-4B76-81A0-D61BB96764EF', 'month': 11, 'imageIndex': 2, 'type': 'junk'}, {'id': '67F1E07B-0091-4EFF-8F65-D657144A026A', 'month': 9, 'imageIndex': 0, 'type': 'animal'}, {'id': 'E580A6D7-01C6-48B5-AEF0-03C6C2ACFE25', 'month': 12, 'imageIndex': 3, 'type': 'doubleJunk'}, {'id': '5199087F-76BE-4664-9C2D-80239D2ABC9E', 'month': 5, 'imageIndex': 3, 'type': 'junk'}, {'id': '4A09FE3A-4151-4F1A-8E43-A7BB275B4859', 'month': 2, 'imageIndex': 1, 'type': 'ribbon'}, {'id': 'FE470762-25D4-4B36-9BB5-2AF186827F60', 'month': 3, 'imageIndex': 3, 'type': 'junk'}, {'id': '23634B6E-B5CE-47E2-B741-4B0E82EC6CEC', 'month': 6, 'imageIndex': 2, 'type': 'junk'}, {'id': 'D8F59A73-B434-45AF-8B20-C97D7B950549', 'month': 8, 'imageIndex': 0, 'type': 'bright'}, {'id': '548040D1-CC33-4B84-8029-A9B6FB78AA12', 'month': 1, 'imageIndex': 0, 'type': 'bright'}, {'id': 'DC1B32C1-97B9-4BC0-BC65-D0DBF956EBD7', 'month': 10, 'imageIndex': 1, 'type': 'ribbon'}], 'capturedCards': [], 'money': 10000, 'name': 'Computer'}]}
+2026-02-20 18:07:31,700 - TestAgent - INFO - Scenario scenario_setup_condition_and_act completed successfully.
+2026-02-20 18:07:31,700 - TestAgent - INFO - Stopping the app...
+2026-02-20 18:07:31,701 - TestAgent - INFO - Running Scenario 3: scenario_force_crash_capture
+2026-02-20 18:07:31,701 - TestAgent - INFO - Starting app at ../../build/Build/Products/Debug/GoStopCLI
+2026-02-20 18:07:32,709 - TestAgent - INFO - Setting specific condition: {'rng_seed': 42}
+2026-02-20 18:07:32,709 - TestAgent - DEBUG - Sending command: {'action': 'set_condition', 'data': {'rng_seed': 42}}
+2026-02-20 18:07:32,711 - TestAgent - DEBUG - Received response: {'status': 'ok', 'message': 'Condition set'}
+2026-02-20 18:07:32,711 - TestAgent.Scenarios - INFO - Running force crash scenario...
+2026-02-20 18:07:32,711 - TestAgent - INFO - Requesting all information from app.
+2026-02-20 18:07:32,711 - TestAgent - DEBUG - Sending command: {'action': 'get_state'}
+2026-02-20 18:07:32,713 - TestAgent - DEBUG - Received response: {'deckCount': 20, 'currentTurnIndex': 0, 'players': [{'score': 0, 'goCount': 0, 'id': '5AA8790A-8F45-4D12-AA10-08D259CAFE97', 'lastGoScore': 0, 'hand': [{'id': 'EF6D534C-A098-4712-AD06-86B8A115C5D3', 'month': 3, 'type': 'ribbon', 'imageIndex': 1}, {'id': '9EF3F3F1-3BF0-4E10-8623-5D01702BDB21', 'month': 10, 'type': 'junk', 'imageIndex': 2}, {'id': '4C276E0E-9A1C-4DBB-9CAC-BCAE71B12C0D', 'month': 1, 'type': 'junk', 'imageIndex': 3}, {'id': '92457EFA-B894-442B-BCD2-C8D2EB447EF2', 'month': 3, 'type': 'bright', 'imageIndex': 0}, {'id': '6DE1B86B-DA05-4095-9D51-A1558173A398', 'month': 7, 'type': 'ribbon', 'imageIndex': 1}, {'id': '37F96FFB-3E07-412C-BD95-8D46A37226FD', 'month': 4, 'type': 'junk', 'imageIndex': 2}, {'id': '3731FEB8-978F-44A4-A718-F5A0B38A34B2', 'month': 1, 'type': 'ribbon', 'imageIndex': 1}, {'id': 'F626FC9C-BAE6-47AD-92FD-FC2755780C3B', 'month': 4, 'type': 'animal', 'imageIndex': 0}, {'id': '2C26FEC0-F4FD-47F3-9E14-16ED51CF13B1', 'month': 8, 'type': 'junk', 'imageIndex': 3}, {'id': 'B3F28DD1-9454-4130-A891-FCAA1CFEADB3', 'month': 9, 'type': 'junk', 'imageIndex': 2}], 'capturedCards': [], 'name': 'Player 1', 'money': 10000}, {'score': 0, 'goCount': 0, 'lastGoScore': 0, 'id': '4EAE5145-8EB5-4741-B39F-9E8F79C1E0D7', 'hand': [{'id': 'A8A4369B-DC3E-4FFE-95F8-8A09DDE0CA12', 'month': 11, 'type': 'junk', 'imageIndex': 2}, {'id': 'E0603D0D-B53B-435D-B503-93E04FAAD147', 'month': 9, 'imageIndex': 0, 'type': 'animal'}, {'id': 'B70314E9-72E9-471E-AC8A-234A3E7604BD', 'month': 12, 'imageIndex': 3, 'type': 'doubleJunk'}, {'id': '11827620-1151-4862-9D13-6ACC6429621F', 'month': 5, 'imageIndex': 3, 'type': 'junk'}, {'id': '102A2988-0DF1-4A1B-8646-42C39287ACDD', 'month': 2, 'imageIndex': 1, 'type': 'ribbon'}, {'id': '7B052B3A-F0B3-4DD9-8154-9F6ECFB27812', 'month': 3, 'imageIndex': 3, 'type': 'junk'}, {'id': 'AE767171-D4D0-4E93-A2D1-38F27F7D1728', 'month': 6, 'imageIndex': 2, 'type': 'junk'}, {'id': '373A490D-1034-4A7C-BA22-EE7866109061', 'month': 8, 'imageIndex': 0, 'type': 'bright'}, {'id': '45D437EE-6383-4696-B086-8E871BBC1D20', 'month': 1, 'imageIndex': 0, 'type': 'bright'}, {'id': 'E9705FFB-A20E-4811-8740-02843C0A9DCF', 'month': 10, 'imageIndex': 1, 'type': 'ribbon'}], 'capturedCards': [], 'name': 'Computer', 'money': 10000}], 'tableCards': [{'id': '2DD9DCFB-986B-4CD5-B71E-BCD673F0101D', 'imageIndex': 3, 'type': 'junk', 'month': 9}, {'id': '90291547-C40F-43F9-AF33-414539A32F59', 'imageIndex': 3, 'type': 'junk', 'month': 4}, {'id': 'C3F934C5-CF6A-494B-ADA3-0A2A19F787D2', 'imageIndex': 0, 'type': 'animal', 'month': 10}, {'id': '21203396-5984-4297-AB13-94F05420D483', 'imageIndex': 0, 'type': 'bright', 'month': 12}, {'id': 'B9BF84A2-15BA-4CBE-935C-E01571C427BD', 'imageIndex': 3, 'type': 'junk', 'month': 7}, {'id': '1DE925CF-1814-4DAA-93F2-364E28349BE5', 'imageIndex': 1, 'type': 'ribbon', 'month': 5}, {'id': '15B0E764-9BB6-4553-B018-19991B7ED95C', 'imageIndex': 1, 'type': 'doubleJunk', 'month': 11}, {'id': '503C4140-5CA2-4B58-9098-B83B2BA19E6A', 'imageIndex': 2, 'type': 'junk', 'month': 3}], 'gameState': 'ready', 'status': 'ok'}
+2026-02-20 18:07:32,713 - TestAgent.Scenarios - INFO - Executing intentional crash action...
+2026-02-20 18:07:32,713 - TestAgent - INFO - Sending user action: invalid_action_triggering_crash with data: None
+2026-02-20 18:07:32,713 - TestAgent - DEBUG - Sending command: {'action': 'invalid_action_triggering_crash'}
+2026-02-20 18:07:32,716 - TestAgent.Scenarios - INFO - App crashed as expected for this scenario.
+2026-02-20 18:07:32,717 - TestAgent - INFO - Scenario scenario_force_crash_capture completed successfully.
+2026-02-20 18:07:32,717 - TestAgent - INFO - Stopping the app...
+2026-02-20 18:07:32,717 - TestAgent - INFO - Running Scenario 4: scenario_safety_limit_trigger
+2026-02-20 18:07:32,718 - TestAgent - INFO - Starting app at ../../build/Build/Products/Debug/GoStopCLI
+2026-02-20 18:07:33,728 - TestAgent - INFO - Setting specific condition: {'rng_seed': 42}
+2026-02-20 18:07:33,729 - TestAgent - DEBUG - Sending command: {'action': 'set_condition', 'data': {'rng_seed': 42}}
+2026-02-20 18:07:33,730 - TestAgent - DEBUG - Received response: {'status': 'ok', 'message': 'Condition set'}
+2026-02-20 18:07:33,730 - TestAgent.Scenarios - INFO - Running safety limit trigger scenario...
+2026-02-20 18:07:33,730 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,730 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,731 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,731 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,731 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,731 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:33,731 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,731 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,731 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,731 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,731 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,732 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,732 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,732 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,732 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,733 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,733 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,734 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:33,734 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,734 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,734 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,734 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,734 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,735 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:33,735 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,735 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,735 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,735 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,735 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,735 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,735 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,735 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,735 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,735 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,735 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,735 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,735 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,735 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,736 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,736 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,736 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,736 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:33,736 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,736 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,736 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,736 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,736 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,736 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:33,736 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,736 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,736 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:33,736 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,736 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,736 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:33,736 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,736 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,736 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:33,736 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,737 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,737 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,737 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,737 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,737 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:33,737 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,737 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,737 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:33,737 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,737 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,737 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,737 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,737 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,737 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,737 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,737 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,737 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:33,738 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,738 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,738 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,738 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,738 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,738 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:33,738 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,738 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,738 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,738 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,738 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,738 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,738 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,738 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,738 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:33,738 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,738 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,738 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,738 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,738 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,739 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:33,739 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,739 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,739 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,739 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,739 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,739 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:33,739 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,739 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,739 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,739 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,739 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,739 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:33,739 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,739 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,739 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,739 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,739 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,739 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:33,739 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,739 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,739 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,740 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,740 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,740 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:33,740 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,740 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,740 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:33,740 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,740 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,740 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,740 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,740 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,740 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:33,740 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,740 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,740 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,740 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,740 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,741 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,741 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,741 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,741 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,741 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,741 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,741 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:33,742 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,742 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,742 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:33,742 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,742 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,742 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,742 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,742 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,742 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,742 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,742 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,742 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,742 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,742 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,742 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:33,742 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,742 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,743 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:33,743 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,743 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,743 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,743 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,743 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,743 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:33,743 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,743 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,743 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,743 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,743 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,743 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:33,743 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,743 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,743 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,743 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,743 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,743 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:33,743 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,743 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,743 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,744 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,744 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,744 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:33,744 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,744 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,744 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,744 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,744 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,744 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:33,744 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,744 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,744 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:33,744 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,744 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,744 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:33,744 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,744 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,744 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,744 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,744 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,745 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:33,745 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,745 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,745 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,745 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,745 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,745 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:33,745 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,745 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,745 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:33,745 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,745 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,745 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:33,745 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,745 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,745 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,745 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,745 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,745 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,745 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,745 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,746 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,746 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,746 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,746 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:33,746 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,746 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,746 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:33,746 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,746 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,746 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,746 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,746 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,746 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:33,746 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,746 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,746 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,746 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,746 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,746 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,747 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,747 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,747 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,747 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,747 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,747 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,747 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,747 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,747 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:33,747 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,747 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,747 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:33,747 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,747 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,747 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:33,747 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,747 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,747 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,747 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,747 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,747 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:33,747 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,747 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,747 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,747 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,747 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,747 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,747 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,747 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,748 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,748 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,748 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,748 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,748 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,748 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,748 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,748 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,748 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,748 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,748 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,748 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,748 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,748 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,748 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,748 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,748 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,748 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,748 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:33,748 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,748 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,748 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:33,748 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,748 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,748 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:33,748 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,748 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,748 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:33,748 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:33,748 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:33,748 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:33,748 - TestAgent.Scenarios - INFO - Intentional safety limit reached. Validating graceful abort...
+2026-02-20 18:07:33,748 - TestAgent - INFO - Requesting all information from app.
+2026-02-20 18:07:33,748 - TestAgent - DEBUG - Sending command: {'action': 'get_state'}
+2026-02-20 18:07:33,749 - TestAgent - DEBUG - Received response: {'status': 'ok', 'players': [{'score': 0, 'id': 'F63FC911-5A53-4AB8-9E28-6A133B7B710B', 'lastGoScore': 0, 'goCount': 0, 'hand': [{'id': 'BAB507B6-D8EB-487E-B8F8-DF922FA61235', 'month': 3, 'imageIndex': 1, 'type': 'ribbon'}, {'id': 'CD1BD676-5EA1-4845-8A3C-E2E38C8394C4', 'month': 10, 'imageIndex': 2, 'type': 'junk'}, {'id': '17ADE85A-D105-479B-B39B-32A6BA28F7FB', 'month': 1, 'imageIndex': 3, 'type': 'junk'}, {'id': '925585B0-D2A7-4886-BA42-3C8EFEFC561D', 'month': 3, 'imageIndex': 0, 'type': 'bright'}, {'id': '095036C8-4EAA-48B3-BCD6-19CE9859EF26', 'month': 7, 'imageIndex': 1, 'type': 'ribbon'}, {'id': '8B5A4B87-C36A-40F3-8C1F-B89D474D6D21', 'month': 4, 'imageIndex': 2, 'type': 'junk'}, {'id': '098BABAE-1F30-4E50-A50D-6765AF03D747', 'month': 1, 'imageIndex': 1, 'type': 'ribbon'}, {'id': '1C3E382B-347E-41E5-8A5B-2CDAA949CB1E', 'month': 4, 'imageIndex': 0, 'type': 'animal'}, {'id': 'E12ECA63-9871-41E9-B118-DBE7F8773970', 'month': 8, 'imageIndex': 3, 'type': 'junk'}, {'id': '8548DEC0-90EE-4CF0-815D-5AEF43099EBF', 'month': 9, 'imageIndex': 2, 'type': 'junk'}], 'capturedCards': [], 'name': 'Player 1', 'money': 10000}, {'score': 0, 'id': 'A5F3E7AC-ED9F-4801-B471-C9433AD1F404', 'goCount': 0, 'lastGoScore': 0, 'hand': [{'id': 'E27793F0-85CA-4E6B-AACA-DC2AF74C3388', 'month': 11, 'imageIndex': 2, 'type': 'junk'}, {'id': 'BB761434-BB5A-4510-BEA2-6E380730FE8F', 'month': 9, 'type': 'animal', 'imageIndex': 0}, {'id': '8B765D0A-9B2A-4C7B-B428-B6D7E519BF5C', 'month': 12, 'type': 'doubleJunk', 'imageIndex': 3}, {'id': '91F7C2C1-6C30-4EE5-A858-CA1CEDC17ED9', 'month': 5, 'type': 'junk', 'imageIndex': 3}, {'id': '29D49C23-FC0C-415C-9CA6-3AEABBEB86C6', 'month': 2, 'type': 'ribbon', 'imageIndex': 1}, {'id': 'A3256C35-A07A-4282-839C-828EEC929145', 'month': 3, 'type': 'junk', 'imageIndex': 3}, {'id': '958DE129-7C76-4D5C-BC35-8415BB6480CE', 'month': 6, 'type': 'junk', 'imageIndex': 2}, {'id': '84BCFD88-5044-43AC-B92D-19B7925CBF27', 'month': 8, 'type': 'bright', 'imageIndex': 0}, {'id': '44CB4601-0EB5-49C6-8E66-06C77CFBFC9C', 'month': 1, 'type': 'bright', 'imageIndex': 0}, {'id': '45B82E80-826D-469D-A358-80F9AA103A1E', 'month': 10, 'type': 'ribbon', 'imageIndex': 1}], 'capturedCards': [], 'name': 'Computer', 'money': 10000}], 'gameState': 'ready', 'deckCount': 20, 'currentTurnIndex': 0, 'tableCards': [{'id': 'A1B6C5CC-CA1C-4DC4-A603-2BE3EDF3738E', 'month': 9, 'type': 'junk', 'imageIndex': 3}, {'id': 'FBDA1CB1-5805-43DF-B2DC-7195F83F4585', 'month': 4, 'type': 'junk', 'imageIndex': 3}, {'id': '86A73B19-DA87-49E0-AED9-80D91409C038', 'month': 10, 'type': 'animal', 'imageIndex': 0}, {'id': '9974AA91-894B-4D08-AEEB-E1A863775B1C', 'month': 12, 'type': 'bright', 'imageIndex': 0}, {'id': '3BD128F5-D20C-4473-9D5D-EF7A381DED9F', 'month': 7, 'type': 'junk', 'imageIndex': 3}, {'id': 'BC4B7446-4440-4418-B939-81A1C6E7C931', 'month': 5, 'type': 'ribbon', 'imageIndex': 1}, {'id': '4D6471C1-63AB-414D-9EFA-C10C2E0087B6', 'month': 11, 'type': 'doubleJunk', 'imageIndex': 1}, {'id': '3F45C862-79AE-4BBE-B898-BF6D33FD9822', 'month': 3, 'type': 'junk', 'imageIndex': 2}]}
+2026-02-20 18:07:33,749 - TestAgent - INFO - Snapshot saved: artifacts/state_snapshots/snapshot_safety_abort_1771578453749.json
+2026-02-20 18:07:33,749 - TestAgent.Scenarios - INFO - Verified safety limit of 100 steps.
+2026-02-20 18:07:33,750 - TestAgent - INFO - Scenario scenario_safety_limit_trigger completed successfully.
+2026-02-20 18:07:33,750 - TestAgent - INFO - Stopping the app...
+2026-02-20 18:07:33,750 - TestAgent - INFO - --- Finished Iteration 1/3 ---
+2026-02-20 18:07:33,750 - TestAgent - INFO - --- Starting Iteration 2/3 ---
+2026-02-20 18:07:33,750 - TestAgent - INFO - Running Scenario 1: scenario_basic_launch_and_read
+2026-02-20 18:07:33,750 - TestAgent - INFO - Starting app at ../../build/Build/Products/Debug/GoStopCLI
+2026-02-20 18:07:34,758 - TestAgent - INFO - Setting specific condition: {'rng_seed': 42}
+2026-02-20 18:07:34,759 - TestAgent - DEBUG - Sending command: {'action': 'set_condition', 'data': {'rng_seed': 42}}
+2026-02-20 18:07:34,761 - TestAgent - DEBUG - Received response: {'status': 'ok', 'message': 'Condition set'}
+2026-02-20 18:07:34,761 - TestAgent.Scenarios - INFO - Running basic launch and read...
+2026-02-20 18:07:34,761 - TestAgent - INFO - Requesting all information from app.
+2026-02-20 18:07:34,761 - TestAgent - DEBUG - Sending command: {'action': 'get_state'}
+2026-02-20 18:07:34,763 - TestAgent - DEBUG - Received response: {'deckCount': 20, 'tableCards': [{'id': '1BE35E32-17D4-4154-8C8A-3149328CEAC4', 'month': 9, 'type': 'junk', 'imageIndex': 3}, {'id': '2D5CF00F-B2C4-46E7-9CCF-8F067CBC4E40', 'month': 4, 'type': 'junk', 'imageIndex': 3}, {'id': 'BA913195-46DD-4CEC-9258-56E4935A5564', 'month': 10, 'type': 'animal', 'imageIndex': 0}, {'id': 'C6E4A449-C414-4563-9174-BDED440014F7', 'month': 12, 'type': 'bright', 'imageIndex': 0}, {'id': '03D59DA3-DB25-4303-A59F-64D27CBF8E11', 'month': 7, 'type': 'junk', 'imageIndex': 3}, {'id': '22467A39-45CF-453D-8BFE-572E73756D86', 'month': 5, 'type': 'ribbon', 'imageIndex': 1}, {'id': 'F29AE83C-7443-46CA-8D75-E0E54A0EA092', 'month': 11, 'type': 'doubleJunk', 'imageIndex': 1}, {'id': '05D2C054-D8F4-4514-9563-95294AB8CAA1', 'month': 3, 'type': 'junk', 'imageIndex': 2}], 'currentTurnIndex': 0, 'players': [{'score': 0, 'id': '522900C6-3B1E-4636-9AE0-C91EAF1B2C96', 'goCount': 0, 'lastGoScore': 0, 'hand': [{'id': '1E75FA31-E350-4B99-8072-A7C0C683233F', 'type': 'ribbon', 'month': 3, 'imageIndex': 1}, {'id': '635EB4C3-E4B7-4F39-8F47-D3A3494B52D1', 'type': 'junk', 'month': 10, 'imageIndex': 2}, {'id': '7B3A1732-BCFB-431D-B3AA-1F46A41613C9', 'type': 'junk', 'month': 1, 'imageIndex': 3}, {'id': '17492360-E865-4392-91C3-6581259C04CE', 'type': 'bright', 'month': 3, 'imageIndex': 0}, {'id': '671040CF-D366-4D51-AAE0-3D69396A38E3', 'type': 'ribbon', 'month': 7, 'imageIndex': 1}, {'id': '21CD0F1D-CB67-47F5-B5A5-4BD6DF706562', 'type': 'junk', 'month': 4, 'imageIndex': 2}, {'id': 'F4F17D5F-55F1-4520-BEC3-85CB982ECC59', 'type': 'ribbon', 'month': 1, 'imageIndex': 1}, {'id': '1A69B441-110A-4249-9A57-E4F2C913EB6B', 'type': 'animal', 'month': 4, 'imageIndex': 0}, {'id': 'F242EFE1-72E1-4EF3-A151-AB7940343C49', 'type': 'junk', 'month': 8, 'imageIndex': 3}, {'id': '29D426DE-2EDC-4E84-A051-E92A2EFA0791', 'type': 'junk', 'month': 9, 'imageIndex': 2}], 'capturedCards': [], 'name': 'Player 1', 'money': 10000}, {'score': 0, 'goCount': 0, 'lastGoScore': 0, 'id': '74D59333-1CC4-4303-887D-BCB156AAEC51', 'hand': [{'id': '78D8CFB5-0CE3-46A2-97CB-1C3116897C66', 'imageIndex': 2, 'type': 'junk', 'month': 11}, {'id': '3BD3EA37-FFF0-4FBF-8643-08AE9AB5B865', 'imageIndex': 0, 'type': 'animal', 'month': 9}, {'id': '2F85D200-A8BC-45D1-B197-A3AA2EDD1298', 'imageIndex': 3, 'type': 'doubleJunk', 'month': 12}, {'id': 'CC8B43B5-F5EF-4161-B6A0-9F5BEC5F7C15', 'imageIndex': 3, 'type': 'junk', 'month': 5}, {'id': '9A452A26-43D2-4670-AEC9-E41784F590BA', 'imageIndex': 1, 'type': 'ribbon', 'month': 2}, {'id': '75181321-210F-47F5-B003-FFFEAE854BF5', 'imageIndex': 3, 'type': 'junk', 'month': 3}, {'id': '3A094727-D15A-403B-A035-0E49DEB5AA7D', 'imageIndex': 2, 'type': 'junk', 'month': 6}, {'id': 'DDFE6FDA-B2A1-41D2-A7CA-23A2BBC052F9', 'imageIndex': 0, 'type': 'bright', 'month': 8}, {'id': 'F2A942FF-FD09-4EEF-ACEF-B5BBC1EA402C', 'imageIndex': 0, 'type': 'bright', 'month': 1}, {'id': '5C99F83A-8C28-4EA3-BECE-62113C1644F5', 'imageIndex': 1, 'type': 'ribbon', 'month': 10}], 'capturedCards': [], 'money': 10000, 'name': 'Computer'}], 'gameState': 'ready', 'status': 'ok'}
+2026-02-20 18:07:34,763 - TestAgent.Scenarios - INFO - State successfully validated: {'deckCount': 20, 'tableCards': [{'id': '1BE35E32-17D4-4154-8C8A-3149328CEAC4', 'month': 9, 'type': 'junk', 'imageIndex': 3}, {'id': '2D5CF00F-B2C4-46E7-9CCF-8F067CBC4E40', 'month': 4, 'type': 'junk', 'imageIndex': 3}, {'id': 'BA913195-46DD-4CEC-9258-56E4935A5564', 'month': 10, 'type': 'animal', 'imageIndex': 0}, {'id': 'C6E4A449-C414-4563-9174-BDED440014F7', 'month': 12, 'type': 'bright', 'imageIndex': 0}, {'id': '03D59DA3-DB25-4303-A59F-64D27CBF8E11', 'month': 7, 'type': 'junk', 'imageIndex': 3}, {'id': '22467A39-45CF-453D-8BFE-572E73756D86', 'month': 5, 'type': 'ribbon', 'imageIndex': 1}, {'id': 'F29AE83C-7443-46CA-8D75-E0E54A0EA092', 'month': 11, 'type': 'doubleJunk', 'imageIndex': 1}, {'id': '05D2C054-D8F4-4514-9563-95294AB8CAA1', 'month': 3, 'type': 'junk', 'imageIndex': 2}], 'currentTurnIndex': 0, 'players': [{'score': 0, 'id': '522900C6-3B1E-4636-9AE0-C91EAF1B2C96', 'goCount': 0, 'lastGoScore': 0, 'hand': [{'id': '1E75FA31-E350-4B99-8072-A7C0C683233F', 'type': 'ribbon', 'month': 3, 'imageIndex': 1}, {'id': '635EB4C3-E4B7-4F39-8F47-D3A3494B52D1', 'type': 'junk', 'month': 10, 'imageIndex': 2}, {'id': '7B3A1732-BCFB-431D-B3AA-1F46A41613C9', 'type': 'junk', 'month': 1, 'imageIndex': 3}, {'id': '17492360-E865-4392-91C3-6581259C04CE', 'type': 'bright', 'month': 3, 'imageIndex': 0}, {'id': '671040CF-D366-4D51-AAE0-3D69396A38E3', 'type': 'ribbon', 'month': 7, 'imageIndex': 1}, {'id': '21CD0F1D-CB67-47F5-B5A5-4BD6DF706562', 'type': 'junk', 'month': 4, 'imageIndex': 2}, {'id': 'F4F17D5F-55F1-4520-BEC3-85CB982ECC59', 'type': 'ribbon', 'month': 1, 'imageIndex': 1}, {'id': '1A69B441-110A-4249-9A57-E4F2C913EB6B', 'type': 'animal', 'month': 4, 'imageIndex': 0}, {'id': 'F242EFE1-72E1-4EF3-A151-AB7940343C49', 'type': 'junk', 'month': 8, 'imageIndex': 3}, {'id': '29D426DE-2EDC-4E84-A051-E92A2EFA0791', 'type': 'junk', 'month': 9, 'imageIndex': 2}], 'capturedCards': [], 'name': 'Player 1', 'money': 10000}, {'score': 0, 'goCount': 0, 'lastGoScore': 0, 'id': '74D59333-1CC4-4303-887D-BCB156AAEC51', 'hand': [{'id': '78D8CFB5-0CE3-46A2-97CB-1C3116897C66', 'imageIndex': 2, 'type': 'junk', 'month': 11}, {'id': '3BD3EA37-FFF0-4FBF-8643-08AE9AB5B865', 'imageIndex': 0, 'type': 'animal', 'month': 9}, {'id': '2F85D200-A8BC-45D1-B197-A3AA2EDD1298', 'imageIndex': 3, 'type': 'doubleJunk', 'month': 12}, {'id': 'CC8B43B5-F5EF-4161-B6A0-9F5BEC5F7C15', 'imageIndex': 3, 'type': 'junk', 'month': 5}, {'id': '9A452A26-43D2-4670-AEC9-E41784F590BA', 'imageIndex': 1, 'type': 'ribbon', 'month': 2}, {'id': '75181321-210F-47F5-B003-FFFEAE854BF5', 'imageIndex': 3, 'type': 'junk', 'month': 3}, {'id': '3A094727-D15A-403B-A035-0E49DEB5AA7D', 'imageIndex': 2, 'type': 'junk', 'month': 6}, {'id': 'DDFE6FDA-B2A1-41D2-A7CA-23A2BBC052F9', 'imageIndex': 0, 'type': 'bright', 'month': 8}, {'id': 'F2A942FF-FD09-4EEF-ACEF-B5BBC1EA402C', 'imageIndex': 0, 'type': 'bright', 'month': 1}, {'id': '5C99F83A-8C28-4EA3-BECE-62113C1644F5', 'imageIndex': 1, 'type': 'ribbon', 'month': 10}], 'capturedCards': [], 'money': 10000, 'name': 'Computer'}], 'gameState': 'ready', 'status': 'ok'}
+2026-02-20 18:07:34,764 - TestAgent - INFO - Scenario scenario_basic_launch_and_read completed successfully.
+2026-02-20 18:07:34,764 - TestAgent - INFO - Stopping the app...
+2026-02-20 18:07:34,765 - TestAgent - INFO - Running Scenario 2: scenario_setup_condition_and_act
+2026-02-20 18:07:34,765 - TestAgent - INFO - Starting app at ../../build/Build/Products/Debug/GoStopCLI
+2026-02-20 18:07:35,772 - TestAgent - INFO - Setting specific condition: {'rng_seed': 42}
+2026-02-20 18:07:35,772 - TestAgent - DEBUG - Sending command: {'action': 'set_condition', 'data': {'rng_seed': 42}}
+2026-02-20 18:07:35,774 - TestAgent - DEBUG - Received response: {'message': 'Condition set', 'status': 'ok'}
+2026-02-20 18:07:35,774 - TestAgent.Scenarios - INFO - Running condition setup and act scenario...
+2026-02-20 18:07:35,775 - TestAgent - INFO - Setting specific condition: {'mock_scenario': 'game_over', 'player1_score': 100, 'player2_score': 50}
+2026-02-20 18:07:35,775 - TestAgent - DEBUG - Sending command: {'action': 'set_condition', 'data': {'mock_scenario': 'game_over', 'player1_score': 100, 'player2_score': 50}}
+2026-02-20 18:07:35,775 - TestAgent - DEBUG - Received response: {'message': 'Condition set', 'status': 'ok'}
+2026-02-20 18:07:35,775 - TestAgent.Scenarios - INFO - Condition set result: {'message': 'Condition set', 'status': 'ok'}
+2026-02-20 18:07:35,775 - TestAgent - INFO - Requesting all information from app.
+2026-02-20 18:07:35,775 - TestAgent - DEBUG - Sending command: {'action': 'get_state'}
+2026-02-20 18:07:35,777 - TestAgent - DEBUG - Received response: {'gameState': 'ended', 'players': [{'score': 100, 'id': '8CB3B1ED-A4C1-4FE4-853E-B8E3E6DFC8D5', 'goCount': 0, 'lastGoScore': 0, 'hand': [{'id': 'C0000EF7-0136-4E9E-821C-3618FDE8FD79', 'month': 3, 'imageIndex': 1, 'type': 'ribbon'}, {'id': 'BC109D47-86AD-43D5-AF53-A91019331C97', 'month': 10, 'imageIndex': 2, 'type': 'junk'}, {'id': '51EC7CA5-D1EB-46F1-B855-C1E83B047FC6', 'month': 1, 'imageIndex': 3, 'type': 'junk'}, {'id': '7D330B4A-6AAB-45D8-A00F-8577F484984C', 'month': 3, 'imageIndex': 0, 'type': 'bright'}, {'id': '32E6B482-FCE5-4EC9-B120-07F160F8901D', 'month': 7, 'imageIndex': 1, 'type': 'ribbon'}, {'id': 'CF3807F7-E692-4187-AC08-9F7E7995463F', 'month': 4, 'imageIndex': 2, 'type': 'junk'}, {'id': '27A5C9E2-5AFA-4898-B502-73ED6AE57838', 'month': 1, 'imageIndex': 1, 'type': 'ribbon'}, {'id': '80FA22FA-8F5A-423A-81FC-8FB88ED5737F', 'month': 4, 'imageIndex': 0, 'type': 'animal'}, {'id': '1D3F6E85-8769-47FC-83EE-FC295E8D2767', 'month': 8, 'imageIndex': 3, 'type': 'junk'}, {'id': 'D491A1A2-BB2E-4D54-8F68-B8C112617DEB', 'month': 9, 'imageIndex': 2, 'type': 'junk'}], 'capturedCards': [], 'name': 'Player 1', 'money': 10000}, {'score': 50, 'goCount': 0, 'lastGoScore': 0, 'id': '8BEF9835-6C9E-4E86-9D04-12614303B1D0', 'hand': [{'id': '5FBD5D4B-46C2-45E6-A2D7-E87C50D99EDF', 'month': 11, 'type': 'junk', 'imageIndex': 2}, {'id': '0B68CE4F-E216-4AF7-9745-D1D5768FDA23', 'month': 9, 'type': 'animal', 'imageIndex': 0}, {'id': '0B113879-CF3A-442D-93D9-F9837A58A257', 'month': 12, 'type': 'doubleJunk', 'imageIndex': 3}, {'id': '7E1129AA-217B-48E8-A5F7-330054C12BC1', 'month': 5, 'type': 'junk', 'imageIndex': 3}, {'id': 'EB7B04C6-14E9-4DD8-B8C9-7A737F0F96CC', 'month': 2, 'type': 'ribbon', 'imageIndex': 1}, {'id': '23EC879F-25CF-4599-AF02-0933E11D9E54', 'month': 3, 'type': 'junk', 'imageIndex': 3}, {'id': '47ACBD70-1B0B-44F2-8C86-A62D472446DC', 'month': 6, 'type': 'junk', 'imageIndex': 2}, {'id': '123561A3-44F7-46FC-BC09-54FF1C0E5BC8', 'month': 8, 'type': 'bright', 'imageIndex': 0}, {'id': '1F698C16-DE7E-4D7F-BEA1-33DB49D80129', 'month': 1, 'type': 'bright', 'imageIndex': 0}, {'id': 'C23BAE9F-3AB0-448B-910F-BB11CB6E486F', 'month': 10, 'type': 'ribbon', 'imageIndex': 1}], 'capturedCards': [], 'name': 'Computer', 'money': 10000}], 'currentTurnIndex': 0, 'deckCount': 20, 'tableCards': [{'id': '2DAF9365-C6CA-4A64-8F1C-A4F84D8449BA', 'month': 9, 'imageIndex': 3, 'type': 'junk'}, {'id': 'A8393943-5186-4C4D-A673-FFB702434055', 'month': 4, 'imageIndex': 3, 'type': 'junk'}, {'id': '99BBB5C0-A0C5-44F8-94C8-F99193765C7C', 'month': 10, 'imageIndex': 0, 'type': 'animal'}, {'id': '82237833-96A7-4E9D-B33B-B7F2D0138F96', 'month': 12, 'imageIndex': 0, 'type': 'bright'}, {'id': 'D97ADA6C-3BC8-4564-A032-4A5544EDB2F5', 'month': 7, 'imageIndex': 3, 'type': 'junk'}, {'id': '99C4E181-832C-42BF-8DE4-855A5C2673C5', 'month': 5, 'imageIndex': 1, 'type': 'ribbon'}, {'id': '9C3A78C8-5BC6-4069-9014-706D91809A67', 'month': 11, 'imageIndex': 1, 'type': 'doubleJunk'}, {'id': 'A1FBF001-DEC5-4734-B955-F251AF869153', 'month': 3, 'imageIndex': 2, 'type': 'junk'}], 'status': 'ok'}
+2026-02-20 18:07:35,778 - TestAgent - INFO - Snapshot saved: artifacts/state_snapshots/snapshot_pre_action_1771578455777.json
+2026-02-20 18:07:35,778 - TestAgent - INFO - Sending user action: click_restart_button with data: None
+2026-02-20 18:07:35,778 - TestAgent - DEBUG - Sending command: {'action': 'click_restart_button'}
+2026-02-20 18:07:35,779 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_restart_button'}
+2026-02-20 18:07:35,779 - TestAgent - INFO - Requesting all information from app.
+2026-02-20 18:07:35,779 - TestAgent - DEBUG - Sending command: {'action': 'get_state'}
+2026-02-20 18:07:35,780 - TestAgent - DEBUG - Received response: {'gameState': 'ready', 'players': [{'score': 0, 'id': '1EC04CC2-6B8E-49DD-9E62-31E20ABD1A58', 'lastGoScore': 0, 'goCount': 0, 'hand': [{'id': 'F454C18D-5A6C-4014-B633-F3FD4C27B2AA', 'month': 3, 'type': 'ribbon', 'imageIndex': 1}, {'id': 'DBB4B6FA-3D0B-4FF8-AF8C-E94BB9E7BEFB', 'month': 10, 'type': 'junk', 'imageIndex': 2}, {'id': 'E62372BA-23D6-4596-84EE-5D98F1112E76', 'month': 1, 'type': 'junk', 'imageIndex': 3}, {'id': 'DA807ADD-3D04-4F5B-A788-29A2AC2962E0', 'month': 3, 'type': 'bright', 'imageIndex': 0}, {'id': '59E4B07F-8538-425C-88FF-C2D6FA1A5F1D', 'month': 7, 'type': 'ribbon', 'imageIndex': 1}, {'id': '7935F3E0-31AB-4264-B2D2-1ED30EBA2A1B', 'month': 4, 'type': 'junk', 'imageIndex': 2}, {'id': '5BCF26AA-3A6D-49A7-8DA8-3EADF3A44D7D', 'month': 1, 'type': 'ribbon', 'imageIndex': 1}, {'id': '119E8DE3-07D2-44D0-92F9-FFDA34A910A9', 'month': 4, 'type': 'animal', 'imageIndex': 0}, {'id': '221B94D7-9377-485E-98A3-2A2149E53B86', 'month': 8, 'type': 'junk', 'imageIndex': 3}, {'id': '1BCB27D4-0FD4-48DF-977A-DAC18D04EC04', 'month': 9, 'type': 'junk', 'imageIndex': 2}], 'capturedCards': [], 'money': 10000, 'name': 'Player 1'}, {'score': 0, 'goCount': 0, 'id': '82957386-1B26-4406-AA91-1F6C465A2CA5', 'lastGoScore': 0, 'hand': [{'id': '55AF79C7-D9DD-4F13-960F-6124D1A0B1DC', 'type': 'junk', 'imageIndex': 2, 'month': 11}, {'id': 'EE60408F-521A-4772-88E6-FA5293BCC5D8', 'type': 'animal', 'imageIndex': 0, 'month': 9}, {'id': '5DD24A52-AC30-4A8C-A0A1-082465A74220', 'type': 'doubleJunk', 'imageIndex': 3, 'month': 12}, {'id': 'C3EA46A1-DA17-4C7F-BE22-ABAD908454F5', 'type': 'junk', 'imageIndex': 3, 'month': 5}, {'id': '37274E8C-FC26-42E0-BB4E-8305D27BA220', 'type': 'ribbon', 'imageIndex': 1, 'month': 2}, {'id': '55FD3A55-86E9-4567-A103-ACFDB7F99AC0', 'type': 'junk', 'imageIndex': 3, 'month': 3}, {'id': '2C19A831-EB8B-4DEA-B984-D604105793B5', 'type': 'junk', 'imageIndex': 2, 'month': 6}, {'id': '62E4E948-ACE5-4A42-AF99-CC509B7A4FE1', 'type': 'bright', 'imageIndex': 0, 'month': 8}, {'id': 'B9C6D78E-AFA6-4B4A-9BFA-79FE7535A34D', 'type': 'bright', 'imageIndex': 0, 'month': 1}, {'id': '0CE8349B-1728-4DFC-B381-8124997F2C8A', 'type': 'ribbon', 'imageIndex': 1, 'month': 10}], 'capturedCards': [], 'money': 10000, 'name': 'Computer'}], 'currentTurnIndex': 0, 'deckCount': 20, 'tableCards': [{'id': '20A3EF39-C6BA-495D-AD6F-8946E2D355A4', 'imageIndex': 3, 'month': 9, 'type': 'junk'}, {'id': 'E7C3EB54-8211-40A4-A167-BB3F4644C72B', 'imageIndex': 3, 'month': 4, 'type': 'junk'}, {'id': 'B5816C07-4523-4FAB-8770-526CDE69503F', 'imageIndex': 0, 'type': 'animal', 'month': 10}, {'id': 'F900B019-EFA4-4ACF-AA16-EF7C08939E62', 'imageIndex': 0, 'type': 'bright', 'month': 12}, {'id': 'C930B62C-155F-4D8D-84EC-88E5D56F51E8', 'imageIndex': 3, 'type': 'junk', 'month': 7}, {'id': 'E6BDA0A6-64ED-464B-B901-DD02B098D235', 'imageIndex': 1, 'type': 'ribbon', 'month': 5}, {'id': '496E73A8-7262-4F91-BE6A-B4DFD66B397A', 'imageIndex': 1, 'type': 'doubleJunk', 'month': 11}, {'id': '1A2B202D-DED4-4815-867B-CD73480A4E40', 'imageIndex': 2, 'type': 'junk', 'month': 3}], 'status': 'ok'}
+2026-02-20 18:07:35,781 - TestAgent - INFO - Snapshot saved: artifacts/state_snapshots/snapshot_post_action_1771578455780.json
+2026-02-20 18:07:35,781 - TestAgent.Scenarios - INFO - Action result: {'status': 'action executed', 'action': 'click_restart_button'}
+2026-02-20 18:07:35,781 - TestAgent - INFO - Requesting all information from app.
+2026-02-20 18:07:35,781 - TestAgent - DEBUG - Sending command: {'action': 'get_state'}
+2026-02-20 18:07:35,782 - TestAgent - DEBUG - Received response: {'gameState': 'ready', 'players': [{'score': 0, 'id': '1EC04CC2-6B8E-49DD-9E62-31E20ABD1A58', 'goCount': 0, 'lastGoScore': 0, 'hand': [{'id': 'F454C18D-5A6C-4014-B633-F3FD4C27B2AA', 'type': 'ribbon', 'month': 3, 'imageIndex': 1}, {'id': 'DBB4B6FA-3D0B-4FF8-AF8C-E94BB9E7BEFB', 'type': 'junk', 'month': 10, 'imageIndex': 2}, {'id': 'E62372BA-23D6-4596-84EE-5D98F1112E76', 'type': 'junk', 'month': 1, 'imageIndex': 3}, {'id': 'DA807ADD-3D04-4F5B-A788-29A2AC2962E0', 'type': 'bright', 'month': 3, 'imageIndex': 0}, {'id': '59E4B07F-8538-425C-88FF-C2D6FA1A5F1D', 'type': 'ribbon', 'month': 7, 'imageIndex': 1}, {'id': '7935F3E0-31AB-4264-B2D2-1ED30EBA2A1B', 'type': 'junk', 'month': 4, 'imageIndex': 2}, {'id': '5BCF26AA-3A6D-49A7-8DA8-3EADF3A44D7D', 'type': 'ribbon', 'month': 1, 'imageIndex': 1}, {'id': '119E8DE3-07D2-44D0-92F9-FFDA34A910A9', 'type': 'animal', 'month': 4, 'imageIndex': 0}, {'id': '221B94D7-9377-485E-98A3-2A2149E53B86', 'type': 'junk', 'month': 8, 'imageIndex': 3}, {'id': '1BCB27D4-0FD4-48DF-977A-DAC18D04EC04', 'type': 'junk', 'month': 9, 'imageIndex': 2}], 'capturedCards': [], 'money': 10000, 'name': 'Player 1'}, {'score': 0, 'goCount': 0, 'id': '82957386-1B26-4406-AA91-1F6C465A2CA5', 'lastGoScore': 0, 'hand': [{'id': '55AF79C7-D9DD-4F13-960F-6124D1A0B1DC', 'type': 'junk', 'imageIndex': 2, 'month': 11}, {'id': 'EE60408F-521A-4772-88E6-FA5293BCC5D8', 'type': 'animal', 'imageIndex': 0, 'month': 9}, {'id': '5DD24A52-AC30-4A8C-A0A1-082465A74220', 'type': 'doubleJunk', 'imageIndex': 3, 'month': 12}, {'id': 'C3EA46A1-DA17-4C7F-BE22-ABAD908454F5', 'type': 'junk', 'imageIndex': 3, 'month': 5}, {'id': '37274E8C-FC26-42E0-BB4E-8305D27BA220', 'type': 'ribbon', 'imageIndex': 1, 'month': 2}, {'id': '55FD3A55-86E9-4567-A103-ACFDB7F99AC0', 'type': 'junk', 'imageIndex': 3, 'month': 3}, {'id': '2C19A831-EB8B-4DEA-B984-D604105793B5', 'type': 'junk', 'imageIndex': 2, 'month': 6}, {'id': '62E4E948-ACE5-4A42-AF99-CC509B7A4FE1', 'type': 'bright', 'imageIndex': 0, 'month': 8}, {'id': 'B9C6D78E-AFA6-4B4A-9BFA-79FE7535A34D', 'type': 'bright', 'imageIndex': 0, 'month': 1}, {'id': '0CE8349B-1728-4DFC-B381-8124997F2C8A', 'type': 'ribbon', 'imageIndex': 1, 'month': 10}], 'capturedCards': [], 'name': 'Computer', 'money': 10000}], 'tableCards': [{'id': '20A3EF39-C6BA-495D-AD6F-8946E2D355A4', 'type': 'junk', 'imageIndex': 3, 'month': 9}, {'id': 'E7C3EB54-8211-40A4-A167-BB3F4644C72B', 'type': 'junk', 'imageIndex': 3, 'month': 4}, {'id': 'B5816C07-4523-4FAB-8770-526CDE69503F', 'type': 'animal', 'imageIndex': 0, 'month': 10}, {'id': 'F900B019-EFA4-4ACF-AA16-EF7C08939E62', 'type': 'bright', 'imageIndex': 0, 'month': 12}, {'id': 'C930B62C-155F-4D8D-84EC-88E5D56F51E8', 'type': 'junk', 'imageIndex': 3, 'month': 7}, {'id': 'E6BDA0A6-64ED-464B-B901-DD02B098D235', 'type': 'ribbon', 'imageIndex': 1, 'month': 5}, {'id': '496E73A8-7262-4F91-BE6A-B4DFD66B397A', 'type': 'doubleJunk', 'imageIndex': 1, 'month': 11}, {'id': '1A2B202D-DED4-4815-867B-CD73480A4E40', 'type': 'junk', 'imageIndex': 2, 'month': 3}], 'deckCount': 20, 'currentTurnIndex': 0, 'status': 'ok'}
+2026-02-20 18:07:35,783 - TestAgent - INFO - Scenario scenario_setup_condition_and_act completed successfully.
+2026-02-20 18:07:35,783 - TestAgent - INFO - Stopping the app...
+2026-02-20 18:07:35,784 - TestAgent - INFO - Running Scenario 3: scenario_force_crash_capture
+2026-02-20 18:07:35,784 - TestAgent - INFO - Starting app at ../../build/Build/Products/Debug/GoStopCLI
+2026-02-20 18:07:36,790 - TestAgent - INFO - Setting specific condition: {'rng_seed': 42}
+2026-02-20 18:07:36,791 - TestAgent - DEBUG - Sending command: {'action': 'set_condition', 'data': {'rng_seed': 42}}
+2026-02-20 18:07:36,793 - TestAgent - DEBUG - Received response: {'message': 'Condition set', 'status': 'ok'}
+2026-02-20 18:07:36,793 - TestAgent.Scenarios - INFO - Running force crash scenario...
+2026-02-20 18:07:36,793 - TestAgent - INFO - Requesting all information from app.
+2026-02-20 18:07:36,793 - TestAgent - DEBUG - Sending command: {'action': 'get_state'}
+2026-02-20 18:07:36,795 - TestAgent - DEBUG - Received response: {'players': [{'score': 0, 'id': '86D02B36-89D1-4CBD-A42D-6FD3A28FF67F', 'lastGoScore': 0, 'goCount': 0, 'hand': [{'id': '9469609C-869B-4AC6-8458-505D2CD51E52', 'month': 3, 'imageIndex': 1, 'type': 'ribbon'}, {'id': '354B1517-B6C5-4C5B-8A84-BA3B6ECAB1FC', 'month': 10, 'imageIndex': 2, 'type': 'junk'}, {'id': 'FC783923-F133-4E2F-8F66-3CE6ACD6C806', 'month': 1, 'imageIndex': 3, 'type': 'junk'}, {'id': '8573CE15-D074-4395-8E05-9E74CAF3B5AD', 'month': 3, 'imageIndex': 0, 'type': 'bright'}, {'id': '2E9A2131-0EE8-4A3B-823B-EB63835BB07C', 'month': 7, 'imageIndex': 1, 'type': 'ribbon'}, {'id': 'C86841B7-7628-4C49-BDB6-1346BF122EEE', 'month': 4, 'imageIndex': 2, 'type': 'junk'}, {'id': '63DD1612-8C06-472E-A6C5-31684A172192', 'month': 1, 'imageIndex': 1, 'type': 'ribbon'}, {'id': '79ADA101-01E6-4789-BBBC-368D5048726F', 'month': 4, 'imageIndex': 0, 'type': 'animal'}, {'id': '836807BE-237A-4872-87D6-C1B86FAA186D', 'month': 8, 'imageIndex': 3, 'type': 'junk'}, {'id': '0A66C74E-91DE-427E-9BAC-7FB8695AC7A1', 'month': 9, 'imageIndex': 2, 'type': 'junk'}], 'capturedCards': [], 'name': 'Player 1', 'money': 10000}, {'score': 0, 'goCount': 0, 'lastGoScore': 0, 'id': '5E66DF8F-5C8C-4AF1-892E-379A4E1B8074', 'hand': [{'id': '4C944590-8FA1-42D2-BF42-F3BF59B2CC9B', 'type': 'junk', 'month': 11, 'imageIndex': 2}, {'id': '69288382-52C2-44F4-B02F-5200AFD0813C', 'type': 'animal', 'month': 9, 'imageIndex': 0}, {'id': 'AC4F76FE-E101-45AB-958F-E09B32AC1FE9', 'type': 'doubleJunk', 'month': 12, 'imageIndex': 3}, {'id': 'C589E05F-2F87-4FE8-997A-392D78D39A5B', 'type': 'junk', 'month': 5, 'imageIndex': 3}, {'id': '1460414C-99E1-4ECD-B5A1-FB84FD1339A7', 'type': 'ribbon', 'month': 2, 'imageIndex': 1}, {'id': '7EEF5E99-A8D9-4278-BA3C-457142A7C130', 'type': 'junk', 'month': 3, 'imageIndex': 3}, {'id': 'B6E0E044-82B2-439D-82CF-1FE9AA8D98FB', 'type': 'junk', 'month': 6, 'imageIndex': 2}, {'id': '5BAED206-9ADD-4777-8223-CB2676327CCE', 'type': 'bright', 'month': 8, 'imageIndex': 0}, {'id': '7F8E7D65-1530-4EC2-AA1B-D6AB5BE50743', 'type': 'bright', 'month': 1, 'imageIndex': 0}, {'id': '4D88F1C3-F196-428F-BC1B-B0F6FADB16BD', 'type': 'ribbon', 'month': 10, 'imageIndex': 1}], 'capturedCards': [], 'money': 10000, 'name': 'Computer'}], 'gameState': 'ready', 'status': 'ok', 'tableCards': [{'id': '5189F41C-B2ED-437E-905C-640AADA6EE25', 'month': 9, 'imageIndex': 3, 'type': 'junk'}, {'id': '6DDE1573-8E55-40FE-87B2-389AADD1AF7E', 'month': 4, 'imageIndex': 3, 'type': 'junk'}, {'id': 'C8DC86F0-C1C7-4D13-91E7-0A709DAE3993', 'month': 10, 'imageIndex': 0, 'type': 'animal'}, {'id': '8AC7B28E-0D3B-4C2A-BC95-4347CF6F523F', 'month': 12, 'imageIndex': 0, 'type': 'bright'}, {'id': '39D9A86F-565D-4D52-B7C7-84632B70C7C1', 'month': 7, 'imageIndex': 3, 'type': 'junk'}, {'id': '74FCD97D-02F2-48E9-8CB2-A9545BD8C382', 'month': 5, 'imageIndex': 1, 'type': 'ribbon'}, {'id': '3E28C64D-AE6D-476D-83E0-F2DC8FFC794B', 'month': 11, 'imageIndex': 1, 'type': 'doubleJunk'}, {'id': 'FD692112-C352-4A6E-A8B0-ACD230E25710', 'month': 3, 'imageIndex': 2, 'type': 'junk'}], 'currentTurnIndex': 0, 'deckCount': 20}
+2026-02-20 18:07:36,795 - TestAgent.Scenarios - INFO - Executing intentional crash action...
+2026-02-20 18:07:36,795 - TestAgent - INFO - Sending user action: invalid_action_triggering_crash with data: None
+2026-02-20 18:07:36,795 - TestAgent - DEBUG - Sending command: {'action': 'invalid_action_triggering_crash'}
+2026-02-20 18:07:36,798 - TestAgent.Scenarios - INFO - App crashed as expected for this scenario.
+2026-02-20 18:07:36,799 - TestAgent - INFO - Scenario scenario_force_crash_capture completed successfully.
+2026-02-20 18:07:36,799 - TestAgent - INFO - Stopping the app...
+2026-02-20 18:07:36,799 - TestAgent - INFO - Running Scenario 4: scenario_safety_limit_trigger
+2026-02-20 18:07:36,799 - TestAgent - INFO - Starting app at ../../build/Build/Products/Debug/GoStopCLI
+2026-02-20 18:07:37,807 - TestAgent - INFO - Setting specific condition: {'rng_seed': 42}
+2026-02-20 18:07:37,808 - TestAgent - DEBUG - Sending command: {'action': 'set_condition', 'data': {'rng_seed': 42}}
+2026-02-20 18:07:37,810 - TestAgent - DEBUG - Received response: {'status': 'ok', 'message': 'Condition set'}
+2026-02-20 18:07:37,810 - TestAgent.Scenarios - INFO - Running safety limit trigger scenario...
+2026-02-20 18:07:37,810 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,810 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,810 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:37,810 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,811 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,811 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,811 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,811 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,811 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,811 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,811 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,811 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,811 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,811 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,812 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,812 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,812 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,812 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:37,812 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,812 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,812 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:37,812 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,812 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,812 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:37,812 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,812 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,812 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,813 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,813 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,813 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:37,813 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,813 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,813 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:37,813 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,813 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,813 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:37,813 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,813 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,813 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:37,813 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,813 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,813 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:37,813 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,813 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,813 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:37,814 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,814 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,814 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:37,814 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,814 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,814 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,814 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,814 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,814 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,814 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,814 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,814 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,814 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,814 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,814 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,814 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,814 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,814 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,814 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,814 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,815 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,815 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,815 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,815 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,815 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,815 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,815 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:37,815 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,815 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,815 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:37,815 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,815 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,815 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:37,815 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,815 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,816 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:37,816 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,816 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,816 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:37,816 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,816 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,816 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:37,816 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,816 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,816 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,816 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,816 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,817 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,817 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,817 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,817 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,817 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,817 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,817 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,817 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,817 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,817 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:37,817 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,817 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,817 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,817 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,817 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,818 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:37,818 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,818 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,818 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:37,818 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,818 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,818 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:37,818 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,818 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,818 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:37,818 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,818 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,818 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:37,818 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,818 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,818 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:37,818 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,819 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,819 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:37,819 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,819 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,819 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:37,819 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,819 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,819 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:37,819 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,819 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,819 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:37,819 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,819 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,819 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:37,819 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,819 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,820 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:37,820 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,820 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,820 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:37,820 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,820 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,820 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,820 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,820 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,820 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,820 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,820 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,820 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,820 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,820 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,820 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,820 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,820 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,821 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,821 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,821 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,821 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,821 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,821 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,821 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:37,821 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,821 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,821 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,821 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,821 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,821 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:37,821 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,821 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,821 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:37,821 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,821 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,821 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,821 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,822 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,822 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:37,822 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,822 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,822 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:37,822 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,822 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,822 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,822 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,822 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,822 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,822 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,822 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,822 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,822 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,822 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,822 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,822 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,822 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,822 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,822 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,822 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,823 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,823 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,823 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,823 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,823 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,823 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,823 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,823 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,823 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,823 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,823 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,823 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,823 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,823 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,823 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,823 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,823 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,823 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,823 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,823 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,823 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,824 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,824 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,824 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,824 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,824 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,824 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,824 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,824 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,824 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,824 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,824 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,824 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,824 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,824 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,824 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,824 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,824 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,824 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,824 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,824 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,824 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,824 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,824 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,824 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,825 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,825 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,825 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,825 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:37,825 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,825 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,825 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:37,825 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,825 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,825 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:37,825 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,825 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,825 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:37,825 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,825 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,825 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:37,825 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,825 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,825 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:37,825 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,825 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,825 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,825 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,826 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,826 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,826 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,826 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,826 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:37,826 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,826 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,826 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:37,827 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,827 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,827 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,827 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,827 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,827 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,827 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,827 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,827 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,827 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,827 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,827 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,827 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,828 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,828 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,828 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,828 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,828 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,828 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,828 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,828 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,828 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:37,828 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:37,828 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:37,828 - TestAgent.Scenarios - INFO - Intentional safety limit reached. Validating graceful abort...
+2026-02-20 18:07:37,828 - TestAgent - INFO - Requesting all information from app.
+2026-02-20 18:07:37,828 - TestAgent - DEBUG - Sending command: {'action': 'get_state'}
+2026-02-20 18:07:37,830 - TestAgent - DEBUG - Received response: {'status': 'ok', 'tableCards': [{'id': 'AC9BA794-1669-4EF8-BBED-9CB914B25A6F', 'month': 9, 'type': 'junk', 'imageIndex': 3}, {'id': '1ED1C3AB-EB5C-4DCD-80FB-D1D665A208B3', 'month': 4, 'type': 'junk', 'imageIndex': 3}, {'id': '51E12F6C-7800-4633-A957-CC1A0E80EEAA', 'month': 10, 'type': 'animal', 'imageIndex': 0}, {'id': '018A9625-D637-4207-9A4E-F6AD94AC4CDF', 'month': 12, 'type': 'bright', 'imageIndex': 0}, {'id': '91BD0350-2DCA-43CA-BADE-35DD25834764', 'month': 7, 'type': 'junk', 'imageIndex': 3}, {'id': '1F1787E6-F780-454A-8E6A-F5BF3D9D458E', 'month': 5, 'type': 'ribbon', 'imageIndex': 1}, {'id': 'E662EDDE-CF01-4CBF-BBB6-135CECC77BB1', 'month': 11, 'type': 'doubleJunk', 'imageIndex': 1}, {'id': '6D0F1D4B-3AAB-4FA3-B9B5-7AC98913B928', 'month': 3, 'type': 'junk', 'imageIndex': 2}], 'currentTurnIndex': 0, 'players': [{'score': 0, 'goCount': 0, 'lastGoScore': 0, 'id': '88DE86EB-756C-4673-A241-7B708F6E3931', 'hand': [{'id': 'F82D9E98-E1B6-477B-8025-8149F769C260', 'type': 'ribbon', 'imageIndex': 1, 'month': 3}, {'id': 'E64B022C-C493-492B-85B3-B2AE0F5AE4E6', 'type': 'junk', 'imageIndex': 2, 'month': 10}, {'id': '56397484-DE9B-4479-A901-C8EA6B7A9E69', 'type': 'junk', 'imageIndex': 3, 'month': 1}, {'id': 'EFE9512E-B24A-4D8B-8DD9-17F7A25F2940', 'type': 'bright', 'imageIndex': 0, 'month': 3}, {'id': '2BEB7166-474B-4CC1-8F9B-1135124964CD', 'type': 'ribbon', 'imageIndex': 1, 'month': 7}, {'id': 'CFDB175D-684E-4612-8039-2CB96203E5C5', 'type': 'junk', 'imageIndex': 2, 'month': 4}, {'id': '633D429A-DB27-4AE4-AACE-8393547EB45E', 'type': 'ribbon', 'imageIndex': 1, 'month': 1}, {'id': '055B361A-8715-4267-A5F0-1998464805C0', 'type': 'animal', 'imageIndex': 0, 'month': 4}, {'id': '2B11D505-B724-4001-BDA4-65A4D5244056', 'type': 'junk', 'imageIndex': 3, 'month': 8}, {'id': 'BA951B29-7182-415A-9FFA-704263C61CD1', 'type': 'junk', 'imageIndex': 2, 'month': 9}], 'capturedCards': [], 'money': 10000, 'name': 'Player 1'}, {'score': 0, 'goCount': 0, 'lastGoScore': 0, 'id': '5F5A5C69-A798-42B3-B3CE-6583E815E9F3', 'hand': [{'id': 'BCAD52E6-BBDA-4229-B416-04A2EC539A3B', 'month': 11, 'type': 'junk', 'imageIndex': 2}, {'id': '5A666121-B6CE-4F5A-93EA-33BB9CC12DDB', 'month': 9, 'type': 'animal', 'imageIndex': 0}, {'id': '105EDF3A-351D-43F7-B61B-A2E282D5D96C', 'month': 12, 'type': 'doubleJunk', 'imageIndex': 3}, {'id': '199B891F-1406-4572-9D03-8AF7059A3AE4', 'month': 5, 'type': 'junk', 'imageIndex': 3}, {'id': '78FC77F6-C25A-47C1-A6AF-0D35AC9C3CBC', 'month': 2, 'type': 'ribbon', 'imageIndex': 1}, {'id': 'EC220482-FF62-4D99-B680-8E26FB384FCB', 'month': 3, 'type': 'junk', 'imageIndex': 3}, {'id': 'A343FFC7-6779-4A2C-906F-8C60678F2D9D', 'month': 6, 'type': 'junk', 'imageIndex': 2}, {'id': '09B6E9EC-FE33-424D-9B95-7B7B1024A3FF', 'month': 8, 'type': 'bright', 'imageIndex': 0}, {'id': '5AA64546-5419-4AD3-9EA8-01F3FE3B8E22', 'month': 1, 'type': 'bright', 'imageIndex': 0}, {'id': '07855588-1FC0-4343-8BE0-0BCC3FDFBDED', 'month': 10, 'type': 'ribbon', 'imageIndex': 1}], 'capturedCards': [], 'money': 10000, 'name': 'Computer'}], 'deckCount': 20, 'gameState': 'ready'}
+2026-02-20 18:07:37,830 - TestAgent - INFO - Snapshot saved: artifacts/state_snapshots/snapshot_safety_abort_1771578457830.json
+2026-02-20 18:07:37,831 - TestAgent.Scenarios - INFO - Verified safety limit of 100 steps.
+2026-02-20 18:07:37,831 - TestAgent - INFO - Scenario scenario_safety_limit_trigger completed successfully.
+2026-02-20 18:07:37,831 - TestAgent - INFO - Stopping the app...
+2026-02-20 18:07:37,832 - TestAgent - INFO - --- Finished Iteration 2/3 ---
+2026-02-20 18:07:37,832 - TestAgent - INFO - --- Starting Iteration 3/3 ---
+2026-02-20 18:07:37,832 - TestAgent - INFO - Running Scenario 1: scenario_basic_launch_and_read
+2026-02-20 18:07:37,832 - TestAgent - INFO - Starting app at ../../build/Build/Products/Debug/GoStopCLI
+2026-02-20 18:07:38,840 - TestAgent - INFO - Setting specific condition: {'rng_seed': 42}
+2026-02-20 18:07:38,841 - TestAgent - DEBUG - Sending command: {'action': 'set_condition', 'data': {'rng_seed': 42}}
+2026-02-20 18:07:38,842 - TestAgent - DEBUG - Received response: {'message': 'Condition set', 'status': 'ok'}
+2026-02-20 18:07:38,842 - TestAgent.Scenarios - INFO - Running basic launch and read...
+2026-02-20 18:07:38,842 - TestAgent - INFO - Requesting all information from app.
+2026-02-20 18:07:38,843 - TestAgent - DEBUG - Sending command: {'action': 'get_state'}
+2026-02-20 18:07:38,844 - TestAgent - DEBUG - Received response: {'players': [{'score': 0, 'id': 'F34FC4FD-22E4-432A-A7A3-156489812AE7', 'lastGoScore': 0, 'goCount': 0, 'hand': [{'id': '45CCFE04-E1CC-4E32-A9DC-6569C70953BF', 'imageIndex': 1, 'type': 'ribbon', 'month': 3}, {'id': 'C413CF1F-EB25-48F0-8302-AF37A30933D5', 'imageIndex': 2, 'type': 'junk', 'month': 10}, {'id': 'B02FF2D7-E4D7-40B4-B55B-4B0BE7C21136', 'imageIndex': 3, 'type': 'junk', 'month': 1}, {'id': '4120AF1C-8B61-468E-90F0-714EE0F91E32', 'imageIndex': 0, 'type': 'bright', 'month': 3}, {'id': '87235113-19E3-42D3-A079-76D958A04ABD', 'imageIndex': 1, 'type': 'ribbon', 'month': 7}, {'id': '58D53BBC-B0AB-4B99-8594-03F4BBD2F3C3', 'imageIndex': 2, 'type': 'junk', 'month': 4}, {'id': '99D58181-BA75-4EF9-869B-838D4EF66A45', 'imageIndex': 1, 'type': 'ribbon', 'month': 1}, {'id': '82CCCE7B-C221-469F-924D-7693610AF6D5', 'imageIndex': 0, 'type': 'animal', 'month': 4}, {'id': '36E59E29-C92E-48D6-AC73-32248ADC042D', 'imageIndex': 3, 'type': 'junk', 'month': 8}, {'id': 'F177F7E5-D9CA-41C1-B1FB-E5D9584315FB', 'imageIndex': 2, 'type': 'junk', 'month': 9}], 'capturedCards': [], 'name': 'Player 1', 'money': 10000}, {'score': 0, 'goCount': 0, 'lastGoScore': 0, 'id': '53B96133-FE3E-4D02-B1F4-C0533E0BE776', 'hand': [{'id': '05C25508-6A30-4333-BDDD-8CB7CFE76F66', 'type': 'junk', 'month': 11, 'imageIndex': 2}, {'id': '86BECBF0-216A-4FA6-80DD-1B15BF4951F2', 'type': 'animal', 'month': 9, 'imageIndex': 0}, {'id': '148E7B6C-D42B-432E-873B-45329FB63250', 'type': 'doubleJunk', 'month': 12, 'imageIndex': 3}, {'id': '0A64AB7A-75F3-48D2-95DA-60CC3E11A5CA', 'type': 'junk', 'month': 5, 'imageIndex': 3}, {'id': '11FE5EDB-7083-4EAB-8CC6-30DC3132F239', 'type': 'ribbon', 'month': 2, 'imageIndex': 1}, {'id': '47C9B020-996E-4B8F-9434-1B361FFE09E5', 'type': 'junk', 'month': 3, 'imageIndex': 3}, {'id': 'A9B902AA-8D87-4FAA-977B-431F68F91DE5', 'type': 'junk', 'month': 6, 'imageIndex': 2}, {'id': '31D56683-56C5-4966-BBE3-0778F46E59CF', 'type': 'bright', 'month': 8, 'imageIndex': 0}, {'id': 'F6D27B0C-D16A-4438-9909-625341AAA261', 'type': 'bright', 'month': 1, 'imageIndex': 0}, {'id': '97C4FFB5-C164-4AEB-881E-51A1ABBDE4DF', 'type': 'ribbon', 'month': 10, 'imageIndex': 1}], 'capturedCards': [], 'money': 10000, 'name': 'Computer'}], 'tableCards': [{'id': 'BC69FAC5-D889-4C83-9F20-E1506E2B06DD', 'imageIndex': 3, 'type': 'junk', 'month': 9}, {'id': '5998601F-96B0-41FD-8DC3-2A50C646B4B5', 'imageIndex': 3, 'type': 'junk', 'month': 4}, {'id': 'CCB7BD3F-3DAB-42E7-84DB-1C66D4FD97EA', 'imageIndex': 0, 'type': 'animal', 'month': 10}, {'id': '66F8067C-0929-4D38-968A-526B8A8B2A6D', 'imageIndex': 0, 'type': 'bright', 'month': 12}, {'id': '18B86D9F-82D9-4939-B35B-DACA08C3CFD2', 'imageIndex': 3, 'type': 'junk', 'month': 7}, {'id': '9FB67EFA-6A0F-4C45-9750-9DB1E2A819D9', 'imageIndex': 1, 'type': 'ribbon', 'month': 5}, {'id': '9A1413A7-C271-4FF5-AA2E-5FF028E1E430', 'imageIndex': 1, 'type': 'doubleJunk', 'month': 11}, {'id': 'C05A685C-E333-4A4D-9BA1-216C58AFBF8E', 'imageIndex': 2, 'type': 'junk', 'month': 3}], 'currentTurnIndex': 0, 'status': 'ok', 'gameState': 'ready', 'deckCount': 20}
+2026-02-20 18:07:38,844 - TestAgent.Scenarios - INFO - State successfully validated: {'players': [{'score': 0, 'id': 'F34FC4FD-22E4-432A-A7A3-156489812AE7', 'lastGoScore': 0, 'goCount': 0, 'hand': [{'id': '45CCFE04-E1CC-4E32-A9DC-6569C70953BF', 'imageIndex': 1, 'type': 'ribbon', 'month': 3}, {'id': 'C413CF1F-EB25-48F0-8302-AF37A30933D5', 'imageIndex': 2, 'type': 'junk', 'month': 10}, {'id': 'B02FF2D7-E4D7-40B4-B55B-4B0BE7C21136', 'imageIndex': 3, 'type': 'junk', 'month': 1}, {'id': '4120AF1C-8B61-468E-90F0-714EE0F91E32', 'imageIndex': 0, 'type': 'bright', 'month': 3}, {'id': '87235113-19E3-42D3-A079-76D958A04ABD', 'imageIndex': 1, 'type': 'ribbon', 'month': 7}, {'id': '58D53BBC-B0AB-4B99-8594-03F4BBD2F3C3', 'imageIndex': 2, 'type': 'junk', 'month': 4}, {'id': '99D58181-BA75-4EF9-869B-838D4EF66A45', 'imageIndex': 1, 'type': 'ribbon', 'month': 1}, {'id': '82CCCE7B-C221-469F-924D-7693610AF6D5', 'imageIndex': 0, 'type': 'animal', 'month': 4}, {'id': '36E59E29-C92E-48D6-AC73-32248ADC042D', 'imageIndex': 3, 'type': 'junk', 'month': 8}, {'id': 'F177F7E5-D9CA-41C1-B1FB-E5D9584315FB', 'imageIndex': 2, 'type': 'junk', 'month': 9}], 'capturedCards': [], 'name': 'Player 1', 'money': 10000}, {'score': 0, 'goCount': 0, 'lastGoScore': 0, 'id': '53B96133-FE3E-4D02-B1F4-C0533E0BE776', 'hand': [{'id': '05C25508-6A30-4333-BDDD-8CB7CFE76F66', 'type': 'junk', 'month': 11, 'imageIndex': 2}, {'id': '86BECBF0-216A-4FA6-80DD-1B15BF4951F2', 'type': 'animal', 'month': 9, 'imageIndex': 0}, {'id': '148E7B6C-D42B-432E-873B-45329FB63250', 'type': 'doubleJunk', 'month': 12, 'imageIndex': 3}, {'id': '0A64AB7A-75F3-48D2-95DA-60CC3E11A5CA', 'type': 'junk', 'month': 5, 'imageIndex': 3}, {'id': '11FE5EDB-7083-4EAB-8CC6-30DC3132F239', 'type': 'ribbon', 'month': 2, 'imageIndex': 1}, {'id': '47C9B020-996E-4B8F-9434-1B361FFE09E5', 'type': 'junk', 'month': 3, 'imageIndex': 3}, {'id': 'A9B902AA-8D87-4FAA-977B-431F68F91DE5', 'type': 'junk', 'month': 6, 'imageIndex': 2}, {'id': '31D56683-56C5-4966-BBE3-0778F46E59CF', 'type': 'bright', 'month': 8, 'imageIndex': 0}, {'id': 'F6D27B0C-D16A-4438-9909-625341AAA261', 'type': 'bright', 'month': 1, 'imageIndex': 0}, {'id': '97C4FFB5-C164-4AEB-881E-51A1ABBDE4DF', 'type': 'ribbon', 'month': 10, 'imageIndex': 1}], 'capturedCards': [], 'money': 10000, 'name': 'Computer'}], 'tableCards': [{'id': 'BC69FAC5-D889-4C83-9F20-E1506E2B06DD', 'imageIndex': 3, 'type': 'junk', 'month': 9}, {'id': '5998601F-96B0-41FD-8DC3-2A50C646B4B5', 'imageIndex': 3, 'type': 'junk', 'month': 4}, {'id': 'CCB7BD3F-3DAB-42E7-84DB-1C66D4FD97EA', 'imageIndex': 0, 'type': 'animal', 'month': 10}, {'id': '66F8067C-0929-4D38-968A-526B8A8B2A6D', 'imageIndex': 0, 'type': 'bright', 'month': 12}, {'id': '18B86D9F-82D9-4939-B35B-DACA08C3CFD2', 'imageIndex': 3, 'type': 'junk', 'month': 7}, {'id': '9FB67EFA-6A0F-4C45-9750-9DB1E2A819D9', 'imageIndex': 1, 'type': 'ribbon', 'month': 5}, {'id': '9A1413A7-C271-4FF5-AA2E-5FF028E1E430', 'imageIndex': 1, 'type': 'doubleJunk', 'month': 11}, {'id': 'C05A685C-E333-4A4D-9BA1-216C58AFBF8E', 'imageIndex': 2, 'type': 'junk', 'month': 3}], 'currentTurnIndex': 0, 'status': 'ok', 'gameState': 'ready', 'deckCount': 20}
+2026-02-20 18:07:38,845 - TestAgent - INFO - Scenario scenario_basic_launch_and_read completed successfully.
+2026-02-20 18:07:38,845 - TestAgent - INFO - Stopping the app...
+2026-02-20 18:07:38,846 - TestAgent - INFO - Running Scenario 2: scenario_setup_condition_and_act
+2026-02-20 18:07:38,846 - TestAgent - INFO - Starting app at ../../build/Build/Products/Debug/GoStopCLI
+2026-02-20 18:07:39,854 - TestAgent - INFO - Setting specific condition: {'rng_seed': 42}
+2026-02-20 18:07:39,855 - TestAgent - DEBUG - Sending command: {'action': 'set_condition', 'data': {'rng_seed': 42}}
+2026-02-20 18:07:39,857 - TestAgent - DEBUG - Received response: {'status': 'ok', 'message': 'Condition set'}
+2026-02-20 18:07:39,857 - TestAgent.Scenarios - INFO - Running condition setup and act scenario...
+2026-02-20 18:07:39,858 - TestAgent - INFO - Setting specific condition: {'mock_scenario': 'game_over', 'player1_score': 100, 'player2_score': 50}
+2026-02-20 18:07:39,858 - TestAgent - DEBUG - Sending command: {'action': 'set_condition', 'data': {'mock_scenario': 'game_over', 'player1_score': 100, 'player2_score': 50}}
+2026-02-20 18:07:39,858 - TestAgent - DEBUG - Received response: {'status': 'ok', 'message': 'Condition set'}
+2026-02-20 18:07:39,858 - TestAgent.Scenarios - INFO - Condition set result: {'status': 'ok', 'message': 'Condition set'}
+2026-02-20 18:07:39,858 - TestAgent - INFO - Requesting all information from app.
+2026-02-20 18:07:39,858 - TestAgent - DEBUG - Sending command: {'action': 'get_state'}
+2026-02-20 18:07:39,860 - TestAgent - DEBUG - Received response: {'gameState': 'ended', 'status': 'ok', 'tableCards': [{'id': '4E18E038-86C0-430B-96F7-D2B1B5902E9D', 'month': 9, 'imageIndex': 3, 'type': 'junk'}, {'id': 'A41BD8DE-88D1-4B7C-9A13-926C566F2F6F', 'month': 4, 'imageIndex': 3, 'type': 'junk'}, {'id': '0448A747-9AFD-457A-8F02-CE95C160A9FC', 'month': 10, 'imageIndex': 0, 'type': 'animal'}, {'id': '0459F778-EB7D-4096-9AEF-B1C0F014DBEA', 'month': 12, 'imageIndex': 0, 'type': 'bright'}, {'id': '5A18C045-F49A-41E8-950F-EC26373115BC', 'month': 7, 'imageIndex': 3, 'type': 'junk'}, {'id': '37B1AAB2-C74E-44DF-AA28-6D758F83C32A', 'month': 5, 'imageIndex': 1, 'type': 'ribbon'}, {'id': '894A746C-357E-4E4A-A696-5527565D8F01', 'month': 11, 'imageIndex': 1, 'type': 'doubleJunk'}, {'id': '81C35423-2238-42E9-8E5A-0507197E88C3', 'month': 3, 'imageIndex': 2, 'type': 'junk'}], 'currentTurnIndex': 0, 'players': [{'score': 100, 'goCount': 0, 'id': '6F8857A8-9C11-4490-8439-13D2778DA3E9', 'lastGoScore': 0, 'hand': [{'id': '21E3A858-929A-4BAD-8A93-EBC4B39B401B', 'month': 3, 'type': 'ribbon', 'imageIndex': 1}, {'id': '668AB887-100D-40ED-8EC2-AF464F631905', 'month': 10, 'type': 'junk', 'imageIndex': 2}, {'id': 'B9B72588-0117-4BA4-A9F9-F42EC63F5971', 'month': 1, 'type': 'junk', 'imageIndex': 3}, {'id': '85F1AA70-81F8-49C2-8E54-E2CD7FDFB4D2', 'month': 3, 'type': 'bright', 'imageIndex': 0}, {'id': '71EF2F78-C6E7-40EF-AC6C-975D5C125CC3', 'month': 7, 'type': 'ribbon', 'imageIndex': 1}, {'id': '1E484C44-5F37-43FA-BB82-47048C75B291', 'month': 4, 'type': 'junk', 'imageIndex': 2}, {'id': '4877367D-B0C5-43A2-9EE8-CC0588A970B0', 'month': 1, 'type': 'ribbon', 'imageIndex': 1}, {'id': 'AEB3097B-6EC1-4D4B-A373-98801C42BC17', 'month': 4, 'type': 'animal', 'imageIndex': 0}, {'id': '706190AE-8A80-44F2-A4A7-3423BF7A0579', 'month': 8, 'type': 'junk', 'imageIndex': 3}, {'id': '849F747D-18D8-436F-8F18-786390708943', 'month': 9, 'type': 'junk', 'imageIndex': 2}], 'capturedCards': [], 'name': 'Player 1', 'money': 10000}, {'score': 50, 'goCount': 0, 'lastGoScore': 0, 'id': 'A9F0051D-F86E-46A2-861A-AF2DEFA3D873', 'hand': [{'id': 'E237D411-FCA6-46D6-AFE0-2C6B3758F924', 'type': 'junk', 'month': 11, 'imageIndex': 2}, {'id': '9C36A89C-C4DB-478B-A136-96D976C71D18', 'month': 9, 'type': 'animal', 'imageIndex': 0}, {'id': '5799DF0B-2804-4334-871A-6A18499E6CAF', 'month': 12, 'type': 'doubleJunk', 'imageIndex': 3}, {'id': 'CE536A94-4F5F-4756-A2EE-75DDCC51A72A', 'month': 5, 'type': 'junk', 'imageIndex': 3}, {'id': 'FE16036C-220D-4B9C-9F71-E0B4917CB274', 'month': 2, 'type': 'ribbon', 'imageIndex': 1}, {'id': '87883F1F-BCBF-4790-9923-37799C0010C3', 'month': 3, 'type': 'junk', 'imageIndex': 3}, {'id': 'FB064AC9-7DB8-4513-9B2F-41AEFF5293E5', 'month': 6, 'type': 'junk', 'imageIndex': 2}, {'id': 'A8FF68F8-D3B3-4E70-A278-79878A73670A', 'month': 8, 'type': 'bright', 'imageIndex': 0}, {'id': 'A051EF5C-0351-48B5-AAAE-AD2177196C63', 'month': 1, 'type': 'bright', 'imageIndex': 0}, {'id': '2C0F52F9-157B-40A4-A12A-D30198676A95', 'month': 10, 'type': 'ribbon', 'imageIndex': 1}], 'capturedCards': [], 'name': 'Computer', 'money': 10000}], 'deckCount': 20}
+2026-02-20 18:07:39,861 - TestAgent - INFO - Snapshot saved: artifacts/state_snapshots/snapshot_pre_action_1771578459860.json
+2026-02-20 18:07:39,861 - TestAgent - INFO - Sending user action: click_restart_button with data: None
+2026-02-20 18:07:39,861 - TestAgent - DEBUG - Sending command: {'action': 'click_restart_button'}
+2026-02-20 18:07:39,862 - TestAgent - DEBUG - Received response: {'action': 'click_restart_button', 'status': 'action executed'}
+2026-02-20 18:07:39,862 - TestAgent - INFO - Requesting all information from app.
+2026-02-20 18:07:39,862 - TestAgent - DEBUG - Sending command: {'action': 'get_state'}
+2026-02-20 18:07:39,862 - TestAgent - DEBUG - Received response: {'gameState': 'ready', 'currentTurnIndex': 0, 'status': 'ok', 'deckCount': 20, 'players': [{'score': 0, 'goCount': 0, 'lastGoScore': 0, 'id': '1C5D733D-B3AE-47ED-A478-D56D7119DF50', 'hand': [{'id': '279465F8-1B33-4D9B-8C87-32D03BD6A15B', 'month': 3, 'imageIndex': 1, 'type': 'ribbon'}, {'id': '5480B91B-BF17-4944-9EFB-97D325FDB32A', 'month': 10, 'imageIndex': 2, 'type': 'junk'}, {'id': 'D8521A40-28A1-4B92-A0B9-3CEAB86EB605', 'month': 1, 'imageIndex': 3, 'type': 'junk'}, {'id': '61CB5510-3EF7-49E7-B71E-D4CF87DD9BF3', 'month': 3, 'imageIndex': 0, 'type': 'bright'}, {'id': 'FAA1B0A4-14FF-4863-8886-EF8AC54F27CF', 'month': 7, 'imageIndex': 1, 'type': 'ribbon'}, {'id': '11AFE4ED-704F-4667-9BE7-15F1DDBC8885', 'month': 4, 'imageIndex': 2, 'type': 'junk'}, {'id': '6DCE0B75-4831-4D93-84E6-8D2C5A67226A', 'month': 1, 'imageIndex': 1, 'type': 'ribbon'}, {'id': '6FF8A026-C0CD-435C-9533-59DA70BCB466', 'month': 4, 'imageIndex': 0, 'type': 'animal'}, {'id': '312772B9-A5E6-4F9F-8E64-BD320A227E0D', 'month': 8, 'imageIndex': 3, 'type': 'junk'}, {'id': 'B931296D-7EE7-4F20-83AE-5760C6FFED30', 'month': 9, 'imageIndex': 2, 'type': 'junk'}], 'capturedCards': [], 'name': 'Player 1', 'money': 10000}, {'score': 0, 'id': '8D4A5977-90A1-49BD-9934-6C4E64E34364', 'lastGoScore': 0, 'goCount': 0, 'hand': [{'id': 'B68F89B9-FD46-4F28-8A25-0D7B75C2BF29', 'type': 'junk', 'imageIndex': 2, 'month': 11}, {'id': '736F7A95-A81B-499A-8B31-BF5D3ABCB8D6', 'type': 'animal', 'imageIndex': 0, 'month': 9}, {'id': 'EF38F0DA-BA1E-4D03-ADA7-C2DF4F7655D5', 'type': 'doubleJunk', 'imageIndex': 3, 'month': 12}, {'id': '375A3AD3-F793-497A-8E83-1DC2ED1B0FB6', 'type': 'junk', 'imageIndex': 3, 'month': 5}, {'id': '7DC65F4C-4D11-4D7F-926C-737219A2CFA2', 'type': 'ribbon', 'imageIndex': 1, 'month': 2}, {'id': '3458F9A5-6857-4FAF-B8B0-D14C80F2145D', 'type': 'junk', 'imageIndex': 3, 'month': 3}, {'id': 'F63F741D-E4CE-48E0-AA4A-8699DA324E91', 'type': 'junk', 'imageIndex': 2, 'month': 6}, {'id': '6E501069-F323-4124-9778-36746A2AC1C2', 'type': 'bright', 'imageIndex': 0, 'month': 8}, {'id': '1F0909D5-4C7F-4FFE-9619-43210301D14F', 'type': 'bright', 'imageIndex': 0, 'month': 1}, {'id': '3C130BB1-F714-499F-9302-1522150A3203', 'type': 'ribbon', 'imageIndex': 1, 'month': 10}], 'capturedCards': [], 'name': 'Computer', 'money': 10000}], 'tableCards': [{'id': '71FABDA5-C1E9-4A9D-9E57-E6697F993041', 'month': 9, 'type': 'junk', 'imageIndex': 3}, {'id': 'CA96C4A8-7DAC-443E-B080-2252D81FAA07', 'month': 4, 'type': 'junk', 'imageIndex': 3}, {'id': 'CE3C9A60-C432-4A2B-9CA0-499AEFEA286F', 'month': 10, 'type': 'animal', 'imageIndex': 0}, {'id': 'B4B3DE98-D046-43C3-951D-071C81D31F39', 'month': 12, 'type': 'bright', 'imageIndex': 0}, {'id': 'AD6EFDB9-F0BA-42E9-AEAC-3C3B94245C24', 'month': 7, 'type': 'junk', 'imageIndex': 3}, {'id': '5F08AB27-7AE8-4E61-9843-133A8F818010', 'month': 5, 'type': 'ribbon', 'imageIndex': 1}, {'id': '107635C1-5484-499A-B532-DF9C1E074227', 'month': 11, 'type': 'doubleJunk', 'imageIndex': 1}, {'id': 'AC67B7DD-679F-4D4B-BDEA-ABDED7566BF7', 'month': 3, 'type': 'junk', 'imageIndex': 2}]}
+2026-02-20 18:07:39,863 - TestAgent - INFO - Snapshot saved: artifacts/state_snapshots/snapshot_post_action_1771578459862.json
+2026-02-20 18:07:39,863 - TestAgent.Scenarios - INFO - Action result: {'action': 'click_restart_button', 'status': 'action executed'}
+2026-02-20 18:07:39,863 - TestAgent - INFO - Requesting all information from app.
+2026-02-20 18:07:39,863 - TestAgent - DEBUG - Sending command: {'action': 'get_state'}
+2026-02-20 18:07:39,864 - TestAgent - DEBUG - Received response: {'status': 'ok', 'tableCards': [{'id': '71FABDA5-C1E9-4A9D-9E57-E6697F993041', 'month': 9, 'imageIndex': 3, 'type': 'junk'}, {'id': 'CA96C4A8-7DAC-443E-B080-2252D81FAA07', 'type': 'junk', 'imageIndex': 3, 'month': 4}, {'id': 'CE3C9A60-C432-4A2B-9CA0-499AEFEA286F', 'type': 'animal', 'imageIndex': 0, 'month': 10}, {'id': 'B4B3DE98-D046-43C3-951D-071C81D31F39', 'type': 'bright', 'imageIndex': 0, 'month': 12}, {'id': 'AD6EFDB9-F0BA-42E9-AEAC-3C3B94245C24', 'type': 'junk', 'imageIndex': 3, 'month': 7}, {'id': '5F08AB27-7AE8-4E61-9843-133A8F818010', 'type': 'ribbon', 'imageIndex': 1, 'month': 5}, {'id': '107635C1-5484-499A-B532-DF9C1E074227', 'type': 'doubleJunk', 'imageIndex': 1, 'month': 11}, {'id': 'AC67B7DD-679F-4D4B-BDEA-ABDED7566BF7', 'type': 'junk', 'imageIndex': 2, 'month': 3}], 'players': [{'score': 0, 'goCount': 0, 'lastGoScore': 0, 'id': '1C5D733D-B3AE-47ED-A478-D56D7119DF50', 'hand': [{'id': '279465F8-1B33-4D9B-8C87-32D03BD6A15B', 'imageIndex': 1, 'type': 'ribbon', 'month': 3}, {'id': '5480B91B-BF17-4944-9EFB-97D325FDB32A', 'imageIndex': 2, 'type': 'junk', 'month': 10}, {'id': 'D8521A40-28A1-4B92-A0B9-3CEAB86EB605', 'imageIndex': 3, 'type': 'junk', 'month': 1}, {'id': '61CB5510-3EF7-49E7-B71E-D4CF87DD9BF3', 'imageIndex': 0, 'type': 'bright', 'month': 3}, {'id': 'FAA1B0A4-14FF-4863-8886-EF8AC54F27CF', 'imageIndex': 1, 'type': 'ribbon', 'month': 7}, {'id': '11AFE4ED-704F-4667-9BE7-15F1DDBC8885', 'imageIndex': 2, 'type': 'junk', 'month': 4}, {'id': '6DCE0B75-4831-4D93-84E6-8D2C5A67226A', 'imageIndex': 1, 'type': 'ribbon', 'month': 1}, {'id': '6FF8A026-C0CD-435C-9533-59DA70BCB466', 'imageIndex': 0, 'type': 'animal', 'month': 4}, {'id': '312772B9-A5E6-4F9F-8E64-BD320A227E0D', 'imageIndex': 3, 'type': 'junk', 'month': 8}, {'id': 'B931296D-7EE7-4F20-83AE-5760C6FFED30', 'imageIndex': 2, 'type': 'junk', 'month': 9}], 'capturedCards': [], 'name': 'Player 1', 'money': 10000}, {'score': 0, 'goCount': 0, 'lastGoScore': 0, 'id': '8D4A5977-90A1-49BD-9934-6C4E64E34364', 'hand': [{'id': 'B68F89B9-FD46-4F28-8A25-0D7B75C2BF29', 'imageIndex': 2, 'month': 11, 'type': 'junk'}, {'id': '736F7A95-A81B-499A-8B31-BF5D3ABCB8D6', 'imageIndex': 0, 'month': 9, 'type': 'animal'}, {'id': 'EF38F0DA-BA1E-4D03-ADA7-C2DF4F7655D5', 'imageIndex': 3, 'month': 12, 'type': 'doubleJunk'}, {'id': '375A3AD3-F793-497A-8E83-1DC2ED1B0FB6', 'imageIndex': 3, 'month': 5, 'type': 'junk'}, {'id': '7DC65F4C-4D11-4D7F-926C-737219A2CFA2', 'imageIndex': 1, 'month': 2, 'type': 'ribbon'}, {'id': '3458F9A5-6857-4FAF-B8B0-D14C80F2145D', 'imageIndex': 3, 'month': 3, 'type': 'junk'}, {'id': 'F63F741D-E4CE-48E0-AA4A-8699DA324E91', 'imageIndex': 2, 'month': 6, 'type': 'junk'}, {'id': '6E501069-F323-4124-9778-36746A2AC1C2', 'imageIndex': 0, 'month': 8, 'type': 'bright'}, {'id': '1F0909D5-4C7F-4FFE-9619-43210301D14F', 'imageIndex': 0, 'month': 1, 'type': 'bright'}, {'id': '3C130BB1-F714-499F-9302-1522150A3203', 'imageIndex': 1, 'month': 10, 'type': 'ribbon'}], 'capturedCards': [], 'name': 'Computer', 'money': 10000}], 'gameState': 'ready', 'deckCount': 20, 'currentTurnIndex': 0}
+2026-02-20 18:07:39,865 - TestAgent - INFO - Scenario scenario_setup_condition_and_act completed successfully.
+2026-02-20 18:07:39,865 - TestAgent - INFO - Stopping the app...
+2026-02-20 18:07:39,866 - TestAgent - INFO - Running Scenario 3: scenario_force_crash_capture
+2026-02-20 18:07:39,866 - TestAgent - INFO - Starting app at ../../build/Build/Products/Debug/GoStopCLI
+2026-02-20 18:07:40,874 - TestAgent - INFO - Setting specific condition: {'rng_seed': 42}
+2026-02-20 18:07:40,874 - TestAgent - DEBUG - Sending command: {'action': 'set_condition', 'data': {'rng_seed': 42}}
+2026-02-20 18:07:40,877 - TestAgent - DEBUG - Received response: {'status': 'ok', 'message': 'Condition set'}
+2026-02-20 18:07:40,877 - TestAgent.Scenarios - INFO - Running force crash scenario...
+2026-02-20 18:07:40,877 - TestAgent - INFO - Requesting all information from app.
+2026-02-20 18:07:40,877 - TestAgent - DEBUG - Sending command: {'action': 'get_state'}
+2026-02-20 18:07:40,879 - TestAgent - DEBUG - Received response: {'gameState': 'ready', 'deckCount': 20, 'players': [{'score': 0, 'goCount': 0, 'lastGoScore': 0, 'id': '2CA66D37-088D-4C2E-AE3E-0046D1D60445', 'hand': [{'id': '57379E58-207D-4680-9FC1-3FCEFCDA441F', 'type': 'ribbon', 'imageIndex': 1, 'month': 3}, {'id': 'F6E07405-75E4-4BA9-8A8A-C9CA667B4539', 'type': 'junk', 'imageIndex': 2, 'month': 10}, {'id': 'D77D93F1-3D9B-4360-9A31-CA70EECC5EB5', 'type': 'junk', 'imageIndex': 3, 'month': 1}, {'id': '75A5C398-DD27-42E6-852E-5EEB1690BF37', 'type': 'bright', 'imageIndex': 0, 'month': 3}, {'id': 'AF74CB3F-D22C-418E-8AB6-0463B1485561', 'type': 'ribbon', 'imageIndex': 1, 'month': 7}, {'id': 'FA45F427-9159-45CE-AF48-65F9EE065F61', 'type': 'junk', 'imageIndex': 2, 'month': 4}, {'id': '962F9298-D0CD-41FC-86D5-EB88AC3F3845', 'type': 'ribbon', 'imageIndex': 1, 'month': 1}, {'id': '98E8332C-DD01-402C-8F78-B41E735D9C94', 'type': 'animal', 'imageIndex': 0, 'month': 4}, {'id': 'AA186A9C-DC92-4C70-A319-F34BF4126623', 'type': 'junk', 'imageIndex': 3, 'month': 8}, {'id': 'E38E0A33-AD6D-4BCD-9132-5F5A8F01DE42', 'type': 'junk', 'imageIndex': 2, 'month': 9}], 'capturedCards': [], 'money': 10000, 'name': 'Player 1'}, {'score': 0, 'goCount': 0, 'lastGoScore': 0, 'id': 'D73497E3-B562-4CEA-9DA1-5018C70BEA5B', 'hand': [{'id': 'CCA06B0D-35AA-494C-B683-09C45856D5C5', 'month': 11, 'imageIndex': 2, 'type': 'junk'}, {'id': '60828BB4-7C27-47DE-8881-B480B0558B28', 'month': 9, 'imageIndex': 0, 'type': 'animal'}, {'id': 'BA63C3DF-D0F0-457E-9AB6-E9D4B9838A73', 'month': 12, 'imageIndex': 3, 'type': 'doubleJunk'}, {'id': '07094590-994B-4EA3-AAC8-2958A57C91AD', 'month': 5, 'imageIndex': 3, 'type': 'junk'}, {'id': '42253AF5-E418-4065-B29C-A0594A718A27', 'month': 2, 'imageIndex': 1, 'type': 'ribbon'}, {'id': '17833491-3329-499D-8E4E-660C9F01104F', 'month': 3, 'imageIndex': 3, 'type': 'junk'}, {'id': '45806C3E-4E5F-4325-84F4-2F004C18847A', 'month': 6, 'imageIndex': 2, 'type': 'junk'}, {'id': 'B1D72897-2313-415E-8AD3-D0D490EF5A76', 'month': 8, 'imageIndex': 0, 'type': 'bright'}, {'id': 'EBDD5B73-C73B-49A9-A569-15D241A43815', 'month': 1, 'imageIndex': 0, 'type': 'bright'}, {'id': 'B90F5CD1-2267-477F-A911-D148E7B4C060', 'month': 10, 'imageIndex': 1, 'type': 'ribbon'}], 'capturedCards': [], 'money': 10000, 'name': 'Computer'}], 'currentTurnIndex': 0, 'tableCards': [{'id': 'CFECFF59-1A0A-4896-812B-1BC80D094160', 'month': 9, 'type': 'junk', 'imageIndex': 3}, {'id': '79B92EFE-AE3F-41B8-AB87-066730CB158E', 'month': 4, 'type': 'junk', 'imageIndex': 3}, {'id': '20C158DA-C147-4B4D-B228-2EA5BDDD4ED5', 'month': 10, 'type': 'animal', 'imageIndex': 0}, {'id': '71CF8826-B7AC-403E-9ACD-87A0CDCF9E3B', 'month': 12, 'type': 'bright', 'imageIndex': 0}, {'id': '31BE5BE5-D292-4A6A-AFA4-425C54651D20', 'month': 7, 'type': 'junk', 'imageIndex': 3}, {'id': '1BBE09F6-E7D5-4F39-ABDF-20C58C450EE0', 'month': 5, 'type': 'ribbon', 'imageIndex': 1}, {'id': '9BFAB80D-BB5E-4399-9941-D8BCF3511A99', 'month': 11, 'type': 'doubleJunk', 'imageIndex': 1}, {'id': 'A5F2E488-1B7D-4E73-8B22-36D927194972', 'month': 3, 'type': 'junk', 'imageIndex': 2}], 'status': 'ok'}
+2026-02-20 18:07:40,879 - TestAgent.Scenarios - INFO - Executing intentional crash action...
+2026-02-20 18:07:40,879 - TestAgent - INFO - Sending user action: invalid_action_triggering_crash with data: None
+2026-02-20 18:07:40,879 - TestAgent - DEBUG - Sending command: {'action': 'invalid_action_triggering_crash'}
+2026-02-20 18:07:40,881 - TestAgent.Scenarios - INFO - App crashed as expected for this scenario.
+2026-02-20 18:07:40,882 - TestAgent - INFO - Scenario scenario_force_crash_capture completed successfully.
+2026-02-20 18:07:40,882 - TestAgent - INFO - Stopping the app...
+2026-02-20 18:07:40,882 - TestAgent - INFO - Running Scenario 4: scenario_safety_limit_trigger
+2026-02-20 18:07:40,882 - TestAgent - INFO - Starting app at ../../build/Build/Products/Debug/GoStopCLI
+2026-02-20 18:07:41,890 - TestAgent - INFO - Setting specific condition: {'rng_seed': 42}
+2026-02-20 18:07:41,891 - TestAgent - DEBUG - Sending command: {'action': 'set_condition', 'data': {'rng_seed': 42}}
+2026-02-20 18:07:41,893 - TestAgent - DEBUG - Received response: {'status': 'ok', 'message': 'Condition set'}
+2026-02-20 18:07:41,893 - TestAgent.Scenarios - INFO - Running safety limit trigger scenario...
+2026-02-20 18:07:41,893 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,893 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,893 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:41,893 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,893 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,894 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,894 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,894 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,894 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,894 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,894 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,894 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,894 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,894 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,894 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,894 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,894 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,894 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,894 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,895 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,895 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,895 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,895 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,895 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,895 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,895 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,895 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,895 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,895 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,895 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,895 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,895 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,895 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,895 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,895 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,895 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,896 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,896 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,896 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,896 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,896 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,896 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,896 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,896 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,896 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,896 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,896 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,896 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,896 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,896 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,896 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:41,896 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,896 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,897 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:41,897 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,897 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,897 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:41,897 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,897 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,897 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:41,897 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,897 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,897 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:41,897 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,897 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,897 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:41,897 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,897 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,897 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:41,897 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,897 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,897 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:41,898 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,898 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,898 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:41,898 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,898 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,898 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:41,898 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,898 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,898 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:41,898 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,898 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,898 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:41,898 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,898 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,898 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:41,898 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,898 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,898 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:41,898 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,898 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,899 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,899 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,899 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,899 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,899 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,899 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,899 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,899 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,899 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,899 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,899 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,899 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,899 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,899 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,899 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,899 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,900 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,900 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,900 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,900 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,900 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,900 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,900 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,900 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,900 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,900 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,900 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,900 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,900 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,900 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,900 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,900 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,900 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,900 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,900 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,900 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,901 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,901 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,901 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,901 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,901 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,901 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,901 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,901 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,901 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,901 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,901 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,901 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,901 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,901 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,901 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,901 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,901 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,901 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,901 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,901 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,902 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,902 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,902 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,902 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,902 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,902 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,902 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,902 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,902 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,902 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,902 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,902 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,902 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,902 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,902 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,902 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,902 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,902 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,902 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,902 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,902 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,902 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,903 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,903 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,903 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,903 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,903 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,903 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,903 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:41,903 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,903 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,903 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:41,903 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,903 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,903 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:41,903 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,903 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,903 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:41,903 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,903 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,903 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:41,903 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,903 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,903 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:41,903 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,903 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,904 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:41,904 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,904 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,904 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:41,904 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,904 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,904 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:41,904 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,904 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,904 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:41,904 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,904 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,904 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:41,904 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,904 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,904 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:41,904 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,904 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,904 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:41,904 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,904 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,904 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:41,904 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,904 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,905 - TestAgent - DEBUG - Received response: {'status': 'action executed', 'action': 'click_useless_button'}
+2026-02-20 18:07:41,905 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,905 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,905 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,905 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,905 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,905 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,905 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,906 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,906 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,906 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,906 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,906 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,906 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,906 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,906 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,906 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,906 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,906 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,906 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,906 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,906 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,906 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,906 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,906 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,906 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,906 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,907 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,907 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,907 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,907 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,907 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,907 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,907 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,907 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,907 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,907 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,907 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,907 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,907 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,907 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,907 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,907 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,907 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,907 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,907 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,907 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,907 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,907 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,907 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,907 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,908 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,908 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,908 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,908 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,908 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,908 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,908 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,908 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,908 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,908 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,908 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,908 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,908 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,908 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,908 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,908 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,908 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,908 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,908 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,908 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,908 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,908 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,908 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,908 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,908 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,909 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,909 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,909 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,909 - TestAgent - INFO - Sending user action: click_useless_button with data: None
+2026-02-20 18:07:41,909 - TestAgent - DEBUG - Sending command: {'action': 'click_useless_button'}
+2026-02-20 18:07:41,909 - TestAgent - DEBUG - Received response: {'action': 'click_useless_button', 'status': 'action executed'}
+2026-02-20 18:07:41,909 - TestAgent.Scenarios - INFO - Intentional safety limit reached. Validating graceful abort...
+2026-02-20 18:07:41,909 - TestAgent - INFO - Requesting all information from app.
+2026-02-20 18:07:41,909 - TestAgent - DEBUG - Sending command: {'action': 'get_state'}
+2026-02-20 18:07:41,910 - TestAgent - DEBUG - Received response: {'deckCount': 20, 'tableCards': [{'id': 'F1FB8513-4F19-4393-A073-3CD458AF84A4', 'month': 9, 'imageIndex': 3, 'type': 'junk'}, {'id': '3F5C30DB-01E7-4C95-B61F-8ACA2BDAEC1E', 'month': 4, 'imageIndex': 3, 'type': 'junk'}, {'id': '8D4B9E0C-5222-4968-BEE4-CB0AF53B0CC8', 'month': 10, 'imageIndex': 0, 'type': 'animal'}, {'id': 'D4FC28C4-BA7A-4687-B57F-E1777A282406', 'month': 12, 'imageIndex': 0, 'type': 'bright'}, {'id': '4191FD54-2ACE-4944-8B1E-5FD7C3C3B749', 'month': 7, 'imageIndex': 3, 'type': 'junk'}, {'id': '0F326817-2BD7-4987-9312-1FF9A6905D0E', 'month': 5, 'imageIndex': 1, 'type': 'ribbon'}, {'id': '8F686D6A-0BE6-45F3-BC74-4A0F235FEC10', 'month': 11, 'imageIndex': 1, 'type': 'doubleJunk'}, {'id': 'EA4048DB-AA62-45AE-89AA-CFF80A532302', 'month': 3, 'imageIndex': 2, 'type': 'junk'}], 'gameState': 'ready', 'status': 'ok', 'players': [{'score': 0, 'goCount': 0, 'id': 'DE1468AA-6E36-412F-B202-0AE433FCB997', 'lastGoScore': 0, 'hand': [{'id': '46454D84-4D20-47DB-826A-91F32881E914', 'month': 3, 'type': 'ribbon', 'imageIndex': 1}, {'id': '20C0BA8D-07F2-469A-9072-1FF5043EE973', 'month': 10, 'type': 'junk', 'imageIndex': 2}, {'id': 'CFCBA113-1C32-4AC5-A31D-0B7C773342B1', 'month': 1, 'type': 'junk', 'imageIndex': 3}, {'id': '9461BCE4-C84C-46E5-8DB4-A800A83CB913', 'month': 3, 'type': 'bright', 'imageIndex': 0}, {'id': '1252A8D8-0E8C-4688-9BA0-2E78CB9FE126', 'month': 7, 'type': 'ribbon', 'imageIndex': 1}, {'id': '003033A7-9FBF-45AF-A0FB-4958C9EA34B1', 'month': 4, 'type': 'junk', 'imageIndex': 2}, {'id': 'BFE66565-5182-4761-91D9-071955B7E91D', 'month': 1, 'type': 'ribbon', 'imageIndex': 1}, {'id': 'AA783842-F348-494B-A94D-FAB0B41C6ACB', 'month': 4, 'type': 'animal', 'imageIndex': 0}, {'id': '94D3BF08-9FAF-4330-8BB7-80215F997D99', 'month': 8, 'type': 'junk', 'imageIndex': 3}, {'id': '312BB3C8-8D75-44F1-8A3A-DF75502E38C6', 'month': 9, 'type': 'junk', 'imageIndex': 2}], 'capturedCards': [], 'money': 10000, 'name': 'Player 1'}, {'score': 0, 'goCount': 0, 'id': '8C46EED6-0469-47FC-AABE-B3DAFD45210F', 'lastGoScore': 0, 'hand': [{'id': '576A7F0B-5ADA-4E4F-B5BD-D64EEEE4ABF3', 'type': 'junk', 'month': 11, 'imageIndex': 2}, {'id': 'D4DE0B27-F93E-4FF2-815A-37E7C5D1C46E', 'type': 'animal', 'month': 9, 'imageIndex': 0}, {'id': 'CB377A90-BC4A-435D-9C2E-49A1E4C0CF3E', 'type': 'doubleJunk', 'month': 12, 'imageIndex': 3}, {'id': '48054B10-6A0B-4FFF-8B23-A3C84E4C8D0F', 'type': 'junk', 'month': 5, 'imageIndex': 3}, {'id': 'BBFD2436-6ACA-4CFE-AA98-7512701AA0E5', 'type': 'ribbon', 'month': 2, 'imageIndex': 1}, {'id': '664EFD98-EBD4-469C-9854-145DDA93C643', 'type': 'junk', 'month': 3, 'imageIndex': 3}, {'id': '70C0CDEB-29DE-4B90-B19C-4B5CE7E69F79', 'type': 'junk', 'month': 6, 'imageIndex': 2}, {'id': '06CACCFE-302B-4008-894D-1D084DBC374A', 'type': 'bright', 'month': 8, 'imageIndex': 0}, {'id': '7A02442D-7C57-4C91-9709-19D8EC89B171', 'type': 'bright', 'month': 1, 'imageIndex': 0}, {'id': '8472F1D1-A003-4FDF-9690-21CF50BD2D40', 'type': 'ribbon', 'month': 10, 'imageIndex': 1}], 'capturedCards': [], 'money': 10000, 'name': 'Computer'}], 'currentTurnIndex': 0}
+2026-02-20 18:07:41,911 - TestAgent - INFO - Snapshot saved: artifacts/state_snapshots/snapshot_safety_abort_1771578461910.json
+2026-02-20 18:07:41,911 - TestAgent.Scenarios - INFO - Verified safety limit of 100 steps.
+2026-02-20 18:07:41,912 - TestAgent - INFO - Scenario scenario_safety_limit_trigger completed successfully.
+2026-02-20 18:07:41,912 - TestAgent - INFO - Stopping the app...
+2026-02-20 18:07:41,912 - TestAgent - INFO - --- Finished Iteration 3/3 ---

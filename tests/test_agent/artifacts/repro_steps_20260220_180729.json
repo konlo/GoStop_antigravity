@@ -1,0 +1,311 @@
+{
+  "seed": 42,
+  "sequence": [
+    {
+      "action": "set_condition",
+      "data": {
+        "rng_seed": 42
+      }
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    },
+    {
+      "action": "click_useless_button"
+    }
+  ]
+}

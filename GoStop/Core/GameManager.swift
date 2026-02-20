@@ -23,12 +23,12 @@ class GameManager: ObservableObject {
         setupGame()
     }
     
-    func setupGame() {
+    func setupGame(seed: Int? = nil) {
         self.players = [
             Player(name: "Player 1", money: 10000),
             Player(name: "Computer", money: 10000)
         ]
-        self.deck.reset()
+        self.deck.reset(seed: seed)
         self.dealCards()
         self.gameState = .ready
     }
