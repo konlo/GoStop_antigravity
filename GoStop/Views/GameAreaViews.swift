@@ -95,6 +95,13 @@ struct OpponentAreaV2: View {
                     .position(x: frame.width * capConfig.x, y: finalY)
                     .zIndex(capConfig.zIndex)
             }
+            
+            // Score (Opponent)
+            if let scoreConfig = areaConfig.elements.score, gameManager.players.count > 1 {
+                ScoreViewV2(ctx: ctx, config: scoreConfig, score: gameManager.players[1].score)
+                    .position(x: frame.width * scoreConfig.x, y: frame.height * scoreConfig.y)
+                    .zIndex(scoreConfig.zIndex)
+            }
         }
     }
 }
@@ -166,6 +173,13 @@ struct PlayerAreaV2: View {
                     .zIndex(capConfig.zIndex)
             }
             
+            // Score (Player)
+            if let scoreConfig = areaConfig.elements.score, let player = gameManager.players.first {
+                ScoreViewV2(ctx: ctx, config: scoreConfig, score: player.score)
+                    .position(x: frame.width * scoreConfig.x, y: frame.height * scoreConfig.y)
+                    .zIndex(scoreConfig.zIndex)
+            }
+            
             // Debug Sort Button
             if handConfig.sorting?.enabled == true && slotManager != nil {
                 Button(action: {
@@ -186,6 +200,28 @@ struct PlayerAreaV2: View {
 }
 
 // MARK: - Sub Components
+
+struct ScoreViewV2: View {
+    let ctx: LayoutContext
+    let config: ElementScoreConfig
+    let score: Int
+    
+    var body: some View {
+        let prefix = config.textPrefix ?? "점수: "
+        Text("\(prefix)\(score)")
+            .font(.system(
+                size: (config.typography?.fontSizePt ?? 20) * ctx.globalScale,
+                weight: config.typography?.weightSwiftUI ?? .bold
+            ))
+            .foregroundColor(config.typography?.colorSwiftUI ?? .primary)
+            .padding(.horizontal, 12 * ctx.globalScale)
+            .padding(.vertical, 6 * ctx.globalScale)
+            .background(Color.white.opacity(config.backgroundOpacity ?? 0.8))
+            .cornerRadius(12 * ctx.globalScale)
+            .shadow(radius: 2)
+            .scaleEffect(config.scale)
+    }
+}
 
 struct OpponentHandV2: View {
     let ctx: LayoutContext
@@ -356,12 +392,20 @@ struct CapturedAreaV2: View {
     let alignLeading: Bool
     
     var body: some View {
+        if let groups = layoutConfig.groups {
+            CapturedGroupsAreaV2(ctx: ctx, layoutConfig: layoutConfig, groups: groups, cards: cards, scale: scale)
+        } else {
+            legacyScrollView
+        }
+    }
+    
+    var legacyScrollView: some View {
         let cardW = ctx.cardSize.width * scale
         let overlapRatio = layoutConfig.cardOverlapRatio
         // Negative spacing for overlap
         let startSpacing = -cardW * overlapRatio
         
-        ScrollView(.horizontal, showsIndicators: false) {
+        return ScrollView(.horizontal, showsIndicators: false) {
              HStack(spacing: startSpacing) {
                  ForEach(Array(cards.enumerated()), id: \.element.id) { index, card in
                      CardView(card: card, isFaceUp: true, scale: scale)
@@ -371,6 +415,159 @@ struct CapturedAreaV2: View {
              .padding(.horizontal, ctx.scaledTokens.panelPadding)
         }
         .frame(height: ctx.cardSize.height * scale)
+    }
+}
+
+struct CapturedGroupsAreaV2: View {
+    let ctx: LayoutContext
+    let layoutConfig: CapturedLayoutConfigV2
+    let groups: [CapturedGroupConfigV2]
+    let cards: [Card]
+    let scale: CGFloat
+    
+    var body: some View {
+        GeometryReader { geo in
+            let totalWidth = geo.size.width
+            let padding = ctx.scaledTokens.panelPadding * 2
+            let cardW = ctx.cardSize.width * scale
+            let vSpacing = cardW * layoutConfig.groupSpacingCardRatio
+            let totalSpacing = vSpacing * CGFloat(groups.count - 1)
+            let baseActiveWidth = max(0, totalWidth - padding - totalSpacing)
+            
+            let totalWeight = groups.reduce(0) { $0 + $1.priorityWeight }
+            
+            HStack(alignment: .bottom, spacing: vSpacing) {
+                ForEach(groups, id: \.type) { group in
+                    let groupCards = cards.filter { matchCardType(card: $0, targetType: group.type) }
+                        .sorted {
+                            if $0.month == $1.month {
+                                return "\($0.type)" < "\($1.type)"
+                            }
+                            return $0.month.rawValue < $1.month.rawValue
+                        }
+                    let groupWidth = totalWeight > 0 ? baseActiveWidth * (group.priorityWeight / totalWeight) : 0
+                    
+                    CapturedGroupSlotView(
+                        ctx: ctx,
+                        groupConfig: group,
+                        layoutConfig: layoutConfig,
+                        cards: groupCards,
+                        scale: scale,
+                        allocatedWidth: groupWidth
+                    )
+                }
+            }
+            .padding(.horizontal, ctx.scaledTokens.panelPadding)
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .bottom)
+        }
+        .frame(height: ctx.cardSize.height * scale * 1.8) // Extra space for wrapped cards
+    }
+    
+    func matchCardType(card: Card, targetType: String) -> Bool {
+        if targetType == "gwang" { return card.type == .bright }
+        if targetType == "animal" { return card.type == .animal }
+        if targetType == "ribbon" { return card.type == .ribbon }
+        if targetType == "pi" { return card.type == .junk || card.type == .doubleJunk }
+        return false
+    }
+}
+
+struct CapturedGroupSlotView: View {
+    let ctx: LayoutContext
+    let groupConfig: CapturedGroupConfigV2
+    let layoutConfig: CapturedLayoutConfigV2
+    let cards: [Card]
+    let scale: CGFloat
+    let allocatedWidth: CGFloat
+    
+    var body: some View {
+        let cardW = ctx.cardSize.width * scale
+        let cardH = ctx.cardSize.height * scale
+        
+        let defaultOverlap = layoutConfig.cardOverlapRatio
+        let maxCols = groupConfig.maxCols
+        let maxRows = groupConfig.maxRows
+        
+        // Rows
+        let rowCount = max(1, min(maxRows, Int(ceil(Double(max(1, cards.count)) / Double(maxCols)))))
+        let rowHeight = cardH * 0.35 // Overlap rows vertically visually
+        let totalHeight = cardH + (CGFloat(rowCount - 1) * rowHeight)
+        
+        // Limit width to allocatedWidth but ensure at least cardW
+        let frameWidth = max(cardW, allocatedWidth)
+        
+        ZStack(alignment: .topLeading) {
+            // Background
+            if groupConfig.background.opacity > 0 {
+                RoundedRectangle(cornerRadius: groupConfig.background.cornerRadiusPt * ctx.globalScale)
+                    .fill(groupConfig.background.colorSwiftUI)
+                    .frame(width: frameWidth, height: totalHeight)
+            }
+            
+            // Cards
+            ForEach(Array(cards.enumerated()), id: \.element.id) { index, card in
+                let row = index / maxCols
+                let col = index % maxCols
+                
+                let effectiveRow = min(row, maxRows - 1)
+                let effectiveCol = (row >= maxRows) ? (col + ((row - maxRows + 1) * maxCols)) : col 
+                
+                let totalInThisRow = min(maxCols, cards.count - (effectiveRow * maxCols))
+                let trueCardsInRow = (effectiveRow == maxRows - 1) ? (cards.count - (effectiveRow * maxCols)) : totalInThisRow
+
+                let yOffset = CGFloat(effectiveRow) * rowHeight
+                
+                let availableW = max(0, frameWidth - cardW)
+                let defaultSpacing = cardW * (1.0 - defaultOverlap)
+                
+                let spacing: CGFloat = {
+                    if trueCardsInRow <= 1 { return 0 }
+                    let neededWidth = CGFloat(trueCardsInRow - 1) * defaultSpacing
+                    if neededWidth <= availableW {
+                        return defaultSpacing
+                    } else {
+                        // Compress
+                        return availableW / CGFloat(trueCardsInRow - 1)
+                    }
+                }()
+                
+                let drawCol = (effectiveRow == maxRows - 1) ? (index - (effectiveRow * maxCols)) : effectiveCol
+                let xOffset = CGFloat(drawCol) * spacing
+                
+                ZStack {
+                    CardView(card: card, isFaceUp: true, scale: scale)
+                    
+                    // Show count indicator on the very last 'pi' card
+                    if groupConfig.type == "pi", index == cards.count - 1 {
+                        let piCount = cards.reduce(0) { total, card in
+                            total + (card.type == .doubleJunk ? 2 : 1)
+                        }
+                        Text("\(piCount)")
+                            .font(.system(size: 11 * ctx.globalScale, weight: .bold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 4 * ctx.globalScale)
+                            .padding(.vertical, 2 * ctx.globalScale)
+                            .background(Color.red.opacity(0.85))
+                            .clipShape(Capsule())
+                            .offset(x: cardW * 0.35, y: cardH * 0.35)
+                            .shadow(radius: 1)
+                    }
+                }
+                .position(x: cardW/2 + xOffset, y: cardH/2 + yOffset)
+                .zIndex(Double(index))
+            }
+            
+            // Label
+            Text(groupConfig.label)
+                .font(.system(size: 9 * ctx.globalScale, weight: .bold))
+                .foregroundColor(.black.opacity(0.6))
+                .padding(2)
+                .background(Color.white.opacity(0.5))
+                .cornerRadius(2)
+                .offset(x: 2, y: 2)
+                .zIndex(1000)
+        }
+        .frame(width: frameWidth, height: totalHeight)
     }
 }
 

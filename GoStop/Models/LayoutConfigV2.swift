@@ -130,6 +130,7 @@ struct AreaBackgroundConfigV2: Codable, Equatable {
 struct OpponentPlayerElements: Codable, Equatable {
     let hand: ElementHandConfig
     let captured: ElementCapturedConfig
+    let score: ElementScoreConfig?
 }
 
 struct CenterElements: Codable, Equatable {
@@ -254,6 +255,32 @@ struct ElementDeckConfig: Codable, LayoutElement, Equatable {
     let zIndex: Double
 }
 
+struct ElementScoreConfig: Codable, LayoutElement, Equatable {
+    let x: CGFloat
+    let y: CGFloat
+    let scale: CGFloat
+    let zIndex: Double
+    let textPrefix: String?
+    let backgroundOpacity: Double?
+    let typography: TypographyConfig?
+}
+
+struct TypographyConfig: Codable, Equatable {
+    let fontSizePt: CGFloat
+    let fontWeight: String?
+    let color: String
+    
+    var colorSwiftUI: Color { Color(hex: color) }
+    var weightSwiftUI: Font.Weight {
+        switch fontWeight {
+        case "bold": return .bold
+        case "semibold": return .semibold
+        case "black": return .black
+        default: return .regular
+        }
+    }
+}
+
 // MARK: - Grids & Layouts
 struct HandGridConfig: Codable, Equatable {
     let rows: Int
@@ -267,6 +294,17 @@ struct HandGridConfig: Codable, Equatable {
 struct CapturedLayoutConfigV2: Codable, Equatable {
     let groupSpacingCardRatio: CGFloat
     let cardOverlapRatio: CGFloat
+    let groups: [CapturedGroupConfigV2]?
+}
+
+struct CapturedGroupConfigV2: Codable, Equatable {
+    let type: String
+    let label: String
+    let background: AreaBackgroundConfigV2
+    let maxCols: Int
+    let maxRows: Int
+    let wrapPolicy: String
+    let priorityWeight: CGFloat
 }
 
 struct TableGridConfig: Codable, Equatable {

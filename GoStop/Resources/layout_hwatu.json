@@ -76,9 +76,9 @@
             }
         },
         "opponent": {
-            "heightRatio": 0.1,
-            "minHeightPt": 50,
-            "maxHeightPt": 180,
+            "heightRatio": 0.15,
+            "minHeightPt": 75,
+            "maxHeightPt": 200,
             "flexWeight": 1,
             "background": {
                 "color": "#F1F8E9",
@@ -99,7 +99,7 @@
                         "_descSpacing": "cardWidth 기준 비율",
                         "hSpacingCardRatio": 0.04,
                         "_descOverlap": "0.62 = 62% 겹침 (다음 카드의 이동량은 (1-overlap)*cardWidth로 계산)",
-                        "overlapRatio": 0.0
+                        "overlapRatio": 0.1
                     }
                 },
                 "captured": {
@@ -110,15 +110,91 @@
                     "zIndex": 5,
                     "layout": {
                         "groupSpacingCardRatio": 0.26,
-                        "cardOverlapRatio": 0.62
+                        "cardOverlapRatio": 0.62,
+                        "groups": [
+                            {
+                                "type": "gwang",
+                                "label": "광",
+                                "background": {
+                                    "color": "#FFD700",
+                                    "opacity": 0.3,
+                                    "cornerRadiusPt": 8,
+                                    "widthRatio": 1.0,
+                                    "paddingPt": 0
+                                },
+                                "maxCols": 5,
+                                "maxRows": 1,
+                                "wrapPolicy": "autoRows",
+                                "priorityWeight": 1.2
+                            },
+                            {
+                                "type": "animal",
+                                "label": "끗",
+                                "background": {
+                                    "color": "#87CEEB",
+                                    "opacity": 0.3,
+                                    "cornerRadiusPt": 8,
+                                    "widthRatio": 1.0,
+                                    "paddingPt": 0
+                                },
+                                "maxCols": 5,
+                                "maxRows": 2,
+                                "wrapPolicy": "autoRows",
+                                "priorityWeight": 1.0
+                            },
+                            {
+                                "type": "ribbon",
+                                "label": "띠",
+                                "background": {
+                                    "color": "#FFA07A",
+                                    "opacity": 0.3,
+                                    "cornerRadiusPt": 8,
+                                    "widthRatio": 1.0,
+                                    "paddingPt": 0
+                                },
+                                "maxCols": 5,
+                                "maxRows": 2,
+                                "wrapPolicy": "autoRows",
+                                "priorityWeight": 1.0
+                            },
+                            {
+                                "type": "pi",
+                                "label": "피",
+                                "background": {
+                                    "color": "#D3D3D3",
+                                    "opacity": 0.3,
+                                    "cornerRadiusPt": 8,
+                                    "widthRatio": 1.0,
+                                    "paddingPt": 0
+                                },
+                                "maxCols": 7,
+                                "maxRows": 4,
+                                "wrapPolicy": "autoRows",
+                                "priorityWeight": 2.0
+                            }
+                        ]
+                    }
+                },
+                "score": {
+                    "_desc": "상대 점수 표시",
+                    "x": 0.85,
+                    "y": 0.15,
+                    "scale": 0.9,
+                    "zIndex": 100,
+                    "textPrefix": "score: ",
+                    "backgroundOpacity": 0.4,
+                    "typography": {
+                        "fontSizePt": 16,
+                        "fontWeight": "bold",
+                        "color": "#000000"
                     }
                 }
             }
         },
         "center": {
-            "heightRatio": 0.4,
-            "minHeightPt": 210,
-            "maxHeightPt": 380,
+            "heightRatio": 0.38,
+            "minHeightPt": 200,
+            "maxHeightPt": 360,
             "flexWeight": 2,
             "background": {
                 "color": "#62c522",
@@ -231,9 +307,9 @@
             }
         },
         "player": {
-            "heightRatio": 0.45,
-            "minHeightPt": 240,
-            "maxHeightPt": 520,
+            "heightRatio": 0.42,
+            "minHeightPt": 230,
+            "maxHeightPt": 500,
             "flexWeight": 2,
             "background": {
                 "color": "#F1F8E9",
@@ -250,13 +326,75 @@
                     "zIndex": 5,
                     "layout": {
                         "groupSpacingCardRatio": 0.26,
-                        "cardOverlapRatio": 0.62
+                        "cardOverlapRatio": 0.62,
+                        "groups": [
+                            {
+                                "type": "gwang",
+                                "label": "광",
+                                "background": {
+                                    "color": "#FFD700",
+                                    "opacity": 0.3,
+                                    "cornerRadiusPt": 8,
+                                    "widthRatio": 1.0,
+                                    "paddingPt": 0
+                                },
+                                "maxCols": 5,
+                                "maxRows": 1,
+                                "wrapPolicy": "autoRows",
+                                "priorityWeight": 1.2
+                            },
+                            {
+                                "type": "animal",
+                                "label": "끗",
+                                "background": {
+                                    "color": "#87CEEB",
+                                    "opacity": 0.3,
+                                    "cornerRadiusPt": 8,
+                                    "widthRatio": 1.0,
+                                    "paddingPt": 0
+                                },
+                                "maxCols": 5,
+                                "maxRows": 2,
+                                "wrapPolicy": "autoRows",
+                                "priorityWeight": 1.0
+                            },
+                            {
+                                "type": "ribbon",
+                                "label": "띠",
+                                "background": {
+                                    "color": "#FFA07A",
+                                    "opacity": 0.3,
+                                    "cornerRadiusPt": 8,
+                                    "widthRatio": 1.0,
+                                    "paddingPt": 0
+                                },
+                                "maxCols": 5,
+                                "maxRows": 2,
+                                "wrapPolicy": "autoRows",
+                                "priorityWeight": 1.0
+                            },
+                            {
+                                "type": "pi",
+                                "label": "피",
+                                "background": {
+                                    "color": "#D3D3D3",
+                                    "opacity": 0.3,
+                                    "cornerRadiusPt": 8,
+                                    "widthRatio": 1.0,
+                                    "paddingPt": 0
+                                },
+                                "maxCols": 7,
+                                "maxRows": 4,
+                                "wrapPolicy": "autoRows",
+                                "priorityWeight": 2.0
+                            }
+                        ]
                     }
                 },
                 "hand": {
                     "_desc": "플레이어 손패(최대 10장). 10개 슬롯 고정 + 정렬 시 슬롯 간 이동만 허용 + 카드 사용 후 빈 슬롯 공간 유지.",
                     "x": 0.5,
-                    "y": 0.60,
+                    "y": 0.65,
                     "scale": 0.9,
                     "zIndex": 20,
                     "_comment_mode": "grid는 배경/간격 기준값으로 유지하되, 배치는 fixedSlots10 모드가 슬롯 좌표를 소스 오브 트루스로 사용.",
@@ -420,6 +558,20 @@
                                 "preserveOnRemove": true
                             }
                         ]
+                    }
+                },
+                "score": {
+                    "_desc": "내 점수 표시",
+                    "x": 0.85,
+                    "y": 0.10,
+                    "scale": 0.9,
+                    "zIndex": 100,
+                    "textPrefix": "score :",
+                    "backgroundOpacity": 0.4,
+                    "typography": {
+                        "fontSizePt": 18,
+                        "fontWeight": "bold",
+                        "color": "#000000"
                     }
                 }
             }
