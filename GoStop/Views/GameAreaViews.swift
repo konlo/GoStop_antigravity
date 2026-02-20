@@ -627,8 +627,6 @@ struct TableFixedSlotsView: View {
         ZStack {
              if let fixedSlots = config.fixedSlots {
                  ForEach(fixedSlots.slots, id: \.slotIndex) { slot in
-                     let absFrame = ctx.centerSlotFrames[slot.slotIndex] ?? .zero
-                     
                      // Convert to Local Coordinates
                      let pos = calculateClampedPosition(slot: slot, ctx: ctx, config: config, manager: manager)
  

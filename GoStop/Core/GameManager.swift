@@ -3,6 +3,7 @@ import Foundation
 enum GameState {
     case ready
     case playing
+    case askingGoStop
     case ended
 }
 
@@ -70,9 +71,67 @@ class GameManager: ObservableObject {
         }
         
         // 4. End Turn Logic
+        guard let rules = RuleLoader.shared.config else {
+            fallbackEndTurn(player: player)
+            return
+        }
+        
+        let minScore = players.count == 3 ? rules.go_stop.min_score_3_players : rules.go_stop.min_score_2_players
+        if player.score >= minScore && player.score > player.lastGoScore {
+            // Reached new high score exceeding minimum
+            if player.hand.isEmpty {
+                // Cannot call Go if there are no cards left to play. Forced Stop.
+                print("\(player.name) reached \(player.score) points, but has no cards left. Forced STOP.")
+                executeStop(player: player, rules: rules)
+            } else {
+                // Ask Go or Stop
+                gameState = .askingGoStop
+                print("\(player.name) reached \(player.score) points. Asking Go/Stop...")
+            }
+        } else {
+            endTurn()
+        }
+    }
+    
+    func respondToGoStop(isGo: Bool) {
+        guard gameState == .askingGoStop, let player = currentPlayer else { return }
+        
+        guard let rules = RuleLoader.shared.config else {
+            fallbackEndTurn(player: player)
+            return
+        }
+        
+        if isGo {
+            player.goCount += 1
+            player.lastGoScore = player.score
+            print("\(player.name) calls GO! (Count: \(player.goCount))")
+            gameState = .playing
+            endTurn()
+        } else {
+            executeStop(player: player, rules: rules)
+        }
+    }
+    
+    private func executeStop(player: Player, rules: RuleConfig) {
+        let opponentIndex = (currentTurnIndex + 1) % players.count
+        let opponent = players[opponentIndex]
+        
+        let result = PenaltySystem.calculatePenalties(winner: player, loser: opponent, rules: rules)
+        print("\(player.name) calls STOP and wins! Base: \(player.score), Final Score: \(result.finalScore)")
+        
+        if result.isGwangbak { print("Gwangbak applied!") }
+        if result.isPibak { print("Pibak applied!") }
+        if result.isGobak { print("Gobak applied!") }
+        
+        opponent.money -= result.finalScore * 100
+        player.money += result.finalScore * 100
+        
+        gameState = .ended
+    }
+    
+    private func fallbackEndTurn(player: Player) {
         if player.score >= 7 {
-            // In real game: Ask Go/Stop. For now: Win immediately for MVP/Testing
-            print("\(player.name) Wins with score \(player.score)!")
+            print("\(player.name) Wins with score \(player.score)! (Fallback)")
             gameState = .ended
         } else {
             endTurn()
@@ -104,7 +163,9 @@ class GameManager: ObservableObject {
     
     private func endTurn() {
         if deck.cards.isEmpty {
-            gameState = .ended // Nagari check needed
+            gameState = .ended // Deck run out -> Nagari!
+            print("Game Ended in Nagari!")
+            // Typically, we would set a flag to multiply the next game's stakes
             return
         }
         // Switch turn

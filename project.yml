@@ -4,6 +4,10 @@ options:
   xcodeVersion: 15.0
   deploymentTarget:
     iOS: "16.0"
+packages:
+  Yams:
+    url: https://github.com/jpsim/Yams.git
+    from: 5.0.6
 targets:
   GoStop:
     type: application
@@ -11,6 +15,8 @@ targets:
     sources: 
       - GoStop
       - GoStop/Assets.xcassets
+    dependencies:
+      - package: Yams
     settings:
       base:
         INFOPLIST_KEY_CFBundleDisplayName: GoStop

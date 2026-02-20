@@ -1,0 +1,65 @@
+cards:
+  kwang:
+    months: [1, 3, 8, 11, 12]
+  dan:
+    hongdan: [1, 2, 3] 
+    cheongdan: [6, 9, 10] 
+    chodan: [4, 5, 7] 
+  yul:
+    godori: [2, 4, 8]
+  pi:
+    double_pi_months: [11, 12] # Default double pis (often 11, 12, or 9)
+    bonus_cards: 2 # Number of bonus cards in deck
+
+scoring:
+  kwang:
+    samgwang: 3
+    bisamgwang: 2
+    sagwang: 4
+    ogwang: 15 # Configurable house rule
+  dan:
+    min_count: 5
+    min_score: 1
+    additional_score: 1
+    hongdan: 3
+    cheongdan: 3
+    chodan: 3
+  yul:
+    min_count: 5
+    min_score: 1
+    additional_score: 1
+    godori: 5
+  pi:
+    min_count: 10
+    min_score: 1
+    additional_score: 1
+
+go_stop:
+  min_score_3_players: 3
+  min_score_2_players: 7
+  go_bonuses:
+    1: 
+      add: 1
+      multiply: 1
+    2: 
+      add: 2
+      multiply: 1
+    3: 
+      add: 0
+      multiply: 2
+    4: 
+      add: 0
+      multiply: 4
+
+penalties:
+  gobak: true
+  gwangbak:
+    enabled: true
+    opponent_max_kwang: 0
+  pibak:
+    enabled: true
+    opponent_min_pi_safe: 6 # If opponent has < 6 pi, they are pibak
+
+nagari:
+  enabled: true
+  next_game_multiplier: 2

@@ -7,6 +7,8 @@ class Player: ObservableObject, Identifiable {
     @Published var capturedCards: [Card] = []
     @Published var score: Int = 0
     @Published var money: Int
+    @Published var goCount: Int = 0
+    @Published var lastGoScore: Int = 0
     
     init(name: String, money: Int = 10000) {
         self.name = name
@@ -17,6 +19,8 @@ class Player: ObservableObject, Identifiable {
         hand.removeAll()
         capturedCards.removeAll()
         score = 0
+        goCount = 0
+        lastGoScore = 0
     }
     
     func receive(cards: [Card]) {

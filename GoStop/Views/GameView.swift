@@ -143,6 +143,47 @@ struct GameView: View {
                 gameManager.setupGame()
                 gameManager.startGame()
             })
+        } else if gameManager.gameState == .askingGoStop {
+            goStopOverlay()
+        }
+    }
+    
+    @ViewBuilder
+    func goStopOverlay() -> some View {
+        ZStack {
+            Color.black.opacity(0.6).ignoresSafeArea()
+            VStack(spacing: 30) {
+                Text("점수가 났습니다!")
+                    .font(.largeTitle)
+                    .fontWeight(.bold)
+                    .foregroundStyle(.white)
+                
+                HStack(spacing: 40) {
+                    Button(action: {
+                        gameManager.respondToGoStop(isGo: true)
+                    }) {
+                        Text("GO")
+                            .font(.title)
+                            .bold()
+                            .frame(width: 120, height: 60)
+                            .background(Color.blue)
+                            .foregroundColor(.white)
+                            .cornerRadius(15)
+                    }
+                    
+                    Button(action: {
+                        gameManager.respondToGoStop(isGo: false)
+                    }) {
+                        Text("STOP")
+                            .font(.title)
+                            .bold()
+                            .frame(width: 120, height: 60)
+                            .background(Color.red)
+                            .foregroundColor(.white)
+                            .cornerRadius(15)
+                    }
+                }
+            }
         }
     }
     
