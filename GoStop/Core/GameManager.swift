@@ -1,6 +1,6 @@
 import Foundation
 
-enum GameState {
+enum GameState: String, Codable {
     case ready
     case playing
     case askingGoStop
@@ -8,6 +8,8 @@ enum GameState {
 }
 
 class GameManager: ObservableObject {
+    static var shared: GameManager?
+    
     @Published var gameState: GameState = .ready
     @Published var deck = Deck()
     @Published var players: [Player] = []
@@ -20,6 +22,7 @@ class GameManager: ObservableObject {
     }
     
     init() {
+        GameManager.shared = self
         setupGame()
     }
     

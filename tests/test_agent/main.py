@@ -137,6 +137,41 @@ class TestAgent:
                 return resp
             except json.JSONDecodeError as e:
                 raise RuntimeError(f"Failed to parse JSON response: {response_str}") from e
+        elif self.connection_mode == "socket":
+            import socket
+            try:
+                # Simple one-off socket connection for each command
+                # In production, keep a persistent socket if performance is key
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.settimeout(self.action_timeout_sec)
+                s.connect(("127.0.0.1", 8080))
+                
+                req_str = json.dumps(command) + "\n"
+                s.sendall(req_str.encode('utf-8'))
+                
+                # Receive response
+                response_data = b""
+                while True:
+                    chunk = s.recv(4096)
+                    if not chunk:
+                        break
+                    response_data += chunk
+                    if b"\n" in response_data:
+                        break
+                
+                s.close()
+                
+                if not response_data:
+                    raise RuntimeError("No response from simulator socket.")
+                
+                resp = json.loads(response_data.decode('utf-8').strip())
+                logger.debug(f"Received socket response: {resp}")
+                
+                if command.get("action") == "get_state" and resp.get("status") == "ok":
+                    self.last_state = resp
+                return resp
+            except Exception as e:
+                raise RuntimeError(f"Socket communication failed: {e}")
         else:
             # Implement HTTP request to the App's testing server (using self.action_timeout_sec)
             pass
