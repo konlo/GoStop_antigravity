@@ -85,9 +85,94 @@ def scenario_safety_limit_trigger(agent: TestAgent):
             
         agent.send_user_action("click_useless_button")
 
+def scenario_verify_scoring_suite(agent: TestAgent):
+    """
+    Scenario: Comprehensive verification of all scoring categories.
+    """
+    logger.info("Running comprehensive scoring verification suite...")
+    
+    test_cases = [
+        {
+            "name": "10 Normal Pi -> 1 pt",
+            "cards": [{"month": m, "type": "junk"} for m in range(1, 11)],
+            "expected_score": 1,
+            "category": "Junk"
+        },
+        {
+            "name": "8 Normal + 1 SsangPi -> 1 pt (10 pi)",
+            "cards": [{"month": m, "type": "junk"} for m in range(1, 9)] + [{"month": 11, "type": "doubleJunk"}],
+            "expected_score": 1,
+            "category": "Junk"
+        },
+        {
+            "name": "Month 9 Junk Check (Normal Pi)",
+            "cards": [{"month": 9, "type": "junk"}] * 10,
+            "expected_score": 1, 
+            "category": "Junk"
+        },
+        {
+            "name": "Godori (Feb, Apr, Aug Animals)",
+            "cards": [
+                {"month": 2, "type": "animal"},
+                {"month": 4, "type": "animal"},
+                {"month": 8, "type": "animal"}
+            ],
+            "expected_score": 5,
+            "category": "Godori"
+        },
+        {
+            "name": "Hong-dan (Jan, Feb, Mar Ribbons)",
+            "cards": [
+                {"month": 1, "type": "ribbon"},
+                {"month": 2, "type": "ribbon"},
+                {"month": 3, "type": "ribbon"}
+            ],
+            "expected_score": 3,
+            "category": "Red Ribbons"
+        },
+        {
+            "name": "Bi-samgwang (3 Brights incl. Dec)",
+            "cards": [
+                {"month": 1, "type": "bright"},
+                {"month": 3, "type": "bright"},
+                {"month": 12, "type": "bright"}
+            ],
+            "expected_score": 2,
+            "category": "3 Brights"
+        },
+        {
+            "name": "Sam-gwang (3 Brights excl. Dec)",
+            "cards": [
+                {"month": 1, "type": "bright"},
+                {"month": 3, "type": "bright"},
+                {"month": 8, "type": "bright"}
+            ],
+            "expected_score": 3,
+            "category": "3 Brights"
+        }
+    ]
+
+    for case in test_cases:
+        logger.info(f"Testing sub-case: {case['name']}")
+        agent.set_condition({"mock_captured_cards": case["cards"]})
+        state = agent.get_all_information()
+        player = state.get("players", [{}])[0]
+        score_items = player.get("scoreItems", [])
+        
+        found_item = next((item for item in score_items if case["category"] in item["name"]), None)
+        
+        if found_item:
+            logger.info(f"  Result: Found '{found_item['name']}' with {found_item['points']} pts")
+            assert found_item["points"] == case["expected_score"], \
+                f"FAILED: {case['name']}. Expected {case['expected_score']} pts, got {found_item['points']}"
+        else:
+            assert False, f"FAILED: {case['name']}. Score category '{case['category']}' not found in {score_items}"
+
+    logger.info("Scoring verification suite passed successfully.")
+
 if __name__ == "__main__":
     # Path to the compiled GoStopCLI
-    app_executable = "../../build/Build/Products/Debug/GoStopCLI" 
+    app_executable = "../../build_v3/Build/Products/Debug/GoStopCLI" 
     
     agent = TestAgent(app_executable_path=app_executable, 
                       connection_mode="cli",
@@ -98,7 +183,8 @@ if __name__ == "__main__":
         scenario_basic_launch_and_read,
         scenario_setup_condition_and_act,
         scenario_force_crash_capture,
-        scenario_safety_limit_trigger
+        scenario_safety_limit_trigger,
+        scenario_verify_scoring_suite
     ]
     
     # 5. Repeat tests continuously or a set number of times

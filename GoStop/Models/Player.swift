@@ -70,4 +70,17 @@ class Player: ObservableObject, Identifiable, Codable {
         // Placeholder for scoring logic
         // Will be implemented in the next phase
     }
+
+    func serialize() -> [String: Any] {
+        return [
+            "id": id.uuidString,
+            "name": name,
+            "hand": hand,
+            "capturedCards": capturedCards,
+            "score": score,
+            "money": money,
+            "goCount": goCount,
+            "lastGoScore": lastGoScore
+        ]
+    }
 }

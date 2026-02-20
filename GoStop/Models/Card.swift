@@ -41,4 +41,13 @@ struct Card: Identifiable, Equatable, CustomStringConvertible, Codable {
     var description: String {
         return "\(month) - \(type)"
     }
+    
+    func serialize() -> [String: Any] {
+        return [
+            "id": id.uuidString,
+            "month": month.rawValue,
+            "type": type.rawValue,
+            "imageIndex": imageIndex
+        ]
+    }
 }

@@ -5,3 +5,6 @@ DerivedData/
 *.xcworkspace/
 .build/
 tests/test_agent/artifacts/
+build_log*.txt
+build_test_cli/
+build_v*/

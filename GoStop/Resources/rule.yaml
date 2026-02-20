@@ -8,7 +8,7 @@ cards:
   yul:
     godori: [2, 4, 8]
   pi:
-    double_pi_months: [11, 12] # Default double pis (often 11, 12, or 9)
+    double_pi_months: [] # Use explicit doubleJunk type instead
     bonus_cards: 2 # Number of bonus cards in deck
 
 scoring:

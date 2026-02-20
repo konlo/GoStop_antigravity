@@ -2,9 +2,8 @@ import json
 from main import TestAgent
 
 def print_card(card):
-    # Mapping months to Korean/English names could be helpful
-    # Simple representation: [M:3, T:animal, ID:...short]
-    return f"[M:{card['month']:>2} | {card['type']:<10}]"
+    suffix = "(2P)" if card['type'] == 'doubleJunk' else ""
+    return f"[M:{card['month']:>2} | {card['type']:<10}{suffix}]"
 
 def inspect_state(mode="cli"):
     app_executable = "../../build/Build/Products/Debug/GoStopCLI"
@@ -39,16 +38,41 @@ def inspect_state(mode="cli"):
             hand = player.get('hand', [])
             captured = player.get('capturedCards', [])
             score = player.get('score', 0)
+            score_items = player.get('scoreItems', [])
             
-            print(f"PLAYER: {name} (Score: {score})")
+            print(f"PLAYER: {name}")
+            print(f"  TOTAL SCORE: {score} points")
+            if score_items:
+                print("  SCORE BREAKDOWN:")
+                for item in score_items:
+                    print(f"    - {item['name']:<30}: {item['points']:>2} pts")
             print(f"  HAND ({len(hand)}):")
             for i, card in enumerate(hand):
                 print(f"    {i+1:>2}. {print_card(card)}")
             
             if captured:
-                print(f"  CAPTURED ({len(captured)}):")
-                for i, card in enumerate(captured):
-                    print(f"    {i+1:>2}. {print_card(card)}")
+                print("  CAPTURED GROUPS:")
+                groups = {
+                    "광(Bright)": [c for c in captured if c['type'] == 'bright'],
+                    "끗(Animal)": [c for c in captured if c['type'] == 'animal'],
+                    "띠(Ribbon)": [c for c in captured if c['type'] == 'ribbon'],
+                    "피(Junk)  ": [c for c in captured if c['type'] in ['junk', 'doubleJunk']]
+                }
+                
+                for label, cards in groups.items():
+                    if cards:
+                        # Add (2P) marker for doubleJunk cards
+                        card_list = []
+                        for c in cards:
+                            m_str = f"M{c['month']}"
+                            if c['type'] == 'doubleJunk':
+                                m_str += "(2P)"
+                            card_list.append(m_str)
+                        
+                        card_str = " ".join(card_list)
+                        print(f"    {label:<12}: {len(cards):>2} cards -> {card_str}")
+                    else:
+                        print(f"    {label:<12}:  0 cards")
             print("-" * 50)
             
     except Exception as e:

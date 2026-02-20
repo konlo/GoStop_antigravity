@@ -9,52 +9,6 @@ struct CommandRequest: Codable {
     let data: [String: AnyCodable]?
 }
 
-struct AnyCodable: Codable {
-    var value: Any
-    
-    init(_ value: Any) {
-        self.value = value
-    }
-    
-    init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        if let intVal = try? container.decode(Int.self) {
-            value = intVal
-        } else if let doubleVal = try? container.decode(Double.self) {
-            value = doubleVal
-        } else if let boolVal = try? container.decode(Bool.self) {
-            value = boolVal
-        } else if let stringVal = try? container.decode(String.self) {
-            value = stringVal
-        } else if let dictVal = try? container.decode([String: AnyCodable].self) {
-            value = dictVal.mapValues { $0.value }
-        } else if let arrayVal = try? container.decode([AnyCodable].self) {
-            value = arrayVal.map { $0.value }
-        } else {
-            throw DecodingError.dataCorruptedError(in: container, debugDescription: "AnyCodable value cannot be decoded")
-        }
-    }
-    
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.singleValueContainer()
-        switch value {
-        case let intVal as Int:
-            try container.encode(intVal)
-        case let doubleVal as Double:
-            try container.encode(doubleVal)
-        case let boolVal as Bool:
-            try container.encode(boolVal)
-        case let stringVal as String:
-            try container.encode(stringVal)
-        case let dictVal as [String: Any]:
-            try container.encode(dictVal.mapValues { AnyCodable($0) })
-        case let arrayVal as [Any]:
-            try container.encode(arrayVal.map { AnyCodable($0) })
-        default:
-            throw EncodingError.invalidValue(value, EncodingError.Context(codingPath: container.codingPath, debugDescription: "AnyCodable value cannot be encoded"))
-        }
-    }
-}
 
 struct GameStateDump: Codable {
     let status: String
@@ -90,6 +44,25 @@ class CLIEngine {
                     self.currentSeed = seed
                     gameManager.setupGame(seed: seed)
                 }
+
+                if let mockCaptured = data["mock_captured_cards"]?.value as? [[String: Any]] {
+                     let player = gameManager.players[0]
+                     player.capturedCards = mockCaptured.compactMap { dict -> Card? in
+                         guard let m = dict["month"] as? Int,
+                               let tStr = dict["type"] as? String else { return nil }
+                         let type: CardType
+                         switch tStr {
+                         case "bright": type = .bright
+                         case "animal": type = .animal
+                         case "ribbon": type = .ribbon
+                         case "doubleJunk": type = .doubleJunk
+                         default: type = .junk
+                         }
+                         return Card(month: Month(rawValue: m) ?? .jan, type: type, imageIndex: 0)
+                     }
+                     // Force score recalculation
+                     player.score = ScoringSystem.calculateScore(for: player)
+                }
             }
             return ["status": "ok", "message": "Condition set"]
             
@@ -116,14 +89,30 @@ class CLIEngine {
         )
         
         guard let data = try? JSONEncoder().encode(dump),
-              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+              var dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return ["status": "error", "message": "Failed to serialize state"]
         }
+        
+        // Inject score items for each player
+        if var playersArray = dict["players"] as? [[String: Any]] {
+            for i in 0..<gameManager.players.count {
+                let items = ScoringSystem.calculateScoreDetail(for: gameManager.players[i])
+                if let itemsData = try? JSONEncoder().encode(items),
+                   let itemsArray = try? JSONSerialization.jsonObject(with: itemsData) as? [[String: Any]] {
+                    playersArray[i]["scoreItems"] = itemsArray
+                }
+            }
+            dict["players"] = playersArray
+        }
+        
         return dict
     }
 }
 
 func main() {
+    // Explicitly load rules at startup
+    RuleLoader.shared.loadRules()
+    
     let engine = CLIEngine()
     
     // Standard input reading loop

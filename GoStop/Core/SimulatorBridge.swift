@@ -116,7 +116,11 @@ extension GameManager {
         state["gameState"] = AnyCodable(gameState.rawValue)
         state["deckCount"] = AnyCodable(deck.cards.count)
         state["tableCards"] = AnyCodable(tableCards)
-        state["players"] = AnyCodable(players)
+        state["players"] = AnyCodable(players.map { player in
+            var playerDict = player.serialize()
+            playerDict["scoreItems"] = AnyCodable(ScoringSystem.calculateScoreDetail(for: player))
+            return playerDict
+        })
         state["status"] = AnyCodable("ok")
         return state
     }

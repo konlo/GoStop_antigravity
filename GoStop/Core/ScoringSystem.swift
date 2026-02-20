@@ -1,108 +1,116 @@
-import Foundation
+struct ScoreItem: Codable {
+    let name: String
+    let points: Int
+}
 
 struct ScoringSystem {
     
-    static func calculateScore(for player: Player) -> Int {
+    static func calculateScoreDetail(for player: Player) -> [ScoreItem] {
         guard let rules = RuleLoader.shared.config else {
-            return calculateLegacyScore(for: player)
+            return [] // For now, only support detailed score with RuleConfig
         }
         
-        var score = 0
+        var items: [ScoreItem] = []
         let cards = player.capturedCards
         
-        score += calculateKwangScore(cards: cards, rules: rules)
-        score += calculateYulScore(cards: cards, rules: rules)
-        score += calculateDanScore(cards: cards, rules: rules)
-        score += calculatePiScore(cards: cards, rules: rules)
+        items.append(contentsOf: getKwangDetails(cards: cards, rules: rules))
+        items.append(contentsOf: getYulDetails(cards: cards, rules: rules))
+        items.append(contentsOf: getDanDetails(cards: cards, rules: rules))
+        items.append(contentsOf: getPiDetails(cards: cards, rules: rules))
         
-        return score
+        return items
     }
     
-    private static func calculateKwangScore(cards: [Card], rules: RuleConfig) -> Int {
+    static func calculateScore(for player: Player) -> Int {
+        return calculateScoreDetail(for: player).reduce(0) { $0 + $1.points }
+    }
+    
+    private static func getKwangDetails(cards: [Card], rules: RuleConfig) -> [ScoreItem] {
         let kwangs = cards.filter { $0.type == .bright }
         let count = kwangs.count
         let s = rules.scoring.kwang
         
-        if count == 5 { return s.ogwang }
-        if count == 4 { return s.sagwang }
+        if count == 5 { return [ScoreItem(name: "오광 (5 Brights)", points: s.ogwang)] }
+        if count == 4 { return [ScoreItem(name: "사광 (4 Brights)", points: s.sagwang)] }
         if count == 3 {
-            let hasBiGwang = kwangs.contains { $0.month.rawValue == 12 } // 12 represents December (Rain)
-            return hasBiGwang ? s.bisamgwang : s.samgwang
+            let hasBiGwang = kwangs.contains { $0.month.rawValue == 12 }
+            return [ScoreItem(name: hasBiGwang ? "비삼광 (3 Brights incl. Rain)" : "삼광 (3 Brights)", points: hasBiGwang ? s.bisamgwang : s.samgwang)]
         }
-        return 0
+        return []
     }
     
-    private static func calculateYulScore(cards: [Card], rules: RuleConfig) -> Int {
-        var score = 0
+    private static func getYulDetails(cards: [Card], rules: RuleConfig) -> [ScoreItem] {
+        var items: [ScoreItem] = []
         let yuls = cards.filter { $0.type == .animal }
         let count = yuls.count
         let s = rules.scoring.yul
         
         if count >= s.min_count {
-            score += s.min_score + (count - s.min_count) * s.additional_score
+            let pts = s.min_score + (count - s.min_count) * s.additional_score
+            items.append(ScoreItem(name: "열끗 (\(count) Animals)", points: pts))
         }
         
         let godoriMonths = rules.cards.yul.godori
         let godoriCards = yuls.filter { godoriMonths.contains($0.month.rawValue) }
         if godoriCards.count == 3 {
-            score += s.godori
+            items.append(ScoreItem(name: "고도리 (Godori)", points: s.godori))
         }
         
-        return score
+        return items
     }
     
-    private static func calculateDanScore(cards: [Card], rules: RuleConfig) -> Int {
-        var score = 0
+    private static func getDanDetails(cards: [Card], rules: RuleConfig) -> [ScoreItem] {
+        var items: [ScoreItem] = []
         let dans = cards.filter { $0.type == .ribbon }
         let count = dans.count
         let s = rules.scoring.dan
         
         if count >= s.min_count {
-            score += s.min_score + (count - s.min_count) * s.additional_score
+            let pts = s.min_score + (count - s.min_count) * s.additional_score
+            items.append(ScoreItem(name: "띠 (\(count) Ribbons)", points: pts))
         }
         
         let danRules = rules.cards.dan
-        let hongdan = dans.filter { danRules.hongdan.contains($0.month.rawValue) }.count
-        if hongdan == 3 { score += s.hongdan }
+        if dans.filter({ danRules.hongdan.contains($0.month.rawValue) }).count == 3 {
+            items.append(ScoreItem(name: "홍단 (Red Ribbons)", points: s.hongdan))
+        }
+        if dans.filter({ danRules.cheongdan.contains($0.month.rawValue) }).count == 3 {
+            items.append(ScoreItem(name: "청단 (Blue Ribbons)", points: s.cheongdan))
+        }
+        if dans.filter({ danRules.chodan.contains($0.month.rawValue) }).count == 3 {
+            items.append(ScoreItem(name: "초단 (Grass Ribbons)", points: s.chodan))
+        }
         
-        let cheongdan = dans.filter { danRules.cheongdan.contains($0.month.rawValue) }.count
-        if cheongdan == 3 { score += s.cheongdan }
-        
-        let chodan = dans.filter { danRules.chodan.contains($0.month.rawValue) }.count
-        if chodan == 3 { score += s.chodan }
-        
-        return score
+        return items
+    }
+    
+    private static func getPiDetails(cards: [Card], rules: RuleConfig) -> [ScoreItem] {
+        let piCount = calculatePiCount(cards: cards, rules: rules)
+        let s = rules.scoring.pi
+        if piCount >= s.min_count {
+            let pts = s.min_score + (piCount - s.min_count) * s.additional_score
+            return [ScoreItem(name: "피 (\(piCount) Junk)", points: pts)]
+        }
+        return []
     }
     
     static func calculatePiCount(cards: [Card], rules: RuleConfig) -> Int {
         var piCount = 0
-        let piRules = rules.cards.pi
         
         for card in cards {
             if card.type == .doubleJunk {
                 piCount += 2
             } else if card.type == .junk {
-                if piRules.double_pi_months.contains(card.month.rawValue) {
-                    piCount += 2
-                } else {
-                    piCount += 1
-                }
+                piCount += 1
+            } else if card.type == .animal && card.month.rawValue == 9 {
+                 // In some rules, 9 animal (Sake Cup) can be used as a double pi
+                 // For now, only count junk types unless we implement "use as pi" choice
+                 continue
             }
         }
         return piCount
     }
     
-    private static func calculatePiScore(cards: [Card], rules: RuleConfig) -> Int {
-        var score = 0
-        let piCount = calculatePiCount(cards: cards, rules: rules)
-        
-        let s = rules.scoring.pi
-        if piCount >= s.min_count {
-            score += s.min_score + (piCount - s.min_count) * s.additional_score
-        }
-        
-        return score
-    }
     
     private static func calculateLegacyScore(for player: Player) -> Int {
         var score = 0

@@ -117,19 +117,38 @@ class RuleLoader {
     }
     
     func loadRules() {
-        guard let url = Bundle.main.url(forResource: "rule", withExtension: "yaml") else {
-            print("Failed to locate rule.yaml in bundle. Falling back to default bundle.")
+        let filename = "rule.yaml"
+        var url = Bundle.main.url(forResource: "rule", withExtension: "yaml")
+        
+        // If not found in bundle, try local directory (for CLI)
+        if url == nil {
+            let localPath = FileManager.default.currentDirectoryPath + "/" + filename
+            if FileManager.default.fileExists(atPath: localPath) {
+                url = URL(fileURLWithPath: localPath)
+            }
+        }
+        
+        // Try one more: adjacent to executable
+        if url == nil {
+            let execPath = Bundle.main.bundlePath + "/" + filename
+            if FileManager.default.fileExists(atPath: execPath) {
+                url = URL(fileURLWithPath: execPath)
+            }
+        }
+
+        guard let targetUrl = url else {
+            FileHandle.standardError.write("Failed to locate rule.yaml\n".data(using: .utf8)!)
             return
         }
+        
         do {
-            let data = try Data(contentsOf: url)
+            let data = try Data(contentsOf: targetUrl)
             if let yamlString = String(data: data, encoding: .utf8) {
                 let decoder = YAMLDecoder()
                 config = try decoder.decode(RuleConfig.self, from: yamlString)
-                print("Successfully loaded rule.yaml!")
             }
         } catch {
-            print("Error parsing rule.yaml: \(error)")
+            FileHandle.standardError.write("Error parsing rule.yaml: \(error)\n".data(using: .utf8)!)
         }
     }
 }
