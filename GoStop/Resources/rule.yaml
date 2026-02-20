@@ -52,13 +52,29 @@ go_stop:
       multiply: 4
 
 penalties:
-  gobak: true
+  gobak:
+    enabled: true
+    multiplier: 2
   gwangbak:
     enabled: true
     opponent_max_kwang: 0
+    multiplier: 2
   pibak:
     enabled: true
     opponent_min_pi_safe: 6 # If opponent has < 6 pi, they are pibak
+    multiplier: 2
+  mungbak: # Animal-bak
+    enabled: true
+    winner_min_animal: 7
+    multiplier: 2
+    description: "Winner has 7+ animals and opponent is penalized"
+
+special_moves:
+  bomb:
+    enabled: true
+    steal_pi_count: 1
+    score_multiplier: 2 # Shaking (흔듦) bonus if done via bomb
+    description: "Play 3 identical month cards when 1 is on table"
 
 nagari:
   enabled: true

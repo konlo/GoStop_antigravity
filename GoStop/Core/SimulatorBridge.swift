@@ -72,11 +72,84 @@ class SimulatorBridge {
                 return
             }
             
-            if action == "get_state" {
+            gLog("SimulatorBridge: Received action: \(action)")
+            
+            switch action {
+            case "get_state":
                 sendState(connection: connection)
+                
+            case "start_game":
+                DispatchQueue.main.async {
+                    self.gameManager.startGame()
+                }
+                sendSimpleResponse(status: "ok", action: action, connection: connection)
+                
+            case "play_card":
+                guard let dataDict = json["data"] as? [String: Any],
+                      let monthIdx = dataDict["month"] as? Int,
+                      let typeStr = dataDict["type"] as? String else {
+                    sendErrorResponse(message: "Missing month or type", connection: connection)
+                    return
+                }
+                
+                let type: CardType
+                switch typeStr {
+                case "bright": type = .bright
+                case "animal": type = .animal
+                case "ribbon": type = .ribbon
+                case "doubleJunk": type = .doubleJunk
+                default: type = .junk
+                }
+                
+                DispatchQueue.main.async {
+                    if let player = self.gameManager.currentPlayer,
+                       let card = player.hand.first(where: { $0.month.rawValue == monthIdx && $0.type == type }) {
+                        self.gameManager.playTurn(card: card)
+                    }
+                }
+                sendSimpleResponse(status: "action executed", action: action, connection: connection)
+                
+            case "respond_go_stop":
+                guard let dataDict = json["data"] as? [String: Any],
+                      let isGo = dataDict["isGo"] as? Bool else {
+                    sendErrorResponse(message: "Missing isGo", connection: connection)
+                    return
+                }
+                DispatchQueue.main.async {
+                    self.gameManager.respondToGoStop(isGo: isGo)
+                }
+                sendSimpleResponse(status: "action executed", action: action, connection: connection)
+                
+            case "click_restart_button":
+                DispatchQueue.main.async {
+                    self.gameManager.setupGame()
+                }
+                sendSimpleResponse(status: "action executed", action: action, connection: connection)
+                
+            default:
+                sendSimpleResponse(status: "unknown action", action: action, connection: connection)
             }
+            
         } catch {
-            print("SimulatorBridge: Failed to parse request: \(error)")
+            gLog("SimulatorBridge: Failed to parse request: \(error)")
+        }
+    }
+    
+    private func sendSimpleResponse(status: String, action: String, connection: NWConnection) {
+        let resp = ["status": status, "action": action]
+        if let data = try? JSONSerialization.data(withJSONObject: resp) {
+            var finalData = data
+            finalData.append("\n".data(using: .utf8)!)
+            connection.send(content: finalData, completion: .contentProcessed({ _ in }))
+        }
+    }
+    
+    private func sendErrorResponse(message: String, connection: NWConnection) {
+        let resp = ["status": "error", "message": message]
+        if let data = try? JSONSerialization.data(withJSONObject: resp) {
+            var finalData = data
+            finalData.append("\n".data(using: .utf8)!)
+            connection.send(content: finalData, completion: .contentProcessed({ _ in }))
         }
     }
     

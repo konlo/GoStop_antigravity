@@ -170,6 +170,92 @@ def scenario_verify_scoring_suite(agent: TestAgent):
 
     logger.info("Scoring verification suite passed successfully.")
 
+def scenario_verify_bomb_and_steal(agent: TestAgent):
+    """
+    Scenario: Verifies Bomb (폭탄) and Stealing Pi from opponent.
+    """
+    logger.info("Running Bomb and Steal verification scenario...")
+    
+    # 1. Setup: 
+    # Player hand: 3 of Jan (month 1)
+    # Table: 1 of Jan
+    # Opponent: Has 2 normal Pi
+    agent.set_condition({
+        "mock_hand": [{"month": 1, "type": "junk"}] * 3,
+        "mock_table": [{"month": 1, "type": "junk"}],
+        "mock_opponent_captured_cards": [{"month": 2, "type": "junk"}, {"month": 3, "type": "junk"}]
+    })
+    
+    # 1b. Transition to playing state
+    agent.send_user_action("start_game")
+    
+    # 2. Action: Play Jan card from hand
+    agent.send_user_action("play_card", {"month": 1, "type": "junk"})
+    
+    # 3. Verification
+    state = agent.get_all_information()
+    player = state["players"][0]
+    opponent = state["players"][1]
+    
+    # Check captures (3 from hand + 1 from table = 4, PLUS 1 stolen from opponent = 5)
+    assert len(player["capturedCards"]) == 5, f"Expected 5 captured cards (4 from bomb + 1 stolen), got {len(player['capturedCards'])}"
+    
+    # Check shake count
+    assert player["shakeCount"] == 1, f"Expected shakeCount 1, got {player['shakeCount']}"
+    
+    logger.info("Bomb and Steal verification passed!")
+
+def scenario_verify_penalties(agent: TestAgent):
+    """
+    Scenario: Verifies Gwangbak, Pibak, Mungbak, and Gobak multipliers.
+    """
+    logger.info("Running Penalties verification scenario...")
+    
+    # Setup winner with multiple score triggers:
+    # 3 Brights (Kwang)
+    # 7 Animals (Mung)
+    # 10 Pi (Pi)
+    winner_cards = (
+        [{"month": 1, "type": "bright"}, {"month": 3, "type": "bright"}, {"month": 8, "type": "bright"}] + # 3 pts (Samgwang)
+        [{"month": m, "type": "animal"} for m in range(1, 8)] + # 1 pt (7 animals)
+        [{"month": m, "type": "junk"} for m in range(1, 11)] # 1 pt (10 Pi)
+    )
+    # Base score: 3 (Kwang) + 1 (Animal) + 1 (Pi) = 5
+    
+    # Setup loser to be vulnerable to all bak:
+    # 0 Brights (Gwangbak)
+    # 5 Pi (Pibak - min safe is 6)
+    # Previously called Go, but now winner takes over (Gobak)
+    loser_cards = [{"month": 11, "type": "junk"}] * 5
+    
+    agent.set_condition({
+        "mock_captured_cards": winner_cards,
+        "mock_opponent_captured_cards": loser_cards,
+        "player1_data": {"goCount": 1}, # Loser called Go
+        "player0_data": {"goCount": 0}, # Winner called 0 Go (essential for Gobak)
+        "mock_scenario": "game_over" 
+    })
+    
+    state = agent.get_all_information()
+    penalty = state.get("penaltyResult")
+    
+    assert penalty is not None, "Failed to retrieve penaltyResult from state"
+    
+    # Check individual flags
+    assert penalty["isGwangbak"] == True, "Expected Gwangbak to be True"
+    assert penalty["isPibak"] == True, "Expected Pibak to be True"
+    assert penalty["isMungbak"] == True, "Expected Mungbak to be True"
+    assert penalty["isGobak"] == True, "Expected Gobak to be True"
+    
+    # Expected final score calculation:
+    # Base: 3 (Kwang) + 3 (Animal: 5(1)+6(1)+7(1)) + 1 (Pi) = 7
+    # Gwangbak (x2), Pibak (x2), Mungbak (x2), Gobak (x2)
+    # Final: 7 * 2 * 2 * 2 * 2 = 112
+    expected_final = 7 * 2 * 2 * 2 * 2
+    assert penalty["finalScore"] == expected_final, f"Expected final score {expected_final}, got {penalty['finalScore']}"
+    
+    logger.info(f"Penalties verification passed! Final Score: {penalty['finalScore']}")
+
 if __name__ == "__main__":
     # Path to the compiled GoStopCLI
     app_executable = "../../build_v3/Build/Products/Debug/GoStopCLI" 
@@ -184,7 +270,9 @@ if __name__ == "__main__":
         scenario_setup_condition_and_act,
         scenario_force_crash_capture,
         scenario_safety_limit_trigger,
-        scenario_verify_scoring_suite
+        scenario_verify_scoring_suite,
+        scenario_verify_bomb_and_steal,
+        scenario_verify_penalties
     ]
     
     # 5. Repeat tests continuously or a set number of times

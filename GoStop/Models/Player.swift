@@ -9,9 +9,10 @@ class Player: ObservableObject, Identifiable, Codable {
     @Published var money: Int
     @Published var goCount: Int = 0
     @Published var lastGoScore: Int = 0
+    @Published var shakeCount: Int = 0
     
     enum CodingKeys: String, CodingKey {
-        case id, name, hand, capturedCards, score, money, goCount, lastGoScore
+        case id, name, hand, capturedCards, score, money, goCount, lastGoScore, shakeCount
     }
     
     required init(from decoder: Decoder) throws {
@@ -24,6 +25,7 @@ class Player: ObservableObject, Identifiable, Codable {
         money = try container.decode(Int.self, forKey: .money)
         goCount = try container.decode(Int.self, forKey: .goCount)
         lastGoScore = try container.decode(Int.self, forKey: .lastGoScore)
+        shakeCount = try container.decode(Int.self, forKey: .shakeCount)
     }
     
     func encode(to encoder: Encoder) throws {
@@ -36,6 +38,7 @@ class Player: ObservableObject, Identifiable, Codable {
         try container.encode(money, forKey: .money)
         try container.encode(goCount, forKey: .goCount)
         try container.encode(lastGoScore, forKey: .lastGoScore)
+        try container.encode(shakeCount, forKey: .shakeCount)
     }
 
     init(id: UUID = UUID(), name: String, money: Int = 10000) {
@@ -50,6 +53,7 @@ class Player: ObservableObject, Identifiable, Codable {
         score = 0
         goCount = 0
         lastGoScore = 0
+        shakeCount = 0
     }
     
     func receive(cards: [Card]) {
@@ -80,7 +84,8 @@ class Player: ObservableObject, Identifiable, Codable {
             "score": score,
             "money": money,
             "goCount": goCount,
-            "lastGoScore": lastGoScore
+            "lastGoScore": lastGoScore,
+            "shakeCount": shakeCount
         ]
     }
 }

@@ -28,6 +28,43 @@ class CLIEngine {
         case "get_state":
             return dumpState()
             
+        case "start_game":
+            gameManager.startGame()
+            return ["status": "action executed", "action": "start_game"]
+            
+        case "play_card":
+            guard let data = request.data,
+                  let monthIdx = data["month"]?.value as? Int,
+                  let typeStr = data["type"]?.value as? String else {
+                return ["status": "error", "message": "Missing month or type for play_card"]
+            }
+            
+            let type: CardType
+            switch typeStr {
+            case "bright": type = .bright
+            case "animal": type = .animal
+            case "ribbon": type = .ribbon
+            case "doubleJunk": type = .doubleJunk
+            default: type = .junk
+            }
+            
+            // Find card in hand
+            guard let player = gameManager.currentPlayer,
+                  let card = player.hand.first(where: { $0.month.rawValue == monthIdx && $0.type == type }) else {
+                return ["status": "error", "message": "Card not found in hand"]
+            }
+            
+            gameManager.playTurn(card: card)
+            return ["status": "action executed", "action": "play_card"]
+            
+        case "respond_go_stop":
+            guard let data = request.data,
+                  let isGo = data["isGo"]?.value as? Bool else {
+                return ["status": "error", "message": "Missing isGo for respond_go_stop"]
+            }
+            gameManager.respondToGoStop(isGo: isGo)
+            return ["status": "action executed", "action": "respond_go_stop"]
+            
         case "set_condition":
             if let data = request.data {
                 if let scenario = data["mock_scenario"]?.value as? String, scenario == "game_over" {
@@ -47,21 +84,33 @@ class CLIEngine {
 
                 if let mockCaptured = data["mock_captured_cards"]?.value as? [[String: Any]] {
                      let player = gameManager.players[0]
-                     player.capturedCards = mockCaptured.compactMap { dict -> Card? in
-                         guard let m = dict["month"] as? Int,
-                               let tStr = dict["type"] as? String else { return nil }
-                         let type: CardType
-                         switch tStr {
-                         case "bright": type = .bright
-                         case "animal": type = .animal
-                         case "ribbon": type = .ribbon
-                         case "doubleJunk": type = .doubleJunk
-                         default: type = .junk
-                         }
-                         return Card(month: Month(rawValue: m) ?? .jan, type: type, imageIndex: 0)
-                     }
-                     // Force score recalculation
+                     player.capturedCards = parseCards(mockCaptured)
                      player.score = ScoringSystem.calculateScore(for: player)
+                }
+                
+                if let mockOpponentCaptured = data["mock_opponent_captured_cards"]?.value as? [[String: Any]] {
+                     let opponent = gameManager.players[1]
+                     opponent.capturedCards = parseCards(mockOpponentCaptured)
+                     opponent.score = ScoringSystem.calculateScore(for: opponent)
+                }
+
+                if let mockHand = data["mock_hand"]?.value as? [[String: Any]] {
+                     gameManager.players[0].hand = parseCards(mockHand)
+                }
+                
+                if let mockTable = data["mock_table"]?.value as? [[String: Any]] {
+                     gameManager.tableCards = parseCards(mockTable)
+                }
+                
+                // Advanced player mocking
+                for i in 0..<gameManager.players.count {
+                    let key = "player\(i)_data"
+                    if let pData = data[key]?.value as? [String: Any] {
+                        let p = gameManager.players[i]
+                        if let goCount = pData["goCount"] as? Int { p.goCount = goCount }
+                        if let money = pData["money"] as? Int { p.money = money }
+                        if let shakeCount = pData["shakeCount"] as? Int { p.shakeCount = shakeCount }
+                    }
                 }
             }
             return ["status": "ok", "message": "Condition set"]
@@ -70,11 +119,56 @@ class CLIEngine {
             gameManager.setupGame(seed: currentSeed)
             return ["status": "action executed", "action": "click_restart_button"]
             
+        case "play_card":
+            guard let data = request.data,
+                  let monthIdx = data["month"]?.value as? Int,
+                  let typeStr = data["type"]?.value as? String else {
+                return ["status": "error", "message": "Missing month or type for play_card"]
+            }
+            
+            let type = parseType(typeStr)
+            
+            // Find card in hand
+            guard let player = gameManager.currentPlayer,
+                  let card = player.hand.first(where: { $0.month.rawValue == monthIdx && $0.type == type }) else {
+                return ["status": "error", "message": "Card not found in hand"]
+            }
+            
+            gameManager.playTurn(card: card)
+            return ["status": "action executed", "action": "play_card"]
+            
+        case "respond_go_stop":
+            guard let data = request.data,
+                  let isGo = data["isGo"]?.value as? Bool else {
+                return ["status": "error", "message": "Missing isGo for respond_go_stop"]
+            }
+            gameManager.respondToGoStop(isGo: isGo)
+            return ["status": "action executed", "action": "respond_go_stop"]
+            
         case "invalid_action_triggering_crash":
             fatalError("Simulated App Crash for Testing")
             
         default:
             return ["status": "action executed", "action": request.action]
+        }
+    }
+    
+    private func parseCards(_ array: [[String: Any]]) -> [Card] {
+        return array.compactMap { dict -> Card? in
+            guard let m = dict["month"] as? Int,
+                  let tStr = dict["type"] as? String else { return nil }
+            let type = parseType(tStr)
+            return Card(month: Month(rawValue: m) ?? .jan, type: type, imageIndex: 0)
+        }
+    }
+    
+    private func parseType(_ tStr: String) -> CardType {
+        switch tStr {
+        case "bright": return .bright
+        case "animal": return .animal
+        case "ribbon": return .ribbon
+        case "doubleJunk": return .doubleJunk
+        default: return .junk
         }
     }
     
@@ -103,6 +197,23 @@ class CLIEngine {
                 }
             }
             dict["players"] = playersArray
+        }
+        
+        // Inject penalty result if game ended
+        if gameManager.gameState == .ended, 
+           let rules = RuleLoader.shared.config {
+            // Assume player 0 is the winner for penalty testing purposes if score > 0
+            let winner = gameManager.players[0].score >= gameManager.players[1].score ? gameManager.players[0] : gameManager.players[1]
+            let loser = winner === gameManager.players[0] ? gameManager.players[1] : gameManager.players[0]
+            
+            let penalty = PenaltySystem.calculatePenalties(winner: winner, loser: loser, rules: rules)
+            dict["penaltyResult"] = [
+                "finalScore": penalty.finalScore,
+                "isGwangbak": penalty.isGwangbak,
+                "isPibak": penalty.isPibak,
+                "isGobak": penalty.isGobak,
+                "isMungbak": penalty.isMungbak
+            ]
         }
         
         return dict

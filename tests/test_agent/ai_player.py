@@ -1,0 +1,252 @@
+import json
+import logging
+import os
+import subprocess
+import time
+import traceback
+from datetime import datetime
+from main import TestAgent, logger, artifacts_dir
+
+class AIPlayer(TestAgent):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.max_go_count = 4 # Target go count (can be 4 or 5)
+        self.paused = False
+        self.state_history = []
+        self.error_log_path = os.path.join(artifacts_dir, "error_report.log")
+
+    def record_state(self, state):
+        """Records the current state for post-game analysis."""
+        self.state_history.append({
+            "timestamp": datetime.now().isoformat(),
+            "state": state
+        })
+
+    def validate_game_results(self):
+        """Validates the game outcome against rules."""
+        if not self.state_history:
+            return
+
+        final_snapshot = self.state_history[-1]["state"]
+        players = final_snapshot.get("players", [])
+        errors = []
+
+        for p_idx, player in enumerate(players):
+            reported_score = player.get("score", 0)
+            score_items = player.get("scoreItems", [])
+            # Swift model ScoreItem uses 'points'. Check both for flexibility.
+            calculated_score = sum(item.get("points") or item.get("score") or 0 for item in score_items)
+
+            # Rule 1: Score Consistency
+            if reported_score != calculated_score:
+                errors.append(f"Player {p_idx} ({player['name']}): Score mismatch. "
+                              f"Reported={reported_score}, Sum of Items={calculated_score}")
+            
+            # Sub-rule: Check card counts if possible (simplified check)
+            captured = player.get("capturedCards", [])
+            # Map type to count in items
+            for item in score_items:
+                label = item.get("label", "")
+                count_in_item = item.get("count", 0)
+                # This check needs to be specific based on how scoreItems are structures
+                # For now, we trust the core sum comparison first.
+
+        if errors:
+            self.report_error(errors)
+        else:
+            logger.info("Game validation passed. All scores consistent.")
+
+    def format_card(self, card):
+        suffix = "(2P)" if card.get('type') == 'doubleJunk' else ""
+        return f"[M:{card['month']:>2} | {card.get('type', 'junk'):<10}{suffix}]"
+
+    def format_state_inspection(self, state):
+        """Formats the state into a readable string similar to inspect_state.py."""
+        lines = []
+        lines.append("\n" + "="*50)
+        lines.append("           GO-STOP GAME STATE INSPECTION")
+        lines.append("="*50)
+        lines.append(f"Game State: {state.get('gameState', 'N/A').upper()}")
+        lines.append(f"Deck Count: {state.get('deckCount', 0)}")
+        lines.append("-" * 50)
+        
+        # Table Cards
+        table_cards = state.get('tableCards', [])
+        lines.append(f"TABLE CARDS ({len(table_cards)}):")
+        for i, card in enumerate(table_cards):
+            lines.append(f"  {i+1:>2}. {self.format_card(card)}")
+        lines.append("-" * 50)
+        
+        # Players
+        for player in state.get('players', []):
+            name = player.get('name', 'Unknown')
+            hand = player.get('hand', [])
+            captured = player.get('capturedCards', [])
+            score = player.get('score', 0)
+            score_items = player.get('scoreItems', [])
+            
+            lines.append(f"PLAYER: {name}")
+            lines.append(f"  TOTAL SCORE: {score} points")
+            if score_items:
+                lines.append("  SCORE BREAKDOWN:")
+                for item in score_items:
+                    # The CLI and SimulatorBridge might return slightly different fields
+                    # Standardizing label/points check
+                    label = item.get('label') or item.get('name') or "Unknown"
+                    points = item.get('score') or item.get('points') or 0
+                    lines.append(f"    - {label:<30}: {points:>2} pts")
+            lines.append(f"  HAND ({len(hand)}):")
+            for i, card in enumerate(hand):
+                lines.append(f"    {i+1:>2}. {self.format_card(card)}")
+            
+            if captured:
+                lines.append("  CAPTURED GROUPS:")
+                groups = {
+                    "광(Bright)": [c for c in captured if c.get('type') == 'bright'],
+                    "끗(Animal)": [c for c in captured if c.get('type') == 'animal'],
+                    "띠(Ribbon)": [c for c in captured if c.get('type') == 'ribbon'],
+                    "피(Junk)  ": [c for c in captured if c.get('type') in ['junk', 'doubleJunk']]
+                }
+                
+                for label, cards in groups.items():
+                    if cards:
+                        card_list = []
+                        for c in cards:
+                            m_str = f"M{c['month']}"
+                            if c.get('type') == 'doubleJunk':
+                                m_str += "(2P)"
+                            card_list.append(m_str)
+                        card_str = " ".join(card_list)
+                        lines.append(f"    {label:<12}: {len(cards):>2} cards -> {card_str}")
+                    else:
+                        lines.append(f"    {label:<12}:  0 cards")
+            lines.append("-" * 50)
+        return "\n".join(lines)
+
+    def report_error(self, errors):
+        """Generates a detailed error report for debugging."""
+        with open(self.error_log_path, "a") as f:
+            f.write(f"\n{'='*80}\n")
+            f.write(f"ERROR REPORT - {datetime.now().isoformat()}\n")
+            f.write(f"{'='*80}\n")
+            for err in errors:
+                f.write(f"ISSUE: {err}\n")
+            
+            f.write("\nACTION SEQUENCE SUMMARY:\n")
+            for i, entry in enumerate(self.state_history):
+                state = entry["state"]
+                f.write(f"Step {i}: [{state.get('gameState')}] Turn: {state.get('currentTurnIndex')} "
+                        f"Deck: {state.get('deckCount')}\n")
+            
+            f.write("\nFINAL STATE INSPECTION:\n")
+            f.write(self.format_state_inspection(self.state_history[-1]["state"]))
+            f.write(f"\n{'='*80}\n")
+        
+        logger.error(f"Validation failed! Report saved to {self.error_log_path}")
+
+    def check_pause(self):
+        """Checks if a pause/resume was requested via keyboard."""
+        import select
+        import sys
+        # Check for any keyboard input
+        rlist, _, _ = select.select([sys.stdin], [], [], 0)
+        if rlist:
+            input_val = sys.stdin.readline()
+            # If the user pressed space then enter, or just enter
+            self.paused = not self.paused
+            status = "PAUSED" if self.paused else "RESUMED"
+            logger.info(f"Simulation {status}. Press Enter (or Space+Enter) to toggle.")
+
+    def run_continuous_simulation(self):
+        """Runs the game in a loop indefinitely using socket connection."""
+        logger.info(f"Starting continuous AI simulation in {self.connection_mode} mode...")
+        logger.info("Tip: Press Enter to Pause/Resume simulation.")
+        
+        while True:
+            try:
+                self.check_pause()
+                if self.paused:
+                    time.sleep(0.5)
+                    continue
+                    
+                state_resp = self.get_all_information()
+                if state_resp.get("status") != "ok":
+                    logger.error(f"Failed to get state or connection refused. Retrying... {state_resp}")
+                    time.sleep(2)
+                    continue
+
+                self.record_state(state_resp)
+                game_state = state_resp.get("gameState")
+                current_turn = state_resp.get("currentTurnIndex", 0)
+                players = state_resp.get("players", [])
+                
+                if not game_state:
+                    logger.error("Missing gameState in response")
+                    time.sleep(1)
+                    continue
+
+                logger.info(f"Current Game State: {game_state}")
+
+                if game_state == "ready":
+                    self.state_history = [] # Reset for new game
+                    self.send_user_action("start_game")
+                
+                elif game_state == "playing":
+                    if not players:
+                        logger.warning("No players found in state")
+                        time.sleep(1)
+                        continue
+                        
+                    player = players[current_turn]
+                    if player.get("hand"):
+                        # Simple AI: Play the first card
+                        card = player["hand"][0]
+                        logger.info(f"Player {current_turn} ({player['name']}) playing {card['month']} {card['type']}")
+                        self.send_user_action("play_card", {"month": card["month"], "type": card["type"]})
+                    else:
+                        logger.warning(f"Player {current_turn} has empty hand in playing state.")
+                        time.sleep(1)
+
+                elif game_state == "askingGoStop":
+                    player = players[current_turn]
+                    go_count = player.get("goCount", 0)
+                    
+                    # Rule: Go until 4 or 5. Let's aim for 4 as default.
+                    is_go = go_count < self.max_go_count
+                    logger.info(f"Player {current_turn} ({player['name']}) GoCount: {go_count}. Decision: {'GO' if is_go else 'STOP'}")
+                    self.send_user_action("respond_go_stop", {"isGo": is_go})
+
+                elif game_state == "ended":
+                    self.validate_game_results()
+                    
+                    logger.info("Game ended. Waiting 1 second for manual input (Enter) before auto-restarting...")
+                    import select
+                    import sys
+                    # Non-blocking check for stdin with 1 second timeout
+                    rlist, _, _ = select.select([sys.stdin], [], [], 1.0)
+                    if rlist:
+                        # Clear the buffer
+                        sys.stdin.readline()
+                        logger.info("Manual input detected. Auto-restart cancelled for this cycle.")
+                    else:
+                        logger.info("No input detected. Auto-restarting...")
+                        self.state_history = [] # Reset for new game
+                        self.send_user_action("click_restart_button")
+                    time.sleep(1) # Small cooldown
+
+                else:
+                    logger.warning(f"Unknown game state: {game_state}")
+                
+                time.sleep(0.5) # Delay between actions for visibility
+
+            except Exception as e:
+                logger.error(f"Error in simulation loop: {e}")
+                # We don't break here, just log and retry connection
+                time.sleep(2)
+
+if __name__ == "__main__":
+    # In socket mode, we don't need app_executable_path
+    ai = AIPlayer(connection_mode="socket")
+    # You can set max_go_count to 4 or 5
+    ai.max_go_count = 4 
+    ai.run_continuous_simulation()

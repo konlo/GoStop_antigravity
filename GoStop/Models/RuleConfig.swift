@@ -6,7 +6,19 @@ struct RuleConfig: Codable {
     let scoring: ScoringRule
     let go_stop: GoStopRule
     let penalties: PenaltiesRule
+    let special_moves: SpecialMovesRule
     let nagari: NagariRule
+}
+
+struct SpecialMovesRule: Codable {
+    let bomb: BombRule
+}
+
+struct BombRule: Codable {
+    let enabled: Bool
+    let steal_pi_count: Int
+    let score_multiplier: Int
+    let description: String?
 }
 
 struct CardsRule: Codable {
@@ -88,19 +100,34 @@ struct GoBonus: Codable {
 }
 
 struct PenaltiesRule: Codable {
-    let gobak: Bool
+    let gobak: GobakRule
     let gwangbak: GwangbakRule
     let pibak: PibakRule
+    let mungbak: MungbakRule
+}
+
+struct GobakRule: Codable {
+    let enabled: Bool
+    let multiplier: Int
 }
 
 struct GwangbakRule: Codable {
     let enabled: Bool
     let opponent_max_kwang: Int
+    let multiplier: Int
 }
 
 struct PibakRule: Codable {
     let enabled: Bool
     let opponent_min_pi_safe: Int
+    let multiplier: Int
+}
+
+struct MungbakRule: Codable {
+    let enabled: Bool
+    let winner_min_animal: Int
+    let multiplier: Int
+    let description: String?
 }
 
 struct NagariRule: Codable {

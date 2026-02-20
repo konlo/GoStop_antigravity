@@ -28,9 +28,13 @@ def clean_artifacts():
         else:
             print(f"Subdirectory '{path}' not found.")
 
-    # Also clean top-level repro_steps files
+    # Also clean top-level repro_steps and log files
     for filename in os.listdir(artifacts_dir):
-        if filename.startswith("repro_steps_") and filename.endswith(".json"):
+        is_repro = filename.startswith("repro_steps_") and filename.endswith(".json")
+        is_error_log = filename == "error_report.log"
+        is_general_log = filename.endswith(".log")
+        
+        if is_repro or is_error_log or is_general_log:
             file_path = os.path.join(artifacts_dir, filename)
             try:
                 os.unlink(file_path)
