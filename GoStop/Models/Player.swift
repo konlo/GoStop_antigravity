@@ -10,9 +10,19 @@ class Player: ObservableObject, Identifiable, Codable {
     @Published var goCount: Int = 0
     @Published var lastGoScore: Int = 0
     @Published var shakeCount: Int = 0
+    @Published var shakenMonths: [Int] = []
+    @Published var bombCount: Int = 0
+    @Published var sweepCount: Int = 0
+    @Published var ttadakCount: Int = 0
+    @Published var jjokCount: Int = 0
+    @Published var seolsaCount: Int = 0
+    @Published var isPiMungbak: Bool = false
+    @Published var mungddaCount: Int = 0
+    @Published var bombMungddaCount: Int = 0
+    @Published var isComputer: Bool = false
     
     enum CodingKeys: String, CodingKey {
-        case id, name, hand, capturedCards, score, money, goCount, lastGoScore, shakeCount
+        case id, name, hand, capturedCards, score, money, goCount, lastGoScore, shakeCount, shakenMonths, bombCount, sweepCount, ttadakCount, jjokCount, seolsaCount, isPiMungbak, mungddaCount, bombMungddaCount, isComputer
     }
     
     required init(from decoder: Decoder) throws {
@@ -26,6 +36,16 @@ class Player: ObservableObject, Identifiable, Codable {
         goCount = try container.decode(Int.self, forKey: .goCount)
         lastGoScore = try container.decode(Int.self, forKey: .lastGoScore)
         shakeCount = try container.decode(Int.self, forKey: .shakeCount)
+        shakenMonths = try container.decode([Int].self, forKey: .shakenMonths)
+        bombCount = try container.decode(Int.self, forKey: .bombCount)
+        sweepCount = try container.decode(Int.self, forKey: .sweepCount)
+        ttadakCount = try container.decode(Int.self, forKey: .ttadakCount)
+        jjokCount = try container.decode(Int.self, forKey: .jjokCount)
+        seolsaCount = try container.decode(Int.self, forKey: .seolsaCount)
+        isPiMungbak = try container.decode(Bool.self, forKey: .isPiMungbak)
+        mungddaCount = try container.decode(Int.self, forKey: .mungddaCount)
+        bombMungddaCount = try container.decode(Int.self, forKey: .bombMungddaCount)
+        isComputer = try container.decode(Bool.self, forKey: .isComputer)
     }
     
     func encode(to encoder: Encoder) throws {
@@ -39,6 +59,16 @@ class Player: ObservableObject, Identifiable, Codable {
         try container.encode(goCount, forKey: .goCount)
         try container.encode(lastGoScore, forKey: .lastGoScore)
         try container.encode(shakeCount, forKey: .shakeCount)
+        try container.encode(shakenMonths, forKey: .shakenMonths)
+        try container.encode(bombCount, forKey: .bombCount)
+        try container.encode(sweepCount, forKey: .sweepCount)
+        try container.encode(ttadakCount, forKey: .ttadakCount)
+        try container.encode(jjokCount, forKey: .jjokCount)
+        try container.encode(seolsaCount, forKey: .seolsaCount)
+        try container.encode(isPiMungbak, forKey: .isPiMungbak)
+        try container.encode(mungddaCount, forKey: .mungddaCount)
+        try container.encode(bombMungddaCount, forKey: .bombMungddaCount)
+        try container.encode(isComputer, forKey: .isComputer)
     }
 
     init(id: UUID = UUID(), name: String, money: Int = 10000) {
@@ -54,10 +84,29 @@ class Player: ObservableObject, Identifiable, Codable {
         goCount = 0
         lastGoScore = 0
         shakeCount = 0
+        shakenMonths.removeAll()
+        bombCount = 0
+        sweepCount = 0
+        ttadakCount = 0
+        jjokCount = 0
+        seolsaCount = 0
+        isPiMungbak = false
+        mungddaCount = 0
+        bombMungddaCount = 0
+        isComputer = false // reset will be called by startGame, which sets computer state again
     }
     
     func receive(cards: [Card]) {
         hand.append(contentsOf: cards)
+    }
+    
+    var piCount: Int {
+        var count = 0
+        for card in capturedCards {
+            if card.type == .junk { count += 1 }
+            else if card.type == .doubleJunk { count += 2 }
+        }
+        return count
     }
     
     func play(card: Card) -> Card? {
@@ -85,7 +134,17 @@ class Player: ObservableObject, Identifiable, Codable {
             "money": money,
             "goCount": goCount,
             "lastGoScore": lastGoScore,
-            "shakeCount": shakeCount
+            "shakeCount": shakeCount,
+            "shakenMonths": shakenMonths,
+            "bombCount": bombCount,
+            "sweepCount": sweepCount,
+            "ttadakCount": ttadakCount,
+            "jjokCount": jjokCount,
+            "seolsaCount": seolsaCount,
+            "isPiMungbak": isPiMungbak,
+            "mungddaCount": mungddaCount,
+            "bombMungddaCount": bombMungddaCount,
+            "isComputer": isComputer
         ]
     }
 }

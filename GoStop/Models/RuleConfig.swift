@@ -8,10 +8,79 @@ struct RuleConfig: Codable {
     let penalties: PenaltiesRule
     let special_moves: SpecialMovesRule
     let nagari: NagariRule
+    let endgame: EndgameRule
+}
+
+struct EndgameRule: Codable {
+    let max_round_score: Int
+    let score_check_timing: String
+    let max_go_count: Int
+    let instant_end_on_bak: InstantEndOnBak
+}
+
+struct InstantEndOnBak: Codable {
+    let pibak: Bool
+    let gwangbak: Bool
+    let mungbak: Bool
+    let bomb_mungdda: Bool
 }
 
 struct SpecialMovesRule: Codable {
     let bomb: BombRule
+    let shake: ShakeRule
+    let sweep: SweepRule
+    let ttadak: TtadakRule
+    let jjok: JjokRule
+    let seolsa: SeolsaRule
+    let mungbak_pi_threshold: Int
+    let mungdda: MungDdaRule
+    let bomb_mungdda: BombMungDdaRule
+}
+
+struct MungDdaRule: Codable {
+    let enabled: Bool
+    let steal_pi_count: Int
+    let multiplier_addition: Int
+    let description: String?
+}
+
+struct BombMungDdaRule: Codable {
+    let enabled: Bool
+    let steal_pi_count: Int
+    let multiplier_addition: Int
+    let description: String?
+}
+
+struct TtadakRule: Codable {
+    let enabled: Bool
+    let steal_pi_count: Int
+    let description: String?
+}
+
+struct JjokRule: Codable {
+    let enabled: Bool
+    let steal_pi_count: Int
+    let description: String?
+}
+
+struct SeolsaRule: Codable {
+    let enabled: Bool
+    let penalty_pi_count: Int
+    let description: String?
+}
+
+struct SweepRule: Codable {
+    let enabled: Bool
+    let bonus_points: Int
+    let score_multiplier_type: String?
+    let steal_pi_count: Int
+    let description: String?
+}
+
+struct ShakeRule: Codable {
+    let enabled: Bool
+    let score_multiplier_type: String?
+    let description: String?
 }
 
 struct BombRule: Codable {
@@ -44,7 +113,14 @@ struct YulRule: Codable {
 
 struct PiRule: Codable {
     let double_pi_months: [Int]
+    let conditional_double_pi: [ConditionalPiRule]
     let bonus_cards: Int
+}
+
+struct ConditionalPiRule: Codable {
+    let month: Int
+    let condition: String
+    let bonus_points: Int
 }
 
 struct ScoringRule: Codable {
@@ -91,6 +167,8 @@ struct PiScoring: Codable {
 struct GoStopRule: Codable {
     let min_score_3_players: Int
     let min_score_2_players: Int
+    let apply_bak_on_stop: Bool
+    let bak_only_if_opponent_go: Bool
     let go_bonuses: [String: GoBonus]
 }
 
@@ -104,6 +182,19 @@ struct PenaltiesRule: Codable {
     let gwangbak: GwangbakRule
     let pibak: PibakRule
     let mungbak: MungbakRule
+    let jabak: JabakRule
+    let yeokbak: YeokbakRule
+}
+
+struct JabakRule: Codable {
+    let enabled: Bool
+    let min_score_threshold: Int
+    let description: String?
+}
+
+struct YeokbakRule: Codable {
+    let enabled: Bool
+    let description: String?
 }
 
 struct GobakRule: Codable {
@@ -113,18 +204,24 @@ struct GobakRule: Codable {
 
 struct GwangbakRule: Codable {
     let enabled: Bool
+    let resolution_type: String
+    let pi_to_transfer: Int
     let opponent_max_kwang: Int
     let multiplier: Int
 }
 
 struct PibakRule: Codable {
     let enabled: Bool
+    let resolution_type: String
+    let pi_to_transfer: Int
     let opponent_min_pi_safe: Int
     let multiplier: Int
 }
 
 struct MungbakRule: Codable {
     let enabled: Bool
+    let resolution_type: String
+    let pi_to_transfer: Int
     let winner_min_animal: Int
     let multiplier: Int
     let description: String?
@@ -157,16 +254,21 @@ class RuleLoader {
         
         // Try one more: adjacent to executable
         if url == nil {
-            let execPath = Bundle.main.bundlePath + "/" + filename
-            if FileManager.default.fileExists(atPath: execPath) {
-                url = URL(fileURLWithPath: execPath)
+            let executableURL = URL(fileURLWithPath: CommandLine.arguments[0])
+            let executableDir = executableURL.deletingLastPathComponent()
+            let adjacentPath = executableDir.appendingPathComponent(filename).path
+            if FileManager.default.fileExists(atPath: adjacentPath) {
+                url = URL(fileURLWithPath: adjacentPath)
             }
         }
 
         guard let targetUrl = url else {
-            FileHandle.standardError.write("Failed to locate rule.yaml\n".data(using: .utf8)!)
+            let workingDir = FileManager.default.currentDirectoryPath
+            FileHandle.standardError.write("FAILED to locate rule.yaml. Checked bundle, currentDir(\(workingDir)), and execDir. Executable was: \(CommandLine.arguments[0])\n".data(using: .utf8)!)
             return
         }
+        
+        FileHandle.standardError.write("Lodaing rules from: \(targetUrl.path)\n".data(using: .utf8)!)
         
         do {
             let data = try Data(contentsOf: targetUrl)

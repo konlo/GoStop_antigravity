@@ -1,6 +1,7 @@
 struct ScoreItem: Codable {
     let name: String
     let points: Int
+    let count: Int?
 }
 
 struct ScoringSystem {
@@ -30,11 +31,11 @@ struct ScoringSystem {
         let count = kwangs.count
         let s = rules.scoring.kwang
         
-        if count == 5 { return [ScoreItem(name: "오광 (5 Brights)", points: s.ogwang)] }
-        if count == 4 { return [ScoreItem(name: "사광 (4 Brights)", points: s.sagwang)] }
+        if count == 5 { return [ScoreItem(name: "오광 (5 Brights)", points: s.ogwang, count: 5)] }
+        if count == 4 { return [ScoreItem(name: "사광 (4 Brights)", points: s.sagwang, count: 4)] }
         if count == 3 {
             let hasBiGwang = kwangs.contains { $0.month.rawValue == 12 }
-            return [ScoreItem(name: hasBiGwang ? "비삼광 (3 Brights incl. Rain)" : "삼광 (3 Brights)", points: hasBiGwang ? s.bisamgwang : s.samgwang)]
+            return [ScoreItem(name: hasBiGwang ? "비삼광 (3 Brights incl. Rain)" : "삼광 (3 Brights)", points: hasBiGwang ? s.bisamgwang : s.samgwang, count: 3)]
         }
         return []
     }
@@ -47,13 +48,13 @@ struct ScoringSystem {
         
         if count >= s.min_count {
             let pts = s.min_score + (count - s.min_count) * s.additional_score
-            items.append(ScoreItem(name: "열끗 (\(count) Animals)", points: pts))
+            items.append(ScoreItem(name: "열끗 (\(count) Animals)", points: pts, count: count))
         }
         
         let godoriMonths = rules.cards.yul.godori
         let godoriCards = yuls.filter { godoriMonths.contains($0.month.rawValue) }
         if godoriCards.count == 3 {
-            items.append(ScoreItem(name: "고도리 (Godori)", points: s.godori))
+            items.append(ScoreItem(name: "고도리 (Godori)", points: s.godori, count: 3))
         }
         
         return items
@@ -67,18 +68,18 @@ struct ScoringSystem {
         
         if count >= s.min_count {
             let pts = s.min_score + (count - s.min_count) * s.additional_score
-            items.append(ScoreItem(name: "띠 (\(count) Ribbons)", points: pts))
+            items.append(ScoreItem(name: "띠 (\(count) Ribbons)", points: pts, count: count))
         }
         
         let danRules = rules.cards.dan
         if dans.filter({ danRules.hongdan.contains($0.month.rawValue) }).count == 3 {
-            items.append(ScoreItem(name: "홍단 (Red Ribbons)", points: s.hongdan))
+            items.append(ScoreItem(name: "홍단 (Red Ribbons)", points: s.hongdan, count: 3))
         }
         if dans.filter({ danRules.cheongdan.contains($0.month.rawValue) }).count == 3 {
-            items.append(ScoreItem(name: "청단 (Blue Ribbons)", points: s.cheongdan))
+            items.append(ScoreItem(name: "청단 (Blue Ribbons)", points: s.cheongdan, count: 3))
         }
         if dans.filter({ danRules.chodan.contains($0.month.rawValue) }).count == 3 {
-            items.append(ScoreItem(name: "초단 (Grass Ribbons)", points: s.chodan))
+            items.append(ScoreItem(name: "초단 (Grass Ribbons)", points: s.chodan, count: 3))
         }
         
         return items
@@ -89,7 +90,7 @@ struct ScoringSystem {
         let s = rules.scoring.pi
         if piCount >= s.min_count {
             let pts = s.min_score + (piCount - s.min_count) * s.additional_score
-            return [ScoreItem(name: "피 (\(piCount) Junk)", points: pts)]
+            return [ScoreItem(name: "피 (\(piCount) Junk)", points: pts, count: piCount)]
         }
         return []
     }
@@ -97,15 +98,25 @@ struct ScoringSystem {
     static func calculatePiCount(cards: [Card], rules: RuleConfig) -> Int {
         var piCount = 0
         
+        // Check for conditions
+        let danRules = rules.cards.dan
+        let hasCheongdan = cards.filter { $0.type == .ribbon && danRules.cheongdan.contains($0.month.rawValue) }.count == 3
+        
         for card in cards {
             if card.type == .doubleJunk {
                 piCount += 2
             } else if card.type == .junk {
-                piCount += 1
-            } else if card.type == .animal && card.month.rawValue == 9 {
-                 // In some rules, 9 animal (Sake Cup) can be used as a double pi
-                 // For now, only count junk types unless we implement "use as pi" choice
-                 continue
+                var currentVal = 1
+                
+                // Check if this junk card is a conditional double pi
+                for condRule in rules.cards.pi.conditional_double_pi {
+                    if card.month.rawValue == condRule.month {
+                        if condRule.condition == "has_cheongdan" && hasCheongdan {
+                            currentVal += condRule.bonus_points
+                        }
+                    }
+                }
+                piCount += currentVal
             }
         }
         return piCount

@@ -2,6 +2,7 @@ import Foundation
 
 enum GameState: String, Codable {
     case ready
+    case askingShake
     case playing
     case askingGoStop
     case ended
@@ -24,6 +25,12 @@ class GameManager: ObservableObject {
     @Published var currentTurnIndex: Int = 0
     @Published var tableCards: [Card] = []
     
+    // For start-of-game shakes
+    @Published var pendingShakeMonths: [Int] = []
+    
+    // For Seolsa (뻑/설사) tracking
+    @Published var monthOwners: [Int: Player] = [:]
+    
     var currentPlayer: Player? {
         guard players.indices.contains(currentTurnIndex) else { return nil }
         return players[currentTurnIndex]
@@ -35,10 +42,10 @@ class GameManager: ObservableObject {
     }
     
     func setupGame(seed: Int? = nil) {
-        self.players = [
-            Player(name: "Player 1", money: 10000),
-            Player(name: "Computer", money: 10000)
-        ]
+        let player1 = Player(name: "Player 1", money: 10000)
+        let computer = Player(name: "Computer", money: 10000)
+        computer.isComputer = true
+        self.players = [player1, computer]
         self.deck.reset(seed: seed)
         self.dealCards()
         self.gameState = .ready
@@ -52,9 +59,53 @@ class GameManager: ObservableObject {
         tableCards = deck.draw(count: 8)
     }
     
+    func mockDeck(cards: [Card]) {
+        deck.pushCardsOnTop(cards)
+    }
+    
     func startGame() {
-        gameState = .playing
         currentTurnIndex = 0 // Player 1 starts
+        
+        // 1. Check for Initial Shakes (Player only for now, or AI too?)
+        if let player = players.first {
+            let monthsWithThreePlus = getMonthsWithThreePlus(in: player.hand)
+            if !monthsWithThreePlus.isEmpty {
+                pendingShakeMonths = monthsWithThreePlus
+                gameState = .askingShake
+                gLog("Initial Shakes possible for months: \(pendingShakeMonths)")
+                return
+            }
+        }
+        
+        gameState = .playing
+    }
+    
+    private func getMonthsWithThreePlus(in hand: [Card]) -> [Int] {
+        var counts: [Int: Int] = [:]
+        for card in hand {
+            counts[card.month.rawValue, default: 0] += 1
+        }
+        return counts.filter { $0.value >= 3 }.map { $0.key }.sorted()
+    }
+    
+    func respondToShake(month: Int, didShake: Bool) {
+        guard gameState == .askingShake, let player = players.first else { return }
+        
+        if didShake {
+            player.shakeCount += 1
+            player.shakenMonths.append(month)
+            gLog("\(player.name) declared SHAKE for month \(month)!")
+        }
+        
+        // Remove from pending
+        pendingShakeMonths.removeAll { $0 == month }
+        
+        if pendingShakeMonths.isEmpty {
+            gameState = .playing
+            gLog("Shaking phase ended. Starting game.")
+        } else {
+            gLog("More shakes pending: \(pendingShakeMonths)")
+        }
     }
     
     // Game Loop Logic
@@ -68,52 +119,174 @@ class GameManager: ObservableObject {
         
         var captures: [Card] = []
         var isBomb = false
+        var isTtadak = false
+        var isJjok = false
+        var isSeolsa = false
         
+        let tableWasNotEmpty = !tableCards.isEmpty
+        
+        // 1. Play Card Phase
         if let rules = RuleLoader.shared.config, rules.special_moves.bomb.enabled,
-           handMatches.count == 3, tableMatches.count == 1 {
-            // Bomb triggered!
+           handMatches.count == 3 && tableMatches.count == 1 {
             isBomb = true
             gLog("\(player.name) triggered BOMB (폭탄) for month \(month)!")
             
-            // 1. Play all 3 cards from hand
+            // Play all matching cards from hand and tabletop
             for mCard in handMatches {
                 if let played = player.play(card: mCard) {
                     captures.append(played)
                 }
             }
-            
-            // 2. Capture the 1 card on table
             if let target = tableMatches.first, let index = tableCards.firstIndex(of: target) {
                 tableCards.remove(at: index)
                 captures.append(target)
             }
+            player.bombCount += 1
+            player.shakeCount += 1 
             
-            // 3. Shake count (for score multiplier)
-            player.shakeCount += 1
-            
-            // 4. Steal Pi (will do after draw phase to match standard flow, or now?)
-            // Let's do it after the draw phase matches just in case.
+            // Draw phase after bomb
+            if let drawnCard = deck.draw() {
+                 let drawnMatches = tableCards.filter { $0.month == drawnCard.month }
+                 if drawnMatches.isEmpty {
+                     monthOwners[drawnCard.month.rawValue] = player
+                     tableCards.append(drawnCard)
+                 } else {
+                     captures.append(contentsOf: match(card: drawnCard))
+                 }
+            }
         } else {
-            // Normal play
+            // Normal Play Resolution
             guard let playedCard = player.play(card: card) else { return }
-            captures.append(contentsOf: match(card: playedCard))
-        }
-        
-        // 2. Draw Card Phase
-        if let drawnCard = deck.draw() {
-             captures.append(contentsOf: match(card: drawnCard))
+            
+            // Step A: Check play-phase match
+            let playedMatches = tableCards.filter { $0.month == playedCard.month }
+            var playPhaseCaptured: [Card] = []
+            
+            if playedMatches.isEmpty {
+                // No match on play
+                monthOwners[playedCard.month.rawValue] = player
+                tableCards.append(playedCard)
+            } else if playedMatches.count == 3 {
+                // Chok (뻑-opposite): Take all 4. 
+                playPhaseCaptured.append(playedCard)
+                playPhaseCaptured.append(contentsOf: playedMatches)
+                tableCards.removeAll { $0.month == playedCard.month }
+                gLog("CHOK (촉)! \(player.name) took all 4 for month \(playedCard.month)")
+            } else {
+                // Normal match (1 or 2 on table)
+                // If 1 on table, take both. If 2 on table, take 1 (MVP choice).
+                playPhaseCaptured.append(playedCard)
+                if let target = playedMatches.first, let idx = tableCards.firstIndex(of: target) {
+                    playPhaseCaptured.append(target)
+                    tableCards.remove(at: idx)
+                }
+                
+                if let owner = monthOwners[playedCard.month.rawValue], owner.id != player.id {
+                    isSeolsa = true // Captured card was "owned" by someone else who put it down
+                }
+            }
+            
+            // Step B: Draw Phase
+            var drawPhaseCaptured: [Card] = []
+            if let drawnCard = deck.draw() {
+                let drawnMatches = tableCards.filter { $0.month == drawnCard.month }
+                
+                if drawnMatches.isEmpty {
+                    monthOwners[drawnCard.month.rawValue] = player
+                    tableCards.append(drawnCard)
+                    
+                    // Jjok Check: If I played A (no match) and drew A (matches the played one)
+                    if playedMatches.isEmpty && drawnCard.month == playedCard.month {
+                        // Wait, if played matches was empty, playedCard is now on table. 
+                        // drawnMatches should have found it. 
+                        // Re-filter after adding drawn card? No.
+                    }
+                } else if drawnMatches.count == 3 {
+                    drawPhaseCaptured.append(drawnCard)
+                    drawPhaseCaptured.append(contentsOf: drawnMatches)
+                    tableCards.removeAll { $0.month == drawnCard.month }
+                } else {
+                    // Match found on draw
+                    drawPhaseCaptured.append(drawnCard)
+                    if let target = drawnMatches.first, let idx = tableCards.firstIndex(of: target) {
+                        drawPhaseCaptured.append(target)
+                        tableCards.remove(at: idx)
+                    }
+                }
+                
+                // Special Move Logic
+                if playedMatches.isEmpty && drawnCard.month == playedCard.month && drawPhaseCaptured.contains(where: { $0.id == playedCard.id }) {
+                    isJjok = true
+                } else if !playPhaseCaptured.isEmpty && !drawPhaseCaptured.isEmpty {
+                    // Both play and draw resulted in capture
+                    isTtadak = true
+                }
+                
+                // Seolsa (뻑) Check: If play matched but then draw added a 3rd card of same month
+                // AND we didn't capture them because they are now 3.
+                // Wait, the standard "Puck" rule: 
+                // 1 on table. Play 1. Draw 1 (of same month). -> 3 on table. NO capture.
+                // My logic above already captures if count is 1. 
+                // Let's refine: If play matches (making 2), but draw is ALSO same month (making 3).
+                // We should NOT have captured the first 2.
+            }
+            
+            captures.append(contentsOf: playPhaseCaptured)
+            captures.append(contentsOf: drawPhaseCaptured)
         }
         
         // 3. Capture & Score
         if !captures.isEmpty {
             player.capture(cards: captures)
             player.score = ScoringSystem.calculateScore(for: player)
+            gLog("\(player.name) captured \(captures.count) cards. Total: \(player.capturedCards.count)")
         }
         
         // Post-Capture Special Moves (Steal Pi)
-        if isBomb, let rules = RuleLoader.shared.config {
+        let opponentIndex = (currentTurnIndex + 1) % players.count
+        let opponent = players[opponentIndex]
+        if let rules = RuleLoader.shared.config {
+            if isBomb {
+                stealPi(from: opponent, to: player, count: rules.special_moves.bomb.steal_pi_count)
+                
+                // Check for Bomb Mung-dda
+                if opponent.isPiMungbak && rules.special_moves.bomb_mungdda.enabled {
+                    gLog("BOMB MUNG-DDA (폭탄 멍따)!!")
+                    player.bombMungddaCount += 1
+                    stealPi(from: opponent, to: player, count: rules.special_moves.bomb_mungdda.steal_pi_count)
+                }
+            }
+            if isTtadak && rules.special_moves.ttadak.enabled {
+                gLog("\(player.name) triggered TTADAK (따닥)!")
+                player.ttadakCount += 1
+                stealPi(from: opponent, to: player, count: rules.special_moves.ttadak.steal_pi_count)
+                
+                // Check for Mung-dda
+                if opponent.isPiMungbak && rules.special_moves.mungdda.enabled && !isBomb {
+                    gLog("MUNG-DDA (멍따)!!")
+                    player.mungddaCount += 1
+                    stealPi(from: opponent, to: player, count: rules.special_moves.mungdda.steal_pi_count)
+                }
+            }
+            if isJjok && rules.special_moves.jjok.enabled {
+                gLog("\(player.name) triggered JJOK (쪽)!")
+                player.jjokCount += 1
+                stealPi(from: opponent, to: player, count: rules.special_moves.jjok.steal_pi_count)
+            }
+            if isSeolsa && rules.special_moves.seolsa.enabled {
+                player.seolsaCount += 1
+                stealPi(from: opponent, to: player, count: rules.special_moves.seolsa.penalty_pi_count)
+            }
+        }
+        
+        // Sweep Check (쓸기)
+        if let rules = RuleLoader.shared.config, rules.special_moves.sweep.enabled,
+           tableWasNotEmpty, tableCards.isEmpty {
+            gLog("\(player.name) swept the table (쓸기/싹쓸이)!")
+            player.sweepCount += 1
+            
             let opponentIndex = (currentTurnIndex + 1) % players.count
-            stealPi(from: players[opponentIndex], to: player, count: rules.special_moves.bomb.steal_pi_count)
+            stealPi(from: players[opponentIndex], to: player, count: rules.special_moves.sweep.steal_pi_count)
         }
         
         // 4. End Turn Logic
@@ -122,6 +295,14 @@ class GameManager: ObservableObject {
             return
         }
         
+        // 4a. PRORITIZED: Check Endgame Conditions (e.g. Max Score, Instant End on Bak)
+        let opponentIndex_end = (currentTurnIndex + 1) % players.count
+        let opponent_end = players[opponentIndex_end]
+        if checkEndgameConditions(player: player, opponent: opponent_end, rules: rules, isAfterGo: false) {
+            return
+        }
+        
+        // 4b. Standard Go/Stop logic
         let minScore = players.count == 3 ? rules.go_stop.min_score_3_players : rules.go_stop.min_score_2_players
         if player.score >= minScore && player.score > player.lastGoScore {
             // Reached new high score exceeding minimum
@@ -140,7 +321,11 @@ class GameManager: ObservableObject {
     }
     
     func respondToGoStop(isGo: Bool) {
-        guard gameState == .askingGoStop, let player = currentPlayer else { return }
+        gLog("--- respondToGoStop(isGo: \(isGo)) called. State: \(gameState), Turn: \(currentTurnIndex) ---")
+        guard gameState == .askingGoStop, let player = currentPlayer else { 
+            gLog("respondToGoStop GUARD FAILED. State: \(gameState), player: \(currentPlayer?.name ?? "nil")")
+            return 
+        }
         
         guard let rules = RuleLoader.shared.config else {
             fallbackEndTurn(player: player)
@@ -151,7 +336,23 @@ class GameManager: ObservableObject {
             player.goCount += 1
             player.lastGoScore = player.score
             gLog("\(player.name) calls GO! (Count: \(player.goCount))")
+            
+            // Set opponent's Pi-mungbak state
+            let opponentIndex = (currentTurnIndex + 1) % players.count
+            let opponent = players[opponentIndex]
+            let threshold = rules.special_moves.mungbak_pi_threshold
+            if opponent.piCount <= threshold {
+                opponent.isPiMungbak = true
+                gLog("\(opponent.name) is now in Pi-mungbak state (Pi: \(opponent.piCount) <= \(threshold))")
+            }
+            
             gameState = .playing
+            
+            // Check Max Go endgame
+            if checkEndgameConditions(player: player, opponent: opponent, rules: rules, isAfterGo: true) {
+                return
+            }
+            
             endTurn()
         } else {
             executeStop(player: player, rules: rules)
@@ -162,6 +363,13 @@ class GameManager: ObservableObject {
         let opponentIndex = (currentTurnIndex + 1) % players.count
         let opponent = players[opponentIndex]
         
+        // 1. Resolve Pi Transfers BEFORE score calculation
+        resolveBakPiTransfers(winner: player, loser: opponent, rules: rules)
+        
+        // 2. Recalculate Score after transfers
+        player.score = ScoringSystem.calculateScore(for: player)
+        opponent.score = ScoringSystem.calculateScore(for: opponent)
+        
         let result = PenaltySystem.calculatePenalties(winner: player, loser: opponent, rules: rules)
         gLog("\(player.name) calls STOP and wins! Base: \(player.score), Final Score: \(result.finalScore)")
         
@@ -169,6 +377,8 @@ class GameManager: ObservableObject {
         if result.isPibak { gLog("Pibak applied!") }
         if result.isGobak { gLog("Gobak applied!") }
         if result.isMungbak { gLog("Mungbak applied!") }
+        if result.isJabak { gLog("Jabak (자박): Bak nullified due to loser score.") }
+        if result.isYeokbak { gLog("Yeokbak (역박): Winner penalized for meeting Bak criteria.") }
         
         opponent.money -= result.finalScore * 100
         player.money += result.finalScore * 100
@@ -219,12 +429,96 @@ class GameManager: ObservableObject {
         currentTurnIndex = (currentTurnIndex + 1) % players.count
         
         // Simple AI Turn (if next is computer)
-        if currentPlayer?.name == "Computer" && gameState == .playing {
+        if currentPlayer?.isComputer == true && gameState == .playing {
             // Delay or immediate? Immediate for logic test
             if let aiCard = currentPlayer?.hand.first {
                 playTurn(card: aiCard)
             }
         }
+    }
+    
+    private func resolveBakPiTransfers(winner: Player, loser: Player, rules: RuleConfig) {
+        // --- Preliminary Stop/Go Bak Restrictions ---
+        let stopWin = winner.goCount == 0
+        let applyBakBecauseStop = rules.go_stop.apply_bak_on_stop || !stopWin
+        let applyBakBecauseOpponentGo = !rules.go_stop.bak_only_if_opponent_go || loser.goCount > 0
+        
+        guard applyBakBecauseStop && applyBakBecauseOpponentGo else { return }
+        // ---------------------------------------------
+
+        // 1. Gwangbak
+        if rules.penalties.gwangbak.enabled {
+            let winnerKwangs = winner.capturedCards.filter { $0.type == .bright }.count
+            let loserKwangs = loser.capturedCards.filter { $0.type == .bright }.count
+            if winnerKwangs >= 3 && loserKwangs <= rules.penalties.gwangbak.opponent_max_kwang {
+                if rules.penalties.gwangbak.resolution_type == "pi_transfer" || rules.penalties.gwangbak.resolution_type == "both" {
+                    stealPi(from: loser, to: winner, count: rules.penalties.gwangbak.pi_to_transfer)
+                    gLog("Gwangbak Pi Transfer: Moved \(rules.penalties.gwangbak.pi_to_transfer) Pi")
+                }
+            }
+        }
+        
+        // 2. Pibak
+        if rules.penalties.pibak.enabled {
+            let winnerPi = ScoringSystem.calculatePiCount(cards: winner.capturedCards, rules: rules)
+            let loserPi = ScoringSystem.calculatePiCount(cards: loser.capturedCards, rules: rules)
+            if winnerPi >= 10 && loserPi < rules.penalties.pibak.opponent_min_pi_safe {
+                if rules.penalties.pibak.resolution_type == "pi_transfer" || rules.penalties.pibak.resolution_type == "both" {
+                    stealPi(from: loser, to: winner, count: rules.penalties.pibak.pi_to_transfer)
+                    gLog("Pibak Pi Transfer: Moved \(rules.penalties.pibak.pi_to_transfer) Pi")
+                }
+            }
+        }
+        
+        // 3. Mungbak
+        if rules.penalties.mungbak.enabled {
+            let winnerAnimals = winner.capturedCards.filter { $0.type == .animal }.count
+            if winnerAnimals >= rules.penalties.mungbak.winner_min_animal {
+                if rules.penalties.mungbak.resolution_type == "pi_transfer" || rules.penalties.mungbak.resolution_type == "both" {
+                    stealPi(from: loser, to: winner, count: rules.penalties.mungbak.pi_to_transfer)
+                    gLog("Mungbak Pi Transfer: Moved \(rules.penalties.mungbak.pi_to_transfer) Pi")
+                }
+            }
+        }
+    }
+    
+    private func checkEndgameConditions(player: Player, opponent: Player, rules: RuleConfig, isAfterGo: Bool) -> Bool {
+        let endgame = rules.endgame
+        
+        // 1. Instant End on Bak (Priority 1)
+        let penalties = PenaltySystem.calculatePenalties(winner: player, loser: opponent, rules: rules)
+        if (endgame.instant_end_on_bak.gwangbak && penalties.isGwangbak) ||
+           (endgame.instant_end_on_bak.pibak && penalties.isPibak) ||
+           (endgame.instant_end_on_bak.mungbak && penalties.isMungbak) ||
+           (endgame.instant_end_on_bak.bomb_mungdda && player.bombMungddaCount > 0) {
+            
+            gLog("ENDGAME (끝장): Instant end triggered by Bak condition!")
+            executeStop(player: player, rules: rules)
+            return true
+        }
+        
+        // 2. Max Round Score (Priority 2)
+        var currentScore = player.score
+        if endgame.score_check_timing == "post_multiplier" {
+            currentScore = penalties.finalScore
+        }
+        
+        if currentScore >= endgame.max_round_score {
+            gLog("ENDGAME (끝장): Reached max round score (\(currentScore) >= \(endgame.max_round_score))!")
+            executeStop(player: player, rules: rules)
+            return true
+        }
+        
+        // 3. Max Go Count (Priority 3)
+        if player.goCount >= endgame.max_go_count {
+            gLog("ENDGAME (끝장) TRIGGERED: Reached max Go count (\(player.goCount) >= \(endgame.max_go_count)) for \(player.name)")
+            executeStop(player: player, rules: rules)
+            return true
+        } else {
+            gLog("checkEndgameConditions: goCount \(player.goCount) vs target \(endgame.max_go_count)")
+        }
+        
+        return false
     }
     
     private func stealPi(from: Player, to: Player, count: Int) {

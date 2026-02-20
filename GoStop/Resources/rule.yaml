@@ -9,6 +9,10 @@ cards:
     godori: [2, 4, 8]
   pi:
     double_pi_months: [] # Use explicit doubleJunk type instead
+    conditional_double_pi:
+      - month: 9 # Chrysanthemum
+        condition: "has_cheongdan"
+        bonus_points: 1
     bonus_cards: 2 # Number of bonus cards in deck
 
 scoring:
@@ -37,6 +41,8 @@ scoring:
 go_stop:
   min_score_3_players: 3
   min_score_2_players: 7
+  apply_bak_on_stop: false
+  bak_only_if_opponent_go: true
   go_bonuses:
     1: 
       add: 1
@@ -57,17 +63,30 @@ penalties:
     multiplier: 2
   gwangbak:
     enabled: true
+    resolution_type: "multiplier" # "multiplier", "pi_transfer", or "both"
+    pi_to_transfer: 10 # Used if type is pi_transfer or both
     opponent_max_kwang: 0
     multiplier: 2
   pibak:
     enabled: true
+    resolution_type: "multiplier"
+    pi_to_transfer: 5
     opponent_min_pi_safe: 6 # If opponent has < 6 pi, they are pibak
     multiplier: 2
   mungbak: # Animal-bak
     enabled: true
+    resolution_type: "multiplier"
+    pi_to_transfer: 3
     winner_min_animal: 7
     multiplier: 2
     description: "Winner has 7+ animals and opponent is penalized"
+  jabak:
+    enabled: true
+    min_score_threshold: 7 # If loser has this many points, Bak is nullified
+    description: "Nullify Bak if loser score >= threshold"
+  yeokbak:
+    enabled: true
+    description: "Apply Bak penalty to the inducer if condition reverses"
 
 special_moves:
   bomb:
@@ -75,7 +94,50 @@ special_moves:
     steal_pi_count: 1
     score_multiplier: 2 # Shaking (흔듦) bonus if done via bomb
     description: "Play 3 identical month cards when 1 is on table"
+  shake:
+    enabled: true
+    score_multiplier_type: "additive" # 1 shake = +1 to multiplier factor
+    description: "Multi-shake additive: 1 shake = 2x, 2 shakes = 3x. Declared at start."
+  sweep:
+    enabled: true
+    bonus_points: 0
+    score_multiplier_type: "additive" # 1 sweep = +1 to multiplier factor
+    steal_pi_count: 1
+    description: "Clear all cards from table. Doubles score (additive factor) and steals 1 Pi."
+  ttadak:
+    enabled: true
+    steal_pi_count: 1
+    description: "Match a floor card with hand and deck draw simultaneously"
+  jjok:
+    enabled: true
+    steal_pi_count: 1
+    description: "Match a card you just put down with deck draw"
+  seolsa:
+    enabled: true
+    penalty_pi_count: 1
+    description: "Play and draw matching cards but making it a triple, leaving them on table"
+  mungbak_pi_threshold: 5 # threshold for Mung-dda condition
+  mungdda:
+    enabled: true
+    steal_pi_count: 1
+    multiplier_addition: 1
+    description: "Opponent Ttadak while player is in Pi-mungbak state"
+  bomb_mungdda:
+    enabled: true
+    steal_pi_count: 2
+    multiplier_addition: 2
+    description: "Opponent Bomb while player is in Pi-mungbak state"
 
 nagari:
   enabled: true
   next_game_multiplier: 2
+
+endgame:
+  max_round_score: 50
+  score_check_timing: "post_multiplier" # pre_multiplier or post_multiplier
+  max_go_count: 5
+  instant_end_on_bak:
+    pibak: false
+    gwangbak: true
+    mungbak: false
+    bomb_mungdda: true

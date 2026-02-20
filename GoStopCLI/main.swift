@@ -65,21 +65,35 @@ class CLIEngine {
             gameManager.respondToGoStop(isGo: isGo)
             return ["status": "action executed", "action": "respond_go_stop"]
             
+        case "respond_to_shake":
+            guard let data = request.data,
+                  let monthIdx = data["month"]?.value as? Int,
+                  let didShake = data["didShake"]?.value as? Bool else {
+                return ["status": "error", "message": "Missing month or didShake for respond_to_shake"]
+            }
+            gameManager.respondToShake(month: monthIdx, didShake: didShake)
+            return ["status": "action executed", "action": "respond_to_shake"]
+
         case "set_condition":
             if let data = request.data {
                 if let scenario = data["mock_scenario"]?.value as? String, scenario == "game_over" {
                     gameManager.gameState = .ended
-                    if let p1Score = data["player1_score"]?.value as? Int {
-                        gameManager.players[0].score = p1Score
-                    }
-                    if let p2Score = data["player2_score"]?.value as? Int {
-                        gameManager.players[1].score = p2Score
-                    }
                 }
                 
                 if let seed = data["rng_seed"]?.value as? Int {
                     self.currentSeed = seed
                     gameManager.setupGame(seed: seed)
+                }
+                
+                if let mockState = data["mock_gameState"]?.value as? String {
+                    switch mockState {
+                    case "ready": gameManager.gameState = .ready
+                    case "playing": gameManager.gameState = .playing
+                    case "askingGoStop": gameManager.gameState = .askingGoStop
+                    case "askingShake": gameManager.gameState = .askingShake
+                    case "ended": gameManager.gameState = .ended
+                    default: break
+                    }
                 }
 
                 if let mockCaptured = data["mock_captured_cards"]?.value as? [[String: Any]] {
@@ -98,6 +112,10 @@ class CLIEngine {
                      gameManager.players[0].hand = parseCards(mockHand)
                 }
                 
+                if let mockDeckArr = data["mock_deck"]?.value as? [[String: Any]] {
+                    gameManager.mockDeck(cards: parseCards(mockDeckArr))
+                }
+                
                 if let mockTable = data["mock_table"]?.value as? [[String: Any]] {
                      gameManager.tableCards = parseCards(mockTable)
                 }
@@ -110,6 +128,15 @@ class CLIEngine {
                         if let goCount = pData["goCount"] as? Int { p.goCount = goCount }
                         if let money = pData["money"] as? Int { p.money = money }
                         if let shakeCount = pData["shakeCount"] as? Int { p.shakeCount = shakeCount }
+                        if let bombCount = pData["bombCount"] as? Int { p.bombCount = bombCount }
+                        if let sweepCount = pData["sweepCount"] as? Int { p.sweepCount = sweepCount }
+                        if let ttadakCount = pData["ttadakCount"] as? Int { p.ttadakCount = ttadakCount }
+                        if let jjokCount = pData["jjokCount"] as? Int { p.jjokCount = jjokCount }
+                        if let seolsaCount = pData["seolsaCount"] as? Int { p.seolsaCount = seolsaCount }
+                        if let isPiMungbak = pData["isPiMungbak"] as? Bool { p.isPiMungbak = isPiMungbak }
+                        if let mungddaCount = pData["mungddaCount"] as? Int { p.mungddaCount = mungddaCount }
+                        if let bombMungddaCount = pData["bombMungddaCount"] as? Int { p.bombMungddaCount = bombMungddaCount }
+                        if let isComputer = pData["isComputer"] as? Bool { p.isComputer = isComputer }
                     }
                 }
             }
@@ -118,32 +145,6 @@ class CLIEngine {
         case "click_restart_button":
             gameManager.setupGame(seed: currentSeed)
             return ["status": "action executed", "action": "click_restart_button"]
-            
-        case "play_card":
-            guard let data = request.data,
-                  let monthIdx = data["month"]?.value as? Int,
-                  let typeStr = data["type"]?.value as? String else {
-                return ["status": "error", "message": "Missing month or type for play_card"]
-            }
-            
-            let type = parseType(typeStr)
-            
-            // Find card in hand
-            guard let player = gameManager.currentPlayer,
-                  let card = player.hand.first(where: { $0.month.rawValue == monthIdx && $0.type == type }) else {
-                return ["status": "error", "message": "Card not found in hand"]
-            }
-            
-            gameManager.playTurn(card: card)
-            return ["status": "action executed", "action": "play_card"]
-            
-        case "respond_go_stop":
-            guard let data = request.data,
-                  let isGo = data["isGo"]?.value as? Bool else {
-                return ["status": "error", "message": "Missing isGo for respond_go_stop"]
-            }
-            gameManager.respondToGoStop(isGo: isGo)
-            return ["status": "action executed", "action": "respond_go_stop"]
             
         case "invalid_action_triggering_crash":
             fatalError("Simulated App Crash for Testing")
@@ -199,6 +200,11 @@ class CLIEngine {
             dict["players"] = playersArray
         }
         
+        // Inject pending shakes if in askingShake state
+        if gameManager.gameState == .askingShake {
+            dict["pendingShakeMonths"] = gameManager.pendingShakeMonths
+        }
+        
         // Inject penalty result if game ended
         if gameManager.gameState == .ended, 
            let rules = RuleLoader.shared.config {
@@ -212,7 +218,9 @@ class CLIEngine {
                 "isGwangbak": penalty.isGwangbak,
                 "isPibak": penalty.isPibak,
                 "isGobak": penalty.isGobak,
-                "isMungbak": penalty.isMungbak
+                "isMungbak": penalty.isMungbak,
+                "isJabak": penalty.isJabak,
+                "isYeokbak": penalty.isYeokbak
             ]
         }
         

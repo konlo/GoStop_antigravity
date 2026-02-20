@@ -44,6 +44,7 @@ targets:
       - GoStopCLI
       - GoStop/Models
       - GoStop/Core
+      - GoStop/Resources
     dependencies:
       - package: Yams
     settings:

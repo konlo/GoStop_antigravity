@@ -120,6 +120,18 @@ class SimulatorBridge {
                 }
                 sendSimpleResponse(status: "action executed", action: action, connection: connection)
                 
+            case "respond_to_shake":
+                guard let dataDict = json["data"] as? [String: Any],
+                      let monthIdx = dataDict["month"] as? Int,
+                      let didShake = dataDict["didShake"] as? Bool else {
+                    sendErrorResponse(message: "Missing month or didShake", connection: connection)
+                    return
+                }
+                DispatchQueue.main.async {
+                    self.gameManager.respondToShake(month: monthIdx, didShake: didShake)
+                }
+                sendSimpleResponse(status: "action executed", action: action, connection: connection)
+                
             case "click_restart_button":
                 DispatchQueue.main.async {
                     self.gameManager.setupGame()

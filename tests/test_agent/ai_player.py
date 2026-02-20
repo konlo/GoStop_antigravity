@@ -216,6 +216,16 @@ class AIPlayer(TestAgent):
                     logger.info(f"Player {current_turn} ({player['name']}) GoCount: {go_count}. Decision: {'GO' if is_go else 'STOP'}")
                     self.send_user_action("respond_go_stop", {"isGo": is_go})
 
+                elif game_state == "askingShake":
+                    pending = state_resp.get("pendingShakeMonths", [])
+                    if pending:
+                        month = pending[0]
+                        logger.info(f"Shake available for month {month}. Decision: SHAKE")
+                        self.send_user_action("respond_to_shake", {"month": month, "didShake": True})
+                    else:
+                        logger.warning("In askingShake state but no pendingShakeMonths found.")
+                        time.sleep(1)
+
                 elif game_state == "ended":
                     self.validate_game_results()
                     

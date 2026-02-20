@@ -145,6 +145,54 @@ struct GameView: View {
             })
         } else if gameManager.gameState == .askingGoStop {
             goStopOverlay()
+        } else if gameManager.gameState == .askingShake {
+            shakeOverlay()
+        }
+    }
+    
+    @ViewBuilder
+    func shakeOverlay() -> some View {
+        if let month = gameManager.pendingShakeMonths.first {
+            ZStack {
+                Color.black.opacity(0.6).ignoresSafeArea()
+                VStack(spacing: 30) {
+                    Text("\(month)월 카드가 3장 있습니다!")
+                        .font(.largeTitle)
+                        .fontWeight(.bold)
+                        .foregroundStyle(.white)
+                    
+                    Text("흔들겠습니까? (점수 \(gameManager.players.first?.shakeCount ?? 0 + 2)배 적용)")
+                        .font(.title2)
+                        .foregroundStyle(.white.opacity(0.8))
+                    
+                    HStack(spacing: 40) {
+                        Button(action: {
+                            gameManager.respondToShake(month: month, didShake: true)
+                        }) {
+                            Text("흔들기")
+                                .font(.title)
+                                .bold()
+                                .frame(width: 150, height: 70)
+                                .background(Color.orange)
+                                .foregroundColor(.white)
+                                .cornerRadius(15)
+                                .shadow(radius: 5)
+                        }
+                        
+                        Button(action: {
+                            gameManager.respondToShake(month: month, didShake: false)
+                        }) {
+                            Text("그냥 하기")
+                                .font(.title)
+                                .bold()
+                                .frame(width: 150, height: 70)
+                                .background(Color.gray)
+                                .foregroundColor(.white)
+                                .cornerRadius(15)
+                        }
+                    }
+                }
+            }
         }
     }
     

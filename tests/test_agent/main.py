@@ -273,8 +273,30 @@ class TestAgent:
             "context": context,
             "error_type": type(exception).__name__,
             "error_message": str(exception),
-            "traceback": traceback.format_exc()
+            "traceback": traceback.format_exc(),
+            "stderr": ""
         }
+        
+        # Try to capture stderr if available (non-blocking)
+        if self.process and self.process.stderr:
+            try:
+                import fcntl
+                import os
+                
+                # Set non-blocking mode
+                fd = self.process.stderr.fileno()
+                fl = fcntl.fcntl(fd, fcntl.F_GETFL)
+                fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
+                
+                try:
+                    stderr_data = self.process.stderr.read()
+                    if stderr_data:
+                        crash_data["stderr"] = stderr_data
+                except (IOError, TypeError):
+                    # No data available in non-blocking mode
+                    pass
+            except Exception as stderr_exc:
+                logger.warning(f"Could not prepare stderr capture: {stderr_exc}")
         
         # Try to capture last known state if possible
         try:

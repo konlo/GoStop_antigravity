@@ -53,6 +53,11 @@ struct Deck {
         return drawnCards
     }
     
+    mutating func pushCardsOnTop(_ pushedCards: [Card]) {
+        // "Top" is the end of the array for our removeLast() draw
+        self.cards.append(contentsOf: pushedCards)
+    }
+    
     // MARK: - Standard Deck Generation
     static func createStandardDeck() -> [Card] {
         var deck: [Card] = []

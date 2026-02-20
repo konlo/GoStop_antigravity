@@ -1,4 +1,5 @@
 import json
+import os
 from main import TestAgent
 
 def print_card(card):
@@ -6,7 +7,14 @@ def print_card(card):
     return f"[M:{card['month']:>2} | {card['type']:<10}{suffix}]"
 
 def inspect_state(mode="cli"):
-    app_executable = "../../build/Build/Products/Debug/GoStopCLI"
+    # Try common build directories
+    possible_paths = [
+        "../../build_v3/Build/Products/Debug/GoStopCLI",
+        "../../build/Build/Products/Debug/GoStopCLI",
+        "../../build_v2/Build/Products/Debug/GoStopCLI"
+    ]
+    
+    app_executable = next((p for p in possible_paths if os.path.exists(p)), possible_paths[0])
     agent = TestAgent(app_executable_path=app_executable, connection_mode=mode)
     
     try:
