@@ -201,6 +201,10 @@ class AIPlayer(TestAgent):
                     player = players[current_turn]
                     if player.get("hand"):
                         # Simple AI: Play the first card
+                        # NOTE on dummy (도탄) cards: after a bomb, the bomber receives dummy cards
+                        # (count set by rule.yaml bomb.dummy_card_count, default 2).
+                        # Dummy cards VANISH when played — they never go to the table and have no draw phase.
+                        # Playing them simply passes the turn. The AI plays them normally.
                         card = player["hand"][0]
                         logger.info(f"Player {current_turn} ({player['name']}) playing {card['month']} {card['type']}")
                         self.send_user_action("play_card", {"month": card["month"], "type": card["type"]})

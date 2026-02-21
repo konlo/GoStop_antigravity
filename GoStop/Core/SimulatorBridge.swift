@@ -198,7 +198,9 @@ class SimulatorBridge {
                         if let pData = data[key] as? [String: Any] {
                             let p = self.gameManager.players[i]
                             if let goCount = pData["goCount"] as? Int { p.goCount = goCount }
+                            if let lastGoScore = pData["lastGoScore"] as? Int { p.lastGoScore = lastGoScore }
                             if let money = pData["money"] as? Int { p.money = money }
+                            if let score = pData["score"] as? Int { p.score = score }
                             if let shakeCount = pData["shakeCount"] as? Int { p.shakeCount = shakeCount }
                             if let bombCount = pData["bombCount"] as? Int { p.bombCount = bombCount }
                             if let sweepCount = pData["sweepCount"] as? Int { p.sweepCount = sweepCount }
@@ -208,6 +210,19 @@ class SimulatorBridge {
                             if let isPiMungbak = pData["isPiMungbak"] as? Bool { p.isPiMungbak = isPiMungbak }
                             if let mungddaCount = pData["mungddaCount"] as? Int { p.mungddaCount = mungddaCount }
                             if let bombMungddaCount = pData["bombMungddaCount"] as? Int { p.bombMungddaCount = bombMungddaCount }
+                            if let isComputer = pData["isComputer"] as? Bool { p.isComputer = isComputer }
+                        }
+                    }
+                    
+                    // Mock month owners for Seolsa testing
+                    if let ownersDict = data["mock_month_owners"] as? [String: Int] {
+                        self.gameManager.monthOwners = [:]
+                        for (monthStr, playerIdx) in ownersDict {
+                            if let monthInt = Int(monthStr),
+                               let month = Month(rawValue: monthInt),
+                               self.gameManager.players.indices.contains(playerIdx) {
+                                self.gameManager.monthOwners[month.rawValue] = self.gameManager.players[playerIdx]
+                            }
                         }
                     }
                     

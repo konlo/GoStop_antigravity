@@ -151,6 +151,17 @@ class CLIEngine {
                    gameManager.players.indices.contains(turnIdx) {
                     gameManager.currentTurnIndex = turnIdx
                 }
+                
+                // Allow tests to pre-set month ownership (for Seolsa testing)
+                // Format: {"mock_month_owners": {7: 1}} means month 7 is 'owned' by players[1]
+                if let monthOwners = data["mock_month_owners"]?.value as? [String: Any] {
+                    for (monthStr, ownerIdx) in monthOwners {
+                        if let m = Int(monthStr), let idx = ownerIdx as? Int,
+                           gameManager.players.indices.contains(idx) {
+                            gameManager.monthOwners[m] = gameManager.players[idx]
+                        }
+                    }
+                }
             }
             return ["status": "ok", "message": "Condition set"]
             

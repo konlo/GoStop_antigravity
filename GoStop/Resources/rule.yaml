@@ -93,7 +93,9 @@ special_moves:
     enabled: true
     steal_pi_count: 1
     score_multiplier: 2 # Shaking (흔듦) bonus if done via bomb
-    description: "Play 3 identical month cards when 1 is on table"
+    dummy_card_count: 2  # Number of dummy (도탄) cards given to the bomber after a bomb
+    dummy_cards_disappear_on_play: true  # Dummy cards vanish instantly when played — never placed on the floor/table
+    description: "Play 3 identical month cards when 1 is on table. Bomber receives dummy cards that disappear when played"
   shake:
     enabled: true
     score_multiplier_type: "additive" # 1 shake = +1 to multiplier factor
