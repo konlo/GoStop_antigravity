@@ -24,6 +24,7 @@ class GameManager: ObservableObject {
     @Published var players: [Player] = []
     @Published var currentTurnIndex: Int = 0
     @Published var tableCards: [Card] = []
+    @Published var outOfPlayCards: [Card] = []
     
     // For shake (흔들기) handling
     @Published var pendingShakeMonths: [Int] = []
@@ -48,6 +49,7 @@ class GameManager: ObservableObject {
         let computer = Player(name: "Computer", money: 10000)
         computer.isComputer = true
         self.players = [player1, computer]
+        self.outOfPlayCards = []
         self.deck.reset(seed: seed)
         self.dealCards()
         self.gameState = .ready
@@ -382,13 +384,15 @@ class GameManager: ObservableObject {
         
         opponent.money -= result.finalScore * 100
         player.money += result.finalScore * 100
-        
+
+        settleResidualCardsIfHandsEmpty()
         gameState = .ended
     }
     
     private func fallbackEndTurn(player: Player) {
         if player.score >= 7 {
             gLog("\(player.name) Wins with score \(player.score)! (Fallback)")
+            settleResidualCardsIfHandsEmpty()
             gameState = .ended
         } else {
             endTurn()
@@ -397,6 +401,7 @@ class GameManager: ObservableObject {
     
     private func endTurn() {
         if deck.cards.isEmpty {
+            settleResidualCardsIfHandsEmpty()
             gameState = .ended
             gLog("Game Ended in Nagari!")
             return
@@ -503,6 +508,27 @@ class GameManager: ObservableObject {
         if stolenCount > 0 {
             from.score = ScoringSystem.calculateScore(for: from)
             to.score = ScoringSystem.calculateScore(for: to)
+        }
+    }
+
+    private func settleResidualCardsIfHandsEmpty() {
+        guard players.allSatisfy({ $0.hand.isEmpty }) else { return }
+
+        var movedCount = 0
+        if !tableCards.isEmpty {
+            movedCount += tableCards.count
+            outOfPlayCards.append(contentsOf: tableCards)
+            tableCards.removeAll()
+        }
+
+        let remainingDeckCards = deck.drainAll()
+        if !remainingDeckCards.isEmpty {
+            movedCount += remainingDeckCards.count
+            outOfPlayCards.append(contentsOf: remainingDeckCards)
+        }
+
+        if movedCount > 0 {
+            gLog("Terminal cleanup: moved \(movedCount) residual card(s) out of table/deck.")
         }
     }
 }

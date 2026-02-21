@@ -18,6 +18,8 @@ struct GameStateDump: Codable {
     let tableCards: [Card]
     let deckCount: Int
     let deckCards: [Card]
+    let outOfPlayCount: Int
+    let outOfPlayCards: [Card]
 }
 
 class CLIEngine {
@@ -131,7 +133,9 @@ class CLIEngine {
                     if let pData = data[key]?.value as? [String: Any] {
                         let p = gameManager.players[i]
                         if let goCount = pData["goCount"] as? Int { p.goCount = goCount }
+                        if let lastGoScore = pData["lastGoScore"] as? Int { p.lastGoScore = lastGoScore }
                         if let money = pData["money"] as? Int { p.money = money }
+                        if let score = pData["score"] as? Int { p.score = score }
                         if let shakeCount = pData["shakeCount"] as? Int { p.shakeCount = shakeCount }
                         if let bombCount = pData["bombCount"] as? Int { p.bombCount = bombCount }
                         if let sweepCount = pData["sweepCount"] as? Int { p.sweepCount = sweepCount }
@@ -205,7 +209,9 @@ class CLIEngine {
             currentTurnIndex: gameManager.currentTurnIndex,
             tableCards: gameManager.tableCards,
             deckCount: gameManager.deck.cards.count,
-            deckCards: gameManager.deck.cards
+            deckCards: gameManager.deck.cards,
+            outOfPlayCount: gameManager.outOfPlayCards.count,
+            outOfPlayCards: gameManager.outOfPlayCards
         )
         
         guard let data = try? JSONEncoder().encode(dump),

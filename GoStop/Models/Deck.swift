@@ -57,6 +57,12 @@ struct Deck {
         // "Top" is the end of the array for our removeLast() draw
         self.cards.append(contentsOf: pushedCards)
     }
+
+    mutating func drainAll() -> [Card] {
+        let drained = cards
+        cards.removeAll()
+        return drained
+    }
     
     // MARK: - Standard Deck Generation
     static func createStandardDeck() -> [Card] {

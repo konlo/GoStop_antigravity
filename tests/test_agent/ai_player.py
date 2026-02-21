@@ -23,6 +23,47 @@ class AIPlayer(TestAgent):
             "state": state
         })
 
+    def check_duplicate_cards(self, state):
+        """Checks if the exact same card (by ID) appears multiple times in the current state."""
+        all_cards = []
+        
+        def add_cards(cards, location):
+            for c in cards:
+                if isinstance(c, dict):
+                    c['_location'] = location
+                    all_cards.append(c)
+        
+        add_cards(state.get('tableCards', []), 'Table')
+        add_cards(state.get('outOfPlayCards', []), 'OutOfPlay')
+        
+        # Check if full deck is exposed
+        if 'deck' in state and isinstance(state['deck'], dict):
+            add_cards(state['deck'].get('cards', []), 'Deck')
+        elif 'deckCards' in state:
+            add_cards(state.get('deckCards', []), 'Deck')
+            
+        for p_idx, p in enumerate(state.get('players', [])):
+            name = p.get('name', f'Player_{p_idx}')
+            add_cards(p.get('hand', []), f'{name}_Hand')
+            add_cards(p.get('capturedCards', []), f'{name}_Captured')
+            
+        seen_ids = {}
+        duplicates = []
+        for c in all_cards:
+            cid = c.get('id')
+            if not cid:
+                continue
+            if cid in seen_ids:
+                dup_msg = f"Duplicate Card ID {cid} (M:{c.get('month')} {c.get('type')}) found in '{c['_location']}' and '{seen_ids[cid]['_location']}'"
+                if dup_msg not in duplicates:
+                    duplicates.append(dup_msg)
+            else:
+                seen_ids[cid] = c
+
+        if duplicates:
+            logger.error(f"DUPLICATE CARDS DETECTED: {duplicates}")
+            self.report_error(duplicates)
+
     def validate_game_results(self):
         """Validates the game outcome against rules."""
         if not self.state_history:
@@ -177,6 +218,8 @@ class AIPlayer(TestAgent):
                     continue
 
                 self.record_state(state_resp)
+                self.check_duplicate_cards(state_resp)
+                
                 game_state = state_resp.get("gameState")
                 current_turn = state_resp.get("currentTurnIndex", 0)
                 players = state_resp.get("players", [])
@@ -209,8 +252,10 @@ class AIPlayer(TestAgent):
                         logger.info(f"Player {current_turn} ({player['name']}) playing {card['month']} {card['type']}")
                         self.send_user_action("play_card", {"month": card["month"], "type": card["type"]})
                     else:
-                        logger.warning(f"Player {current_turn} has empty hand in playing state.")
-                        time.sleep(1)
+                        error_msg = f"INVARIANT VIOLATION: Player {current_turn} ({player.get('name')}) has an EMPTY hand but gameState is 'playing'. Hands and deck must exhaust exactly together."
+                        logger.error(error_msg)
+                        self.report_error([error_msg])
+                        raise ValueError(error_msg)
 
                 elif game_state == "askingGoStop":
                     player = players[current_turn]
