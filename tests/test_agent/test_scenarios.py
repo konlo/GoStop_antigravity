@@ -711,13 +711,14 @@ def scenario_verify_card_integrity_full_game(agent: TestAgent):
         captured_count = sum(len([c for c in p.get("capturedCards", []) if not is_dummy(c)]) for p in players)
         table_count = len([c for c in state.get("tableCards", []) if not is_dummy(c)])
         deck_count = state.get("deckCount", 0)
+        out_of_play_count = len([c for c in state.get("outOfPlayCards", []) if not is_dummy(c)])
         
-        total_cards = hand_count + captured_count + table_count + deck_count
+        total_cards = hand_count + captured_count + table_count + deck_count + out_of_play_count
         
         # Total real cards should always be exactly 48.
         assert total_cards == 48, (
             f"Step {step_count}: Card integrity violation! Total={total_cards} (Expected 48). "
-            f"Hands={hand_count}, Captured={captured_count}, Table={table_count}, Deck={deck_count}"
+            f"Hands={hand_count}, Captured={captured_count}, Table={table_count}, Deck={deck_count}, OutOfPlay={out_of_play_count}"
         )
         # ----------------------------
 
@@ -782,6 +783,8 @@ def scenario_verify_monthly_pair_integrity(agent: TestAgent):
         all_cards.extend(state.get("tableCards", []))
         # 3. Deck
         all_cards.extend(state.get("deckCards", []))
+        # 4. Ended-state residual sink (terminal cleanup)
+        all_cards.extend(state.get("outOfPlayCards", []))
         
         month_counts = {}
         for c in all_cards:
@@ -1003,27 +1006,141 @@ def scenario_verify_nagari(agent: TestAgent):
 
     agent.send_user_action("start_game")
 
-    # Setup: Only 1 card in Player 0's hand, 1 card in deck.
-    # Player 0 plays → draws last deck card → deck empty → game ends (Nagari).
+    # NOTE:
+    # mock_deck appends cards on top of the remaining deck; it does not replace the deck.
+    # So we drive turns until deckCount reaches 0 and verify Nagari at that point.
+    scripted_hand = [{"month": m, "type": "junk"} for m in range(1, 13) for _ in range(2)]
+
     agent.set_condition({
         "currentTurnIndex": 0,
-        "mock_hand": [{"month": 5, "type": "junk"}],
-        "mock_table": [{"month": 8, "type": "junk"}],   # No matching month → card placed on table
-        "mock_deck": [{"month": 9, "type": "junk"}],    # Only 1 card in deck
+        "mock_hand": scripted_hand,
+        "mock_table": [{"month": 8, "type": "junk"}],
+        "mock_gameState": "playing",
+        # Keep turn flow stable for deterministic deck-drain.
+        "player0_data": {"isComputer": False, "lastGoScore": 999},
+        "player1_data": {"isComputer": False, "lastGoScore": 999}
+    })
+
+    max_steps = 80
+    for _ in range(max_steps):
+        state = agent.get_all_information()
+        if state.get("deckCount", 1) == 0:
+            break
+        if state.get("gameState") == "ended":
+            break
+
+        if state.get("gameState") == "askingGoStop":
+            # Keep this scenario focused on deck exhaustion (Nagari), not Go/Stop resolution.
+            agent.set_condition({
+                "mock_gameState": "playing",
+                "currentTurnIndex": 0,
+                "mock_captured_cards": [],
+                "player0_data": {"goCount": 0, "lastGoScore": 999, "score": 0}
+            })
+            continue
+
+        if state.get("gameState") == "askingShake":
+            pending = state.get("pendingShakeMonths", [])
+            month = pending[0] if pending else 1
+            agent.send_user_action("respond_to_shake", {"month": month, "didShake": False})
+            continue
+
+        if state.get("currentTurnIndex") != 0:
+            agent.set_condition({"currentTurnIndex": 0})
+            state = agent.get_all_information()
+
+        hand = state.get("players", [{}])[0].get("hand", [])
+        if not hand:
+            agent.set_condition({"currentTurnIndex": 0, "mock_hand": scripted_hand})
+            state = agent.get_all_information()
+            hand = state.get("players", [{}])[0].get("hand", [])
+            assert hand, "Failed to replenish hand while draining deck for Nagari test."
+
+        card = hand[0]
+        agent.send_user_action("play_card", {"month": card["month"], "type": card["type"]})
+
+    state = agent.get_all_information()
+    assert state.get("deckCount", 999) == 0, \
+        f"Expected empty deck after Nagari drain flow, got {state.get('deckCount')}"
+    assert state["gameState"] == "ended", \
+        f"Expected game to end on Nagari (empty deck), got {state['gameState']}"
+    logger.info(f"Nagari verified: gameState={state['gameState']}. PASS")
+
+
+def scenario_verify_no_residual_cards_when_hands_empty(agent: TestAgent):
+    """
+    Scenario: Validates invariant:
+      If game is ended and both players have empty hands, table/deck should also be empty.
+    This scenario is expected to FAIL until the engine is fixed.
+    """
+    logger.info("Running no-residual-cards invariant verification...")
+
+    agent.send_user_action("start_game")
+    agent.set_condition({
         "mock_gameState": "playing",
         "player0_data": {"isComputer": False},
         "player1_data": {"isComputer": False}
     })
 
-    agent.send_user_action("play_card", {"month": 5, "type": "junk"})
+    # Drain Player 1 hand to zero by forcing their turn repeatedly.
+    for _ in range(30):
+        state = agent.get_all_information()
+        opponent_hand = state["players"][1]["hand"]
+        if not opponent_hand:
+            break
+
+        agent.set_condition({
+            "mock_gameState": "playing",
+            "currentTurnIndex": 1,
+            "mock_captured_cards": [],
+            "mock_opponent_captured_cards": [],
+            "player0_data": {"goCount": 0, "lastGoScore": 999, "score": 0, "isComputer": False},
+            "player1_data": {"goCount": 0, "lastGoScore": 999, "score": 0, "isComputer": False}
+        })
+        state = agent.get_all_information()
+        opponent_hand = state["players"][1]["hand"]
+        if not opponent_hand:
+            break
+
+        card = opponent_hand[0]
+        agent.send_user_action("play_card", {"month": card["month"], "type": card["type"]})
 
     state = agent.get_all_information()
-    # After playing and drawing the last card, deck is empty → endTurn triggers Nagari.
-    assert state.get("deckCount", 999) == 0, \
-        f"Expected empty deck after play, got {state.get('deckCount')}"
-    assert state["gameState"] == "ended", \
-        f"Expected game to end on Nagari (empty deck), got {state['gameState']}"
-    logger.info(f"Nagari verified: gameState={state['gameState']}. PASS")
+    assert len(state["players"][1]["hand"]) == 0, \
+        f"Expected Player 2 hand to be empty before final forced-stop step, got {len(state['players'][1]['hand'])}"
+
+    # Force final stop with Player 1's last card while keeping residual table/deck cards.
+    winner_cards = [{"month": ((i % 12) + 1), "type": "junk"} for i in range(16)]  # score >= 7
+    agent.set_condition({
+        "mock_gameState": "playing",
+        "currentTurnIndex": 0,
+        "mock_hand": [{"month": 10, "type": "ribbon"}],
+        "mock_deck": [],
+        "mock_table": [
+            {"month": 10, "type": "ribbon"},
+            {"month": 11, "type": "junk"},
+            {"month": 12, "type": "ribbon"}
+        ],
+        "mock_captured_cards": winner_cards,
+        "player0_data": {"goCount": 0, "lastGoScore": 7, "isComputer": False},
+        "player1_data": {"isComputer": False}
+    })
+    agent.send_user_action("play_card", {"month": 10, "type": "ribbon"})
+
+    state = agent.get_all_information()
+    p0 = state["players"][0]
+    p1 = state["players"][1]
+    assert state["gameState"] == "ended", f"Expected ended state, got {state['gameState']}"
+    assert len(p0["hand"]) == 0 and len(p1["hand"]) == 0, \
+        f"Expected both hands empty, got hand sizes p0={len(p0['hand'])}, p1={len(p1['hand'])}"
+    assert len(state["tableCards"]) == 0 and state["deckCount"] == 0, \
+        (
+            "Invariant broken: game ended with both hands empty but residual cards remain. "
+            f"table={len(state['tableCards'])}, deck={state['deckCount']}"
+        )
+    assert len(state.get("outOfPlayCards", [])) > 0, "Expected residual cards to be moved into outOfPlayCards sink"
+
+    logger.info("No residual cards invariant holds. PASS")
 
 
 def scenario_verify_jabak(agent: TestAgent):
@@ -1035,38 +1152,34 @@ def scenario_verify_jabak(agent: TestAgent):
     """
     logger.info("Running Jabak verification...")
 
-    # Setup: Winner can trigger Gwangbak (3 Kwang, opponent has 0 Kwang).
-    # But opponent has 7+ points → Jabak applies → no Bak multiplier.
+    # Setup: Player 0 must remain winner under score-based winner inference used by
+    # the simulator bridge when gameState == ended.
     winner_cards = [
-        {"month": 1, "type": "bright"}, {"month": 3, "type": "bright"}, {"month": 8, "type": "bright"}  # 3 pts Samgwang
+        {"month": 1, "type": "bright"}, {"month": 3, "type": "bright"}, {"month": 8, "type": "bright"},
+        *[{"month": m, "type": "animal"} for m in range(1, 12)]
     ]
-    loser_cards = (
-        [{"month": m, "type": "animal"} for m in range(1, 6)] +  # 5 animals
-        [{"month": m, "type": "junk"} for m in range(1, 11)]     # 10 pi = 1 pt
-        # 5 animals = 1 pt, 10 pi = 1 pt → total loser score = 2 pts. NOT enough for jabak.
-    )
-    # For jabak, loser needs 7+ points:
-    loser_cards = [{"month": m, "type": "animal"} for m in range(1, 12)]  # 11 animals = 7 pts
-    loser_cards += [{"month": m, "type": "junk"} for m in range(1, 11)]   # 10 pi = 1 pt
+    # 16 pi => 7 points, enough to trigger Jabak threshold while keeping loser below winner.
+    loser_cards = [{"month": ((i % 12) + 1), "type": "junk"} for i in range(16)]
 
     agent.set_condition({
         "mock_captured_cards": winner_cards,
         "mock_opponent_captured_cards": loser_cards,
-        "player0_data": {"goCount": 0},
-        "player1_data": {"goCount": 1},  # Opponent called Go (bak_only_if_opponent_go=true)
+        # Winner called Go once so Bak can apply even when loser.goCount == 0.
+        "player0_data": {"goCount": 1},
+        "player1_data": {"goCount": 0},
         "mock_scenario": "game_over"
     })
 
     state = agent.get_all_information()
     penalty = state.get("penaltyResult")
     assert penalty is not None, "Failed to get penaltyResult"
+    winner_score = state["players"][0]["score"]
     
     assert penalty.get("isJabak") == True, \
         f"Expected isJabak=True (loser score >= 7), got isJabak={penalty.get('isJabak')}. Full penalty: {penalty}"
-    # With Jabak, the Gwangbak multiplier does NOT apply
-    # Base score is 3 (Samgwang). finalScore should NOT be doubled.
-    assert penalty["finalScore"] == 3, \
-        f"Expected finalScore=3 (no bak multiplier due to Jabak), got {penalty['finalScore']}"
+    # With Jabak, Bak multipliers are removed; with goCount=1, only +1 Go bonus remains.
+    assert penalty["finalScore"] == winner_score + 1, \
+        f"Expected finalScore={winner_score + 1} (no bak multiplier, +1 Go bonus), got {penalty['finalScore']}"
     logger.info(f"Jabak verified: isJabak={penalty['isJabak']}, finalScore={penalty['finalScore']}. PASS")
 
 
@@ -1149,15 +1262,14 @@ def scenario_verify_shake_multiplier_stacking(agent: TestAgent):
     logger.info("Shake multiplier stacking (shakeCount tracking) verified!")
 
 
-def scenario_verify_gwangbak_instant_end(agent: TestAgent):
+def scenario_verify_no_gwangbak_instant_end(agent: TestAgent):
     """
-    Scenario: Verifies Gwangbak instant end (끝장).
-    Rule (rule.yaml > endgame.instant_end_on_bak.gwangbak: true):
+    Scenario: Verifies Gwangbak DOES NOT cause instant end.
+    Rule (rule.yaml > endgame.instant_end_on_bak.gwangbak: false):
     When the winner has 3+ Kwang cards and the opponent has 0 Kwang,
-    the game should end immediately (instant_end_on_bak=true for gwangbak),
-    triggered when a card is scored.
+    the game should NOT end immediately.
     """
-    logger.info("Running Gwangbak Instant End verification...")
+    logger.info("Running No Gwangbak Instant End verification...")
 
     agent.send_user_action("start_game")
 
@@ -1182,28 +1294,26 @@ def scenario_verify_gwangbak_instant_end(agent: TestAgent):
     })
 
     # Playing any card will trigger end-of-turn check → score ≥ 7 → checkEndgameConditions
-    # → Gwangbak condition met (3 kwang, opponent has 0 kwang) → instant end
     agent.send_user_action("play_card", {"month": 5, "type": "junk"})
 
     state = agent.get_all_information()
-    assert state["gameState"] == "ended", \
-        f"Expected game to end instantly due to Gwangbak, got {state['gameState']}"
-    logger.info(f"Gwangbak instant end verified: gameState={state['gameState']}. PASS")
+    assert state["gameState"] != "ended", \
+        f"Expected game NOT to end instantly due to Gwangbak, got {state['gameState']}"
+    logger.info(f"No Gwangbak instant end verified: gameState={state['gameState']}. PASS")
 
 
-def scenario_verify_bomb_mungdda_instant_end(agent: TestAgent):
+def scenario_verify_no_bomb_mungdda_instant_end(agent: TestAgent):
     """
-    Scenario: Verifies Bomb Mug-dda instant end (끝장).
-    Rule (rule.yaml > endgame.instant_end_on_bak.bomb_mungdda: true):
-    When a player scores a Bomb Mung-dda (opponent in Pi-mungbak + Bomb),
-    the game ends immediately, regardless of score.
+    Scenario: Verifies Bomb Mung-dda DOES NOT cause instant end.
+    Rule (rule.yaml > endgame.instant_end_on_bak.bomb_mungdda: false):
+    When a player scores a Bomb Mung-dda, the game does NOT end immediately.
     """
-    logger.info("Running Bomb Mung-dda Instant End verification...")
+    logger.info("Running No Bomb Mung-dda Instant End verification...")
 
     agent.send_user_action("start_game")
 
     # Setup: Player has 3 same-month cards, table has 1 matching card → Bomb.
-    # Opponent is in Pi-mungbak state → Bomb Mung-dda fires → instant end.
+    # Opponent is in Pi-mungbak state → Bomb Mung-dda fires → NO instant end.
     agent.set_condition({
         "currentTurnIndex": 0,
         "mock_hand": [
@@ -1220,33 +1330,35 @@ def scenario_verify_bomb_mungdda_instant_end(agent: TestAgent):
         "mock_opponent_captured_cards": [{"month": 11, "type": "junk"}] * 5
     })
 
-    # Play a month-3 card → triggers Bomb → Opponent is in Pi-mungbak → Bomb Mung-dda → instant end
+    # Play a month-3 card → triggers Bomb → Opponent is in Pi-mungbak → Bomb Mung-dda
     agent.send_user_action("play_card", {"month": 3, "type": "junk"})
 
     state = agent.get_all_information()
     player = state["players"][0]
     assert player["bombMungddaCount"] >= 1, \
         f"Expected Bomb Mung-dda to be triggered, got bombMungddaCount={player['bombMungddaCount']}"
-    assert state["gameState"] == "ended", \
-        f"Expected game to end instantly on Bomb Mung-dda, got {state['gameState']}"
-    logger.info(f"Bomb Mung-dda instant end verified: gameState={state['gameState']}. PASS")
+    assert state["gameState"] != "ended", \
+        f"Expected game NOT to end instantly on Bomb Mung-dda, got {state['gameState']}"
+    logger.info(f"No Bomb Mung-dda instant end verified: gameState={state['gameState']}. PASS")
 
 
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Run GoStop Test Scenarios")
     parser.add_argument("--mode", choices=["cli", "socket"], default="cli", help="Connection mode (cli or socket)")
+    parser.add_argument("-k", "--filter", type=str, help="Run only tests matching this substring")
     args = parser.parse_args()
 
-    # Path to the compiled GoStopCLI
-    possible_paths = [
-        "../../build_v26/Build/Products/Debug/GoStopCLI",
-        "../../build_v17/Build/Products/Debug/GoStopCLI",
-        "../../build_v16/Build/Products/Debug/GoStopCLI",
-        "../../build_v13/Build/Products/Debug/GoStopCLI",
-        "../../build/Build/Products/Debug/GoStopCLI",
-    ]
+    # Resolve CLI paths relative to this file so execution is stable from any cwd.
     import os
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    possible_paths = [
+        os.path.normpath(os.path.join(script_dir, "../../build_v26/Build/Products/Debug/GoStopCLI")),
+        os.path.normpath(os.path.join(script_dir, "../../build_v17/Build/Products/Debug/GoStopCLI")),
+        os.path.normpath(os.path.join(script_dir, "../../build_v16/Build/Products/Debug/GoStopCLI")),
+        os.path.normpath(os.path.join(script_dir, "../../build_v13/Build/Products/Debug/GoStopCLI")),
+        os.path.normpath(os.path.join(script_dir, "../../build/Build/Products/Debug/GoStopCLI")),
+    ]
     app_executable = next((p for p in possible_paths if os.path.exists(p)), possible_paths[0])
     
     agent = TestAgent(app_executable_path=app_executable, 
@@ -1274,19 +1386,21 @@ if __name__ == "__main__":
         scenario_verify_card_integrity_full_game,
         scenario_verify_monthly_pair_integrity,
         scenario_verify_bomb_with_dummy_cards,
-        # --- New Scenarios ---
         scenario_verify_go_bonuses,
         scenario_verify_nagari,
+        scenario_verify_no_residual_cards_when_hands_empty,
         scenario_verify_jabak,
         scenario_verify_yeokbak,
         scenario_verify_shake_multiplier_stacking,
-        scenario_verify_gwangbak_instant_end,
-        scenario_verify_bomb_mungdda_instant_end,
+        scenario_verify_no_gwangbak_instant_end,
+        scenario_verify_no_bomb_mungdda_instant_end,
     ]
     
+    if args.filter:
+        scenarios_to_run = [s for s in scenarios_to_run if args.filter in s.__name__]
+
     # Run tests once for verification
     try:
         agent.run_tests(scenarios=scenarios_to_run, repeat_count=1)
     except KeyboardInterrupt:
         logger.info("Testing interrupted by user.")
-

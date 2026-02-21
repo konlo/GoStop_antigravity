@@ -93,6 +93,15 @@ def inspect_state(mode="cli"):
             row_str = " ".join([print_card(c) for c in row])
             print(f"  {row_str}")
         print("-" * 50)
+
+        # Out-of-play cards (terminal cleanup sink)
+        out_cards = state.get('outOfPlayCards', [])
+        print(f"OUT-OF-PLAY CARDS ({len(out_cards)}):")
+        for i in range(0, len(out_cards), 4):
+            row = out_cards[i:i+4]
+            row_str = " ".join([print_card(c) for c in row])
+            print(f"  {row_str}")
+        print("-" * 50)
         
         # Month-Pair Validation Logic
         print("MONTH-PAIR VALIDATION (Accountability for all 48 cards):")
@@ -109,6 +118,9 @@ def inspect_state(mode="cli"):
             (dummy_cards if c.get('type') == 'dummy' else all_cards).append(c)
         # 3. Deck
         for c in state.get('deckCards', []):
+            (dummy_cards if c.get('type') == 'dummy' else all_cards).append(c)
+        # 4. Out-of-play sink
+        for c in state.get('outOfPlayCards', []):
             (dummy_cards if c.get('type') == 'dummy' else all_cards).append(c)
         
         if dummy_cards:

@@ -138,6 +138,6 @@ endgame:
   max_go_count: 5
   instant_end_on_bak:
     pibak: false
-    gwangbak: true
+    gwangbak: false
     mungbak: false
-    bomb_mungdda: true
+    bomb_mungdda: false

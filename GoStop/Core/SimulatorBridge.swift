@@ -317,6 +317,8 @@ extension GameManager {
         state["deckCount"] = AnyCodable(deck.cards.count)
         state["tableCards"] = AnyCodable(tableCards)
         state["deckCards"] = AnyCodable(deck.cards)
+        state["outOfPlayCount"] = AnyCodable(outOfPlayCards.count)
+        state["outOfPlayCards"] = AnyCodable(outOfPlayCards)
         state["currentTurnIndex"] = AnyCodable(currentTurnIndex)
         state["players"] = AnyCodable(players.map { player in
             var playerDict = player.serialize()
