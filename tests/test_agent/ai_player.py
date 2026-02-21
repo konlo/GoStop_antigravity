@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import random
 import subprocess
 import time
 import traceback
@@ -211,17 +212,19 @@ class AIPlayer(TestAgent):
                     player = players[current_turn]
                     go_count = player.get("goCount", 0)
                     
-                    # Rule: Go until 4 or 5. Let's aim for 4 as default.
-                    is_go = go_count < self.max_go_count
-                    logger.info(f"Player {current_turn} ({player['name']}) GoCount: {go_count}. Decision: {'GO' if is_go else 'STOP'}")
+                    # 50/50 Randomized Choice (as requested)
+                    is_go = random.random() < 0.5
+                    logger.info(f"Player {current_turn} ({player['name']}) GoCount: {go_count}. [RANDOM] Decision: {'GO' if is_go else 'STOP'}")
                     self.send_user_action("respond_go_stop", {"isGo": is_go})
 
                 elif game_state == "askingShake":
                     pending = state_resp.get("pendingShakeMonths", [])
                     if pending:
                         month = pending[0]
-                        logger.info(f"Shake available for month {month}. Decision: SHAKE")
-                        self.send_user_action("respond_to_shake", {"month": month, "didShake": True})
+                        # 50/50 Randomized Choice (as requested)
+                        did_shake = random.random() < 0.5
+                        logger.info(f"Shake available for month {month}. [RANDOM] Decision: {'SHAKE' if did_shake else 'NORMAL'}")
+                        self.send_user_action("respond_to_shake", {"month": month, "didShake": did_shake})
                     else:
                         logger.warning("In askingShake state but no pendingShakeMonths found.")
                         time.sleep(1)

@@ -3,6 +3,7 @@ import Foundation
 /// Represents the 12 months of Hwatu
 enum Month: Int, CaseIterable, Comparable, Codable {
     case jan = 1, feb, mar, apr, may, jun, jul, aug, sep, oct, nov, dec
+    case none = 0
     
     static func < (lhs: Month, rhs: Month) -> Bool {
         return lhs.rawValue < rhs.rawValue
@@ -16,6 +17,7 @@ enum CardType: String, Equatable, Codable, CaseIterable {
     case ribbon         // Tti (띠)
     case junk           // Pi (피)
     case doubleJunk     // SsangPi (쌍피)
+    case dummy          // Dummy card for Bomb (폭탄용 더미)
 }
 
 /// Represents a single Hwatu card
@@ -30,6 +32,10 @@ struct Card: Identifiable, Equatable, CustomStringConvertible, Codable {
         self.month = month
         self.type = type
         self.imageIndex = imageIndex
+    }
+    
+    static func == (lhs: Card, rhs: Card) -> Bool {
+        return lhs.month == rhs.month && lhs.type == rhs.type && lhs.imageIndex == rhs.imageIndex
     }
     
     var isBird: Bool {

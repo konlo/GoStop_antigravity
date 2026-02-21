@@ -160,6 +160,7 @@ class PlayerHandSlotManager: ObservableObject {
         case .animal: return 1
         case .ribbon: return 2
         case .junk, .doubleJunk: return 3
+        case .dummy: return 4
         }
     }
 }

@@ -20,9 +20,10 @@ class Player: ObservableObject, Identifiable, Codable {
     @Published var mungddaCount: Int = 0
     @Published var bombMungddaCount: Int = 0
     @Published var isComputer: Bool = false
+    @Published var dummyCardCount: Int = 0
     
     enum CodingKeys: String, CodingKey {
-        case id, name, hand, capturedCards, score, money, goCount, lastGoScore, shakeCount, shakenMonths, bombCount, sweepCount, ttadakCount, jjokCount, seolsaCount, isPiMungbak, mungddaCount, bombMungddaCount, isComputer
+        case id, name, hand, capturedCards, score, money, goCount, lastGoScore, shakeCount, shakenMonths, bombCount, sweepCount, ttadakCount, jjokCount, seolsaCount, isPiMungbak, mungddaCount, bombMungddaCount, isComputer, dummyCardCount
     }
     
     required init(from decoder: Decoder) throws {
@@ -46,6 +47,7 @@ class Player: ObservableObject, Identifiable, Codable {
         mungddaCount = try container.decode(Int.self, forKey: .mungddaCount)
         bombMungddaCount = try container.decode(Int.self, forKey: .bombMungddaCount)
         isComputer = try container.decode(Bool.self, forKey: .isComputer)
+        dummyCardCount = try container.decodeIfPresent(Int.self, forKey: .dummyCardCount) ?? 0
     }
     
     func encode(to encoder: Encoder) throws {
@@ -69,6 +71,7 @@ class Player: ObservableObject, Identifiable, Codable {
         try container.encode(mungddaCount, forKey: .mungddaCount)
         try container.encode(bombMungddaCount, forKey: .bombMungddaCount)
         try container.encode(isComputer, forKey: .isComputer)
+        try container.encode(dummyCardCount, forKey: .dummyCardCount)
     }
 
     init(id: UUID = UUID(), name: String, money: Int = 10000) {
@@ -94,6 +97,7 @@ class Player: ObservableObject, Identifiable, Codable {
         mungddaCount = 0
         bombMungddaCount = 0
         isComputer = false // reset will be called by startGame, which sets computer state again
+        dummyCardCount = 0
     }
     
     func receive(cards: [Card]) {
@@ -144,7 +148,8 @@ class Player: ObservableObject, Identifiable, Codable {
             "isPiMungbak": isPiMungbak,
             "mungddaCount": mungddaCount,
             "bombMungddaCount": bombMungddaCount,
-            "isComputer": isComputer
+            "isComputer": isComputer,
+            "dummyCardCount": dummyCardCount
         ]
     }
 }

@@ -81,8 +81,8 @@ class SimulatorBridge {
             case "start_game":
                 DispatchQueue.main.async {
                     self.gameManager.startGame()
+                    self.sendSimpleResponse(status: "ok", action: action, connection: connection)
                 }
-                sendSimpleResponse(status: "ok", action: action, connection: connection)
                 
             case "play_card":
                 guard let dataDict = json["data"] as? [String: Any],
@@ -106,8 +106,8 @@ class SimulatorBridge {
                        let card = player.hand.first(where: { $0.month.rawValue == monthIdx && $0.type == type }) {
                         self.gameManager.playTurn(card: card)
                     }
+                    self.sendSimpleResponse(status: "action executed", action: action, connection: connection)
                 }
-                sendSimpleResponse(status: "action executed", action: action, connection: connection)
                 
             case "respond_go_stop":
                 guard let dataDict = json["data"] as? [String: Any],
@@ -117,8 +117,8 @@ class SimulatorBridge {
                 }
                 DispatchQueue.main.async {
                     self.gameManager.respondToGoStop(isGo: isGo)
+                    self.sendSimpleResponse(status: "action executed", action: action, connection: connection)
                 }
-                sendSimpleResponse(status: "action executed", action: action, connection: connection)
                 
             case "respond_to_shake":
                 guard let dataDict = json["data"] as? [String: Any],
@@ -129,22 +129,120 @@ class SimulatorBridge {
                 }
                 DispatchQueue.main.async {
                     self.gameManager.respondToShake(month: monthIdx, didShake: didShake)
+                    self.sendSimpleResponse(status: "action executed", action: action, connection: connection)
                 }
-                sendSimpleResponse(status: "action executed", action: action, connection: connection)
                 
             case "click_restart_button":
                 DispatchQueue.main.async {
                     self.gameManager.setupGame()
+                    self.sendSimpleResponse(status: "action executed", action: action, connection: connection)
                 }
-                sendSimpleResponse(status: "action executed", action: action, connection: connection)
+                
+            case "set_condition":
+                guard let data = json["data"] as? [String: Any] else {
+                    sendErrorResponse(message: "Missing data for set_condition", connection: connection)
+                    return
+                }
+                
+                DispatchQueue.main.async {
+                    if let seed = data["rng_seed"] as? Int {
+                        self.gameManager.setupGame(seed: seed)
+                    }
+                    
+                    if let scenario = data["mock_scenario"] as? String, scenario == "game_over" {
+                        self.gameManager.gameState = .ended
+                    }
+                    
+                    if let turnIndex = data["currentTurnIndex"] as? Int {
+                        self.gameManager.currentTurnIndex = turnIndex
+                    }
+                    
+                    if let mockState = data["mock_gameState"] as? String {
+                        switch mockState {
+                        case "ready": self.gameManager.gameState = .ready
+                        case "playing": self.gameManager.gameState = .playing
+                        case "askingGoStop": self.gameManager.gameState = .askingGoStop
+                        case "askingShake": self.gameManager.gameState = .askingShake
+                        case "ended": self.gameManager.gameState = .ended
+                        default: break
+                        }
+                    }
+                    
+                    if let mockCaptured = data["mock_captured_cards"] as? [[String: Any]] {
+                         let player = self.gameManager.players[0]
+                         player.capturedCards = self.parseCards(mockCaptured)
+                         player.score = ScoringSystem.calculateScore(for: player)
+                    }
+                    
+                    if let mockOpponentCaptured = data["mock_opponent_captured_cards"] as? [[String: Any]] {
+                         let opponent = self.gameManager.players[1]
+                         opponent.capturedCards = self.parseCards(mockOpponentCaptured)
+                         opponent.score = ScoringSystem.calculateScore(for: opponent)
+                    }
+                    
+                    if let mockHand = data["mock_hand"] as? [[String: Any]] {
+                         self.gameManager.players[0].hand = self.parseCards(mockHand)
+                    }
+                    
+                    if let mockDeckArr = data["mock_deck"] as? [[String: Any]] {
+                        self.gameManager.mockDeck(cards: self.parseCards(mockDeckArr))
+                    }
+                    
+                    if let mockTable = data["mock_table"] as? [[String: Any]] {
+                         self.gameManager.tableCards = self.parseCards(mockTable)
+                    }
+                    
+                    // Advanced player mocking
+                    for i in 0..<self.gameManager.players.count {
+                        let key = "player\(i)_data"
+                        if let pData = data[key] as? [String: Any] {
+                            let p = self.gameManager.players[i]
+                            if let goCount = pData["goCount"] as? Int { p.goCount = goCount }
+                            if let money = pData["money"] as? Int { p.money = money }
+                            if let shakeCount = pData["shakeCount"] as? Int { p.shakeCount = shakeCount }
+                            if let bombCount = pData["bombCount"] as? Int { p.bombCount = bombCount }
+                            if let sweepCount = pData["sweepCount"] as? Int { p.sweepCount = sweepCount }
+                            if let ttadakCount = pData["ttadakCount"] as? Int { p.ttadakCount = ttadakCount }
+                            if let jjokCount = pData["jjokCount"] as? Int { p.jjokCount = jjokCount }
+                            if let seolsaCount = pData["seolsaCount"] as? Int { p.seolsaCount = seolsaCount }
+                            if let isPiMungbak = pData["isPiMungbak"] as? Bool { p.isPiMungbak = isPiMungbak }
+                            if let mungddaCount = pData["mungddaCount"] as? Int { p.mungddaCount = mungddaCount }
+                            if let bombMungddaCount = pData["bombMungddaCount"] as? Int { p.bombMungddaCount = bombMungddaCount }
+                        }
+                    }
+                    
+                    self.sendSimpleResponse(status: "condition set", action: action, connection: connection)
+                }
                 
             default:
                 sendSimpleResponse(status: "unknown action", action: action, connection: connection)
             }
-            
         } catch {
             gLog("SimulatorBridge: Failed to parse request: \(error)")
         }
+    }
+    
+    // Helper to parse card list from JSON dictionary
+    private func parseCards(_ dictList: [[String: Any]]) -> [Card] {
+        var cards: [Card] = []
+        for dict in dictList {
+            if let monthIdx = dict["month"] as? Int,
+               let typeStr = dict["type"] as? String {
+                let month = Month(rawValue: monthIdx) ?? .jan
+                var type: CardType = .junk
+                switch typeStr {
+                case "bright": type = .bright
+                case "animal": type = .animal
+                case "ribbon": type = .ribbon
+                case "doubleJunk": type = .doubleJunk
+                case "dummy": type = .dummy
+                default: type = .junk
+                }
+                let imageIndex = dict["imageIndex"] as? Int ?? 0
+                cards.append(Card(month: month, type: type, imageIndex: imageIndex))
+            }
+        }
+        return cards
     }
     
     private func sendSimpleResponse(status: String, action: String, connection: NWConnection) {
@@ -166,23 +264,25 @@ class SimulatorBridge {
     }
     
     private func sendState(connection: NWConnection) {
-        let state = gameManager.serializeState()
-        
-        // We need to encode this to JSON data
-        let encoder = JSONEncoder()
-        do {
-            let data = try encoder.encode(state)
-            // Add a newline because our Python agent expects it
-            var messageData = data
-            messageData.append("\n".data(using: .utf8)!)
+        DispatchQueue.main.async {
+            let state = self.gameManager.serializeState()
             
-            connection.send(content: messageData, completion: .contentProcessed({ error in
-                if let error = error {
-                    print("SimulatorBridge: Failed to send state: \(error)")
-                }
-            }))
-        } catch {
-            print("SimulatorBridge: Failed to encode state: \(error)")
+            // We need to encode this to JSON data
+            let encoder = JSONEncoder()
+            do {
+                let data = try encoder.encode(state)
+                // Add a newline because our Python agent expects it
+                var messageData = data
+                messageData.append("\n".data(using: .utf8)!)
+                
+                connection.send(content: messageData, completion: .contentProcessed({ error in
+                    if let error = error {
+                        print("SimulatorBridge: Failed to send state: \(error)")
+                    }
+                }))
+            } catch {
+                print("SimulatorBridge: Failed to encode state: \(error)")
+            }
         }
     }
     
@@ -201,11 +301,33 @@ extension GameManager {
         state["gameState"] = AnyCodable(gameState.rawValue)
         state["deckCount"] = AnyCodable(deck.cards.count)
         state["tableCards"] = AnyCodable(tableCards)
+        state["deckCards"] = AnyCodable(deck.cards)
+        state["currentTurnIndex"] = AnyCodable(currentTurnIndex)
         state["players"] = AnyCodable(players.map { player in
             var playerDict = player.serialize()
             playerDict["scoreItems"] = AnyCodable(ScoringSystem.calculateScoreDetail(for: player))
             return playerDict
         })
+        
+        if gameState == .askingShake {
+            state["pendingShakeMonths"] = AnyCodable(pendingShakeMonths)
+        }
+        
+        if gameState == .ended, let rules = RuleLoader.shared.config {
+            let winner = players[0].score >= players[1].score ? players[0] : players[1]
+            let loser = winner === players[0] ? players[1] : players[0]
+            let penalty = PenaltySystem.calculatePenalties(winner: winner, loser: loser, rules: rules)
+            state["penaltyResult"] = AnyCodable([
+                "finalScore": penalty.finalScore,
+                "isGwangbak": penalty.isGwangbak,
+                "isPibak": penalty.isPibak,
+                "isGobak": penalty.isGobak,
+                "isMungbak": penalty.isMungbak,
+                "isJabak": penalty.isJabak,
+                "isYeokbak": penalty.isYeokbak
+            ])
+        }
+        
         state["status"] = AnyCodable("ok")
         return state
     }

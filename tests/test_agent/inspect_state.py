@@ -9,6 +9,7 @@ def print_card(card):
 def inspect_state(mode="cli"):
     # Try common build directories
     possible_paths = [
+        "../../build_v4/Build/Products/Debug/GoStopCLI",
         "../../build_v3/Build/Products/Debug/GoStopCLI",
         "../../build/Build/Products/Debug/GoStopCLI",
         "../../build_v2/Build/Products/Debug/GoStopCLI"
@@ -82,6 +83,49 @@ def inspect_state(mode="cli"):
                     else:
                         print(f"    {label:<12}:  0 cards")
             print("-" * 50)
+            
+        # Deck Cards
+        deck_cards = state.get('deckCards', [])
+        print(f"DECK CARDS ({len(deck_cards)}):")
+        # Print deck cards in a compact grid
+        for i in range(0, len(deck_cards), 4):
+            row = deck_cards[i:i+4]
+            row_str = " ".join([print_card(c) for c in row])
+            print(f"  {row_str}")
+        print("-" * 50)
+        
+        # Month-Pair Validation Logic
+        print("MONTH-PAIR VALIDATION (Accountability for all 48 cards):")
+        all_cards = []
+        # 1. Hands and Captured
+        for p in state.get('players', []):
+            all_cards.extend(p.get('hand', []))
+            all_cards.extend(p.get('capturedCards', []))
+        # 2. Table
+        all_cards.extend(state.get('tableCards', []))
+        # 3. Deck
+        all_cards.extend(state.get('deckCards', []))
+        
+        month_counts = {}
+        for c in all_cards:
+            m = c['month']
+            month_counts[m] = month_counts.get(m, 0) + 1
+            
+        is_all_valid = True
+        for m in range(1, 13):
+            count = month_counts.get(m, 0)
+            status = "OK" if count == 4 else "MISSING" if count < 4 else "EXTRA"
+            if count != 4:
+                is_all_valid = False
+            print(f"  Month {m:>2}: {count} cards [{status}]")
+            
+        total_all = len(all_cards)
+        print(f"  TOTAL CARDS: {total_all} / 48")
+        if is_all_valid and total_all == 48:
+            print("  STATUS: \U0001f7e2 ALL CARDS ACCOUNTED FOR")
+        else:
+            print(f"  STATUS: \U0001f534 INTEGRITY ERROR ({total_all} cards)")
+        print("-" * 50)
             
     except Exception as e:
         print(f"Error inspecting state: {e}")

@@ -12,3 +12,16 @@ The final `score` of each player must match the cards they have captured.
 **Verification Logic**:
 1. Sum of `scoreItems` points must equal `player.score`.
 2. The `count` of cards in `scoreItems` must match the count of relevant cards in `player.capturedCards`.
+
+---
+
+## 2. Card Integrity
+**Total cards in the game must always equal 48.**
+
+The sum of cards in the following categories must be exactly 48:
+- **Player Hands** (Both players)
+- **Captured Cards** (Both players)
+- **Table Cards**
+- **Deck Count**
+
+This ensures no cards are lost during transfers or special moves.

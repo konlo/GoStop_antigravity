@@ -17,6 +17,7 @@ struct GameStateDump: Codable {
     let currentTurnIndex: Int
     let tableCards: [Card]
     let deckCount: Int
+    let deckCards: [Card]
 }
 
 class CLIEngine {
@@ -45,14 +46,18 @@ class CLIEngine {
             case "animal": type = .animal
             case "ribbon": type = .ribbon
             case "doubleJunk": type = .doubleJunk
+            case "dummy": type = .dummy
             default: type = .junk
             }
             
             // Find card in hand
             guard let player = gameManager.currentPlayer,
                   let card = player.hand.first(where: { $0.month.rawValue == monthIdx && $0.type == type }) else {
+                // print("CLI DEBUG: Card \(monthIdx) \(type) NOT found in \(gameManager.currentPlayer?.name ?? "nil")'s hand.")
                 return ["status": "error", "message": "Card not found in hand"]
             }
+            
+            // print("CLI DEBUG: Found card \(card.month) \(card.type). Calling gameManager.playTurn.")
             
             gameManager.playTurn(card: card)
             return ["status": "action executed", "action": "play_card"]
@@ -137,7 +142,14 @@ class CLIEngine {
                         if let mungddaCount = pData["mungddaCount"] as? Int { p.mungddaCount = mungddaCount }
                         if let bombMungddaCount = pData["bombMungddaCount"] as? Int { p.bombMungddaCount = bombMungddaCount }
                         if let isComputer = pData["isComputer"] as? Bool { p.isComputer = isComputer }
+                        if let dummyCardCount = pData["dummyCardCount"] as? Int { p.dummyCardCount = dummyCardCount }
                     }
+                }
+                
+                // Allow tests to directly force the active player
+                if let turnIdx = data["currentTurnIndex"]?.value as? Int,
+                   gameManager.players.indices.contains(turnIdx) {
+                    gameManager.currentTurnIndex = turnIdx
                 }
             }
             return ["status": "ok", "message": "Condition set"]
@@ -169,6 +181,7 @@ class CLIEngine {
         case "animal": return .animal
         case "ribbon": return .ribbon
         case "doubleJunk": return .doubleJunk
+        case "dummy": return .dummy
         default: return .junk
         }
     }
@@ -180,7 +193,8 @@ class CLIEngine {
             players: gameManager.players,
             currentTurnIndex: gameManager.currentTurnIndex,
             tableCards: gameManager.tableCards,
-            deckCount: gameManager.deck.cards.count
+            deckCount: gameManager.deck.cards.count,
+            deckCards: gameManager.deck.cards
         )
         
         guard let data = try? JSONEncoder().encode(dump),

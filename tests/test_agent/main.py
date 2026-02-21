@@ -3,6 +3,7 @@ import logging
 import os
 import subprocess
 import time
+import fcntl
 import traceback
 from datetime import datetime
 
@@ -280,9 +281,6 @@ class TestAgent:
         # Try to capture stderr if available (non-blocking)
         if self.process and self.process.stderr:
             try:
-                import fcntl
-                import os
-                
                 # Set non-blocking mode
                 fd = self.process.stderr.fileno()
                 fl = fcntl.fcntl(fd, fcntl.F_GETFL)
