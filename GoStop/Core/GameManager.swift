@@ -183,12 +183,11 @@ class GameManager: ObservableObject {
             player.shakeCount += 1
             player.shakenMonths.append(month)
             gLog("\(player.name) declared SHAKE for month \(month)!")
-        }
-        
-        // Remove from pending
-        // Always track the month as "answered" so we don't re-prompt on the same playTurn
-        if !player.shakenMonths.contains(month) {
-            player.shakenMonths.append(month)
+        } else {
+            // Declined shake – still mark as answered to avoid re-prompting
+            if !player.shakenMonths.contains(month) {
+                player.shakenMonths.append(month)
+            }
         }
         
         pendingShakeMonths.removeAll { $0 == month }
@@ -313,6 +312,16 @@ class GameManager: ObservableObject {
                 playPhaseCaptured = []
                 drawPhaseCaptured = []
             }
+
+            // Sweep check for Bomb path (싹쓸이 via Bomb)
+            // Only count if player still has cards left (not a natural game-end empty)
+            let opponentIndexForBomb = (currentTurnIndex + 1) % players.count
+            let opponentForBomb = players[opponentIndexForBomb]
+            if rules.special_moves.sweep.enabled && tableWasNotEmpty && tableCards.isEmpty && !player.hand.isEmpty {
+                gLog("\(player.name) swept the table via BOMB (싹쓸이)!")
+                player.sweepCount += 1
+                stealPi(from: opponentForBomb, to: player, count: rules.special_moves.sweep.steal_pi_count)
+            }
         } else {
             if card.type == .dummy {
                 gLog("\(player.name) played a DUMMY card. (\(player.dummyCardCount - 1) remaining)")
@@ -334,7 +343,11 @@ class GameManager: ObservableObject {
                     }
                     playPhaseCaptured = performTableCapture(for: pCard, on: &tableCards)
                     if playPhaseCaptured.isEmpty {
+                        // Card went to table (no capture) – record who left it there
                         monthOwners[pCard.month.rawValue] = player
+                    } else {
+                        // Capture happened – clear the monthOwners chain for this month
+                        monthOwners.removeValue(forKey: pCard.month.rawValue)
                     }
                 } else {
                     gLog("ERROR: Card NOT found in hand! Card: \(card.month) \(card.type)")
@@ -354,10 +367,14 @@ class GameManager: ObservableObject {
                 if !playPhaseCaptured.isEmpty && drawPhaseCaptured.count >= 3 {
                     isTtadak = true
                 }
-                if let pCard = playedCard, playPhaseCaptured.isEmpty {
-                    if drawPhaseCaptured.contains(where: { $0.id == pCard.id }) {
-                        isJjok = true
-                    }
+                // Jjok (쪽): play phase had NO capture, but draw phase DID capture the played card back
+                if playPhaseCaptured.isEmpty, let pCard = playedCard,
+                   drawPhaseCaptured.contains(where: { $0.month == pCard.month }) {
+                    isJjok = true
+                }
+                // Clear monthOwners for draw-phase captured months (vein resolved)
+                for captured in drawPhaseCaptured {
+                    monthOwners.removeValue(forKey: captured.month.rawValue)
                 }
             } else {
                 monthOwners[drawnCard.month.rawValue] = player
@@ -398,8 +415,9 @@ class GameManager: ObservableObject {
         }
         
         // Sweep Check (쓸기)
+        // Note: hand must NOT be empty after the turn – otherwise it's just natural game end, not a real sweep
         if let rules = RuleLoader.shared.config, rules.special_moves.sweep.enabled,
-           tableWasNotEmpty, tableCards.isEmpty {
+           tableWasNotEmpty, tableCards.isEmpty, !player.hand.isEmpty {
             gLog("\(player.name) swept the table (싹쓸이)!")
             player.sweepCount += 1
             stealPi(from: opponent, to: player, count: rules.special_moves.sweep.steal_pi_count)
@@ -536,7 +554,8 @@ class GameManager: ObservableObject {
         if rules.penalties.pibak.enabled {
             let winnerPi = ScoringSystem.calculatePiCount(cards: winner.capturedCards, rules: rules)
             let loserPi = ScoringSystem.calculatePiCount(cards: loser.capturedCards, rules: rules)
-            if winnerPi >= 10 && loserPi < rules.penalties.pibak.opponent_min_pi_safe {
+            // loserPi > 0: exclude 0-Pi players (matches calculatePenalties condition)
+            if winnerPi >= 10 && loserPi > 0 && loserPi < rules.penalties.pibak.opponent_min_pi_safe {
                 if rules.penalties.pibak.resolution_type == "pi_transfer" || rules.penalties.pibak.resolution_type == "both" {
                     stealPi(from: loser, to: winner, count: rules.penalties.pibak.pi_to_transfer)
                 }
@@ -559,8 +578,8 @@ class GameManager: ObservableObject {
         
         if (endgame.instant_end_on_bak.gwangbak && penalties.isGwangbak) ||
            (endgame.instant_end_on_bak.pibak && penalties.isPibak) ||
-           (endgame.instant_end_on_bak.mungbak && penalties.isMungbak) ||
-           (endgame.instant_end_on_bak.bomb_mungdda && player.bombMungddaCount > 0) {
+           (endgame.instant_end_on_bak.mungbak && penalties.isMungbak) {
+            // Note: bomb_mungdda removed as non-standard rule
             executeStop(player: player, rules: rules, reason: .maxScore)
             return true
         }

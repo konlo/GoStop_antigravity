@@ -1693,6 +1693,61 @@ def scenario_verify_sweep_no_multiplier(server):
     return False
 
 
+def scenario_verify_bomb_sweep(agent: TestAgent):
+    """
+    Scenario: Verify that a Bomb (폭탄) that clears the table is counted as a Sweep (싹쓸이).
+    
+    Bug that was fixed: The standard sweep check only ran in the normal play path.
+    Bomb had its own early-return path and never reached the sweep check.
+    
+    Setup:
+    - Player 1 has 3 of month 5 in hand.
+    - Table has exactly 1 card of month 5 (Bomb condition = 3 in hand + 1 on table).
+    - No other cards on the table → after Bomb captures 4, table is empty → Sweep!
+    - Opponent has at least 1 Pi card to steal.
+    """
+    logger.info("Running Bomb Sweep verification...")
+
+    agent.send_user_action("start_game")
+
+    agent.set_condition({
+        "mock_hand": [
+            {"month": 5, "type": "bright"},
+            {"month": 5, "type": "animal"},
+            {"month": 5, "type": "ribbon"},
+        ],
+        "mock_table": [
+            {"month": 5, "type": "junk"},  # Only card on table → Bomb will clear it → empty table
+        ],
+        "mock_deck": [{"month": 9, "type": "junk"}],  # Draw phase: no match → goes to table
+        "player1_data": {
+            "capturedCards": [
+                {"month": 1, "type": "junk"},  # Give opponent 1 Pi to steal
+                {"month": 2, "type": "junk"},
+            ]
+        },
+        "mock_gameState": "playing",
+        "currentTurnIndex": 0,
+    })
+
+    # Player 1 plays month 5 bright -> triggers Bomb (3 in hand + 1 on table)
+    handle_potential_shake(agent)
+    agent.send_user_action("play_card", {"month": 5, "type": "bright"})
+
+    state = agent.get_all_information()
+    player = state["players"][0]
+
+    sweep_count = player.get("sweepCount", 0)
+    if sweep_count < 1:
+        raise AssertionError(
+            f"BUG: Bomb that cleared the table should increment sweepCount. "
+            f"Got sweepCount={sweep_count}. Bomb sweep path was not checked."
+        )
+
+    logger.info(
+        f"Bomb Sweep verified: sweepCount={sweep_count} after Bomb cleared the table. PASS"
+    )
+
 def scenario_verify_bomb_as_shake_multiplier(server):
     """
     Verify that Bomb (폭탄) applies a 2x multiplier but as 'Shake/Bomb'.
