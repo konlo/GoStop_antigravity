@@ -10,6 +10,8 @@
 		0A51A5C805AD7B89B9629632 /* layout_hwatu.json in Resources */ = {isa = PBXBuildFile; fileRef = 7FBDDC028B566FC10259D51C /* layout_hwatu.json */; };
 		0B20DD2801F7CBBF74EA9F8E /* Player.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D300F3C280AF301436D8732 /* Player.swift */; };
 		0BA4CE481822C60C3B313B0F /* Yams in Frameworks */ = {isa = PBXBuildFile; productRef = 782B42C2325803807AC3EBC4 /* Yams */; };
+		13AA39B13AD565444986FE26 /* rule.yaml in Resources */ = {isa = PBXBuildFile; fileRef = B5F77E3038A87D0684F2961D /* rule.yaml */; };
+		1447E916E4EEA0AB610C9DAC /* layout_hwatu.json in Resources */ = {isa = PBXBuildFile; fileRef = 7FBDDC028B566FC10259D51C /* layout_hwatu.json */; };
 		191BB9B8BDE5DDAE9E15BE36 /* Player.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D300F3C280AF301436D8732 /* Player.swift */; };
 		1C3280E8402A7ECBDC98D1BA /* DebugLayoutOverlayV2.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6121B38C070C592434D33A1 /* DebugLayoutOverlayV2.swift */; };
 		23D2B878BF856936154BE3BC /* GoStopTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D8325DC94A43A7AB5739F02 /* GoStopTests.swift */; };
@@ -30,6 +32,7 @@
 		7191E1B975ABC707C15A1FF2 /* GameAreaViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A6AE872E752608836265117 /* GameAreaViews.swift */; };
 		808657D99FB2F8247B9D373F /* Deck.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C9DC8F2B463C152AB92172B /* Deck.swift */; };
 		89D4C50CC12F800CCB24D5EA /* LayoutConfigV2.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3085BB433FB735CFD683B342 /* LayoutConfigV2.swift */; };
+		912AAFDB854A8A756615D5D9 /* DebugEndgameSummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2494B7B2463310B5E13410E /* DebugEndgameSummaryView.swift */; };
 		9EAF94310537CBCB3CE79C2A /* LayoutContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08DC9353031FD0D4F7EDF917 /* LayoutContext.swift */; };
 		A8E8EE127772993DF00F279D /* LayoutConfigV2.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3085BB433FB735CFD683B342 /* LayoutConfigV2.swift */; };
 		ACBB19108BB2F7E1329AB3EA /* Card.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72B2E9B6CA4C4DB8CC0ED986 /* Card.swift */; };
@@ -85,6 +88,7 @@
 		81AA898E3DFB3E6CD81BCE89 /* RuleConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuleConfig.swift; sourceTree = "<group>"; };
 		8B21CE98829137B4CABB2EDC /* TableSlotManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TableSlotManager.swift; sourceTree = "<group>"; };
 		8D300F3C280AF301436D8732 /* Player.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Player.swift; sourceTree = "<group>"; };
+		B2494B7B2463310B5E13410E /* DebugEndgameSummaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugEndgameSummaryView.swift; sourceTree = "<group>"; };
 		B5F77E3038A87D0684F2961D /* rule.yaml */ = {isa = PBXFileReference; lastKnownFileType = text.yaml; path = rule.yaml; sourceTree = "<group>"; };
 		B67ACAB0F7C90D1925FA8BC6 /* GoStopTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = GoStopTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B8C0FD4111DFE67FB4B8757A /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -118,6 +122,7 @@
 			isa = PBXGroup;
 			children = (
 				74DE360629BC09922C21C6DC /* CardView.swift */,
+				B2494B7B2463310B5E13410E /* DebugEndgameSummaryView.swift */,
 				E6121B38C070C592434D33A1 /* DebugLayoutOverlayV2.swift */,
 				7A6AE872E752608836265117 /* GameAreaViews.swift */,
 				5BA63E4C6CDD8893D44DEAE5 /* GameView.swift */,
@@ -260,6 +265,7 @@
 			buildConfigurationList = 3C00CCDCCA3C096E07A7882F /* Build configuration list for PBXNativeTarget "GoStopCLI" */;
 			buildPhases = (
 				869D1D8FE6FA71A9147B91CD /* Sources */,
+				D8B3733556BE837A8E70C700 /* Resources */,
 				B45960CB9F2CF4794C787233 /* Frameworks */,
 			);
 			buildRules = (
@@ -324,6 +330,15 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		D8B3733556BE837A8E70C700 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1447E916E4EEA0AB610C9DAC /* layout_hwatu.json in Resources */,
+				13AA39B13AD565444986FE26 /* rule.yaml in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -365,6 +380,7 @@
 				FF8FF5B2CD92C35D053EDDDB /* CardView.swift in Sources */,
 				60B025C8886D9FE3C4D8B010 /* ConfigManager.swift in Sources */,
 				62FCE0F439432138C743176A /* ContentView.swift in Sources */,
+				912AAFDB854A8A756615D5D9 /* DebugEndgameSummaryView.swift in Sources */,
 				1C3280E8402A7ECBDC98D1BA /* DebugLayoutOverlayV2.swift in Sources */,
 				808657D99FB2F8247B9D373F /* Deck.swift in Sources */,
 				7191E1B975ABC707C15A1FF2 /* GameAreaViews.swift in Sources */,

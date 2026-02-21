@@ -69,6 +69,12 @@ struct CardView: View {
                 .overlay(
                     Circle().stroke(Color.black.opacity(0.2), lineWidth: 1)
                 )
+            
+            if card.type == .dummy {
+                Text("D")
+                    .font(.system(size: size.width * 0.4, weight: .bold, design: .rounded))
+                    .foregroundColor(.white.opacity(0.7))
+            }
         }
     }
 }

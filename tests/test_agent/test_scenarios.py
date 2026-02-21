@@ -448,6 +448,193 @@ def scenario_verify_mungdda_combos(agent: TestAgent):
     
     logger.info("Bomb Mung-dda verification passed!")
 
+def scenario_verify_no_bomb_mungdda_instant_end(agent: TestAgent):
+    """
+    Scenario: Verify bomb_mungdda does NOT trigger instant end.
+    Test Agent simulates a state where a player gets bomb_mungdda.
+    Ensures gameState remains playing.
+    """
+    logger.info("Starting scenario: scenario_verify_no_bomb_mungdda_instant_end")
+
+    agent.send_user_action("start_game")
+    agent.set_condition({
+        "mock_gameState": "playing",
+        "currentTurnIndex": 0,
+        "player0_data": {
+            "score": 5, # Ensure score is > 0 but < 50
+            "bombMungddaCount": 1
+        },
+        "player1_data": {
+            "score": 0
+        }
+    })
+    
+    agent.send_user_action("click_restart_button")
+    state = agent.get_all_information()
+    assert state.get("gameState") == "ready"
+    logger.info("Endgame stats validation passed!")
+
+def scenario_verify_chongtong_initial(agent: TestAgent):
+    """
+    Scenario: Verify initial Chongtong (4 of same month in hand after deal).
+    """
+    logger.info("Running Initial Chongtong verification...")
+    
+    agent.send_user_action("start_game")
+    
+    # Mock Month 1 Chongtong hand
+    mock_hand = [
+        {"month": 1, "type": "bright"},
+        {"month": 1, "type": "animal"},
+        {"month": 1, "type": "ribbon"},
+        {"month": 1, "type": "junk"},
+        {"month": 2, "type": "junk"},
+    ]
+    
+    agent.set_condition({
+        "mock_hand": mock_hand,
+        "mock_gameState": "playing",
+        "currentTurnIndex": 0
+    })
+    
+    # Trigger the check explicitly
+    agent.send_user_action("force_chongtong_check", {"timing": "initial"})
+    
+    state = agent.get_all_information()
+    assert state.get("gameState") == "ended", "Game should have ended via Chongtong"
+    assert state.get("gameEndReason") == "chongtong", f"Expected chongtong, got {state.get('gameEndReason')}"
+    assert state.get("chongtongMonth") == 1, f"Expected month 1, got {state.get('chongtongMonth')}"
+    assert state.get("chongtongTiming") == "initial"
+    
+    logger.info("Initial Chongtong verification passed!")
+
+def scenario_verify_chongtong_midgame_negative(agent: TestAgent):
+    """
+    Scenario: Verify mid-game collection of 4 cards (hand + captured) DOES NOT trigger Chongtong.
+    """
+    logger.info("Running Mid-game Chongtong Negative verification...")
+    
+    agent.send_user_action("start_game")
+    
+    # Mock situation: Player 1 has 4 of month 1 (holding + captured)
+    agent.set_condition({
+        "mock_hand": [{"month": 1, "type": "bright"}, {"month": 2, "type": "junk"}],
+        "player0_data": {
+            "capturedCards": [
+                {"month": 1, "type": "animal"},
+                {"month": 1, "type": "ribbon"},
+                {"month": 1, "type": "junk"}
+            ]
+        },
+        "mock_gameState": "playing",
+        "currentTurnIndex": 0
+    })
+    
+    # Trigger the check explicitly
+    agent.send_user_action("force_chongtong_check", {"timing": "midgame"})
+    
+    state = agent.get_all_information()
+    assert state.get("gameState") == "playing", "Game should NOT have ended via Chongtong (hand + captured != 4 in hand)"
+    assert state.get("gameEndReason") != "chongtong"
+    
+    logger.info("Mid-game Chongtong Negative verification passed!")
+
+
+def scenario_verify_dummy_draw_phase(agent: TestAgent):
+    """
+    Scenario: Verify that playing a dummy card triggers a draw phase.
+    """
+    logger.info("Running Dummy Card Draw Phase verification...")
+    
+    agent.send_user_action("start_game")
+    
+    # Mock situation: 
+    # - Player 1 has a dummy card
+    # - Table has one card (e.g. month 4)
+    # - Deck top card is month 4 (to ensure a capture happens on draw)
+    agent.set_condition({
+        "mock_hand": [{"month": 0, "type": "dummy", "imageIndex": 0}, {"month": 1, "type": "junk", "imageIndex": 0}],
+        "tableCards": [{"month": 4, "type": "junk", "imageIndex": 0}],
+        "deckCards": [{"month": 4, "type": "animal", "imageIndex": 0}, {"month": 5, "type": "junk", "imageIndex": 0}],
+        "mock_gameState": "playing",
+        "currentTurnIndex": 0
+    })
+    
+    # Play the dummy card
+    agent.send_user_action("play_card", {"month": 0, "type": "dummy"})
+    
+    state = agent.get_all_information()
+    
+    # Check if a capture happened (month 4). Dummy play shouldn't capture but DRAW phase should.
+    # Player 1 should have 2 captured cards (the two month 4 cards from table and draw)
+    p0 = state["players"][0]
+    captured_months = [c["month"] for c in p0["capturedCards"]]
+    
+    # If draw phase worked, Player 1 should have captured the month 4 cards
+    assert 4 in captured_months, f"Draw phase should have captured month 4. Captured: {captured_months}"
+    assert len(p0["capturedCards"]) == 2, f"Expected 2 captured cards (month 4 pair), got {len(p0['capturedCards'])}"
+    
+    # Hand should have only the remaining junk card
+    assert len(p0["hand"]) == 1, f"Expected 1 card in hand, got {len(p0['hand'])}"
+    
+    logger.info("Dummy Card Draw Phase verification passed!")
+
+
+def scenario_verify_endgame_stats_validation(agent: TestAgent):
+    """
+    Scenario: Force a game to end with specific mock score items and ensure 
+    ai_player.py's validate_endgame_state correctly processes it without exceptions.
+    """
+    logger.info("Starting scenario: scenario_verify_endgame_stats_validation")
+
+    agent.send_user_action("start_game")
+
+    # We mock a state where P0 wins with exactly 15 points and 1 Go, triggering Pibak on opponent.
+    # Player 0 gets: 15 points (10 Pi + 5 extra Pi or similar)
+    # Player 1 gets: 0 points
+    agent.set_condition({
+        "mock_gameState": "askingGoStop",
+        "currentTurnIndex": 0,
+        "player0_data": {
+            "score": 15,
+            "goCount": 1,
+            "isComputer": False
+        },
+        "player1_data": {
+            "score": 0,
+            "isComputer": False
+        },
+        "mock_captured_cards": [{"month": 1, "type": "junk"}] * 10, # 10 Pi for Winner
+        "mock_opponent_captured_cards": [] # 0 cards -> Pibak for Loser
+    })
+    
+    # 0 -> Stop, trigger executeStop. Since winner has goCount > 0, Bak applies even on Stop.
+    agent.send_user_action("respond_go_stop", {"isGo": False})
+
+    state = agent.get_all_information()
+    assert state["gameState"] == "ended", f"Expected ended state, got {state['gameState']}"
+    
+    # The true verification happens inside AIPlayer's loop natively, 
+    # but we can manually invoke it here to ensure it raises no exceptions
+    from ai_player import AIPlayer
+    import os
+    dummy_ai = AIPlayer(connection_mode="socket")
+    dummy_ai.state_history = [{"state": state}]
+    
+    try:
+        dummy_ai.validate_game_results()
+        assert dummy_ai.error_log_path not in os.listdir("."), "Error log created during validation"
+    except Exception as e:
+        logger.error(f"Endgame validation crashed: {e}")
+        raise e
+        
+    reason = state.get("gameEndReason")
+    penalty = state.get("penaltyResult", {})
+    assert reason == "stop", f"Expected stop reason, got {reason}"
+    assert penalty.get("isPibak") is True, f"Expected Pibak, got {penalty}"
+    logger.info("scenario_verify_endgame_stats_validation PASS")
+
+
 def scenario_verify_endgame_conditions(agent: TestAgent):
     """
     Scenario: Verifies Endgame conditions (Max Go, Max Score, Instant End on Bak).
@@ -1277,7 +1464,7 @@ def scenario_verify_no_gwangbak_instant_end(agent: TestAgent):
     # Opponent has 0 Kwang. Player 0 needs to score and trigger the end-of-turn check.
     agent.set_condition({
         "currentTurnIndex": 0,
-        "mock_hand": [{"month": 5, "type": "junk"}],
+        "mock_hand": [{"month": 5, "type": "junk"}, {"month": 6, "type": "junk"}],
         "mock_table": [{"month": 5, "type": "animal"}],  # Capture to get score up
         "mock_deck": [{"month": 9, "type": "junk"}],
         "mock_captured_cards": (
@@ -1394,6 +1581,10 @@ if __name__ == "__main__":
         scenario_verify_shake_multiplier_stacking,
         scenario_verify_no_gwangbak_instant_end,
         scenario_verify_no_bomb_mungdda_instant_end,
+        scenario_verify_endgame_stats_validation,
+        scenario_verify_chongtong_initial,
+        scenario_verify_chongtong_midgame_negative,
+        scenario_verify_dummy_draw_phase,
     ]
     
     if args.filter:

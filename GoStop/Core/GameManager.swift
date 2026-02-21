@@ -8,12 +8,23 @@ enum GameState: String, Codable {
     case ended
 }
 
+enum GameEndReason: String, Codable {
+    case stop
+    case maxScore
+    case nagari
+    case chongtong
+}
+
+
 func gLog(_ message: String) {
     #if DEBUG
     fputs("\(message)\n", stderr)
     #else
     print(message)
     #endif
+    
+    // Also record to event logs for AI/Simulator inspection
+    GameManager.shared?.addEvent(message)
 }
 
 class GameManager: ObservableObject {
@@ -34,6 +45,19 @@ class GameManager: ObservableObject {
     // For Seolsa (뻑/설사) tracking
     @Published var monthOwners: [Int: Player] = [:]
     
+    // Endgame state tracking
+    @Published var gameEndReason: GameEndReason?
+    @Published var lastPenaltyResult: PenaltySystem.PenaltyResult?
+    @Published var gameWinner: Player?
+    @Published var gameLoser: Player?
+    
+    // Chongtong state
+    @Published var chongtongMonth: Int? = nil
+    @Published var chongtongTiming: String? = nil // "initial" or "midgame"
+    
+    // Event Logs for inspection
+    @Published var eventLogs: [String] = []
+    
     var currentPlayer: Player? {
         guard players.indices.contains(currentTurnIndex) else { return nil }
         return players[currentTurnIndex]
@@ -44,12 +68,26 @@ class GameManager: ObservableObject {
         setupGame()
     }
     
+    func addEvent(_ message: String) {
+        self.eventLogs.append(message)
+        if self.eventLogs.count > 100 {
+            self.eventLogs.removeFirst()
+        }
+    }
+    
     func setupGame(seed: Int? = nil) {
         let player1 = Player(name: "Player 1", money: 10000)
         let computer = Player(name: "Computer", money: 10000)
         computer.isComputer = true
         self.players = [player1, computer]
         self.outOfPlayCards = []
+        self.gameEndReason = nil
+        self.lastPenaltyResult = nil
+        self.gameWinner = nil
+        self.gameLoser = nil
+        self.chongtongMonth = nil
+        self.chongtongTiming = nil
+        self.eventLogs = []
         self.deck.reset(seed: seed)
         self.dealCards()
         self.gameState = .ready
@@ -57,10 +95,22 @@ class GameManager: ObservableObject {
     
     func dealCards() {
         // Standard 2-player deal: 10 cards each, 8 on table
+        gLog("Dealing cards: 10 to each player, 8 to table")
         for player in players {
             player.hand = deck.draw(count: 10)
         }
         tableCards = deck.draw(count: 8)
+        
+        // Initial Chongtong check
+        if let rules = RuleLoader.shared.config, rules.special_moves.chongtong.enabled {
+            for player in players {
+                if let month = getChongtongMonth(for: player) {
+                    gLog("Initial Chongtong detected for \(player.name) in month \(month)!")
+                    resolveChongtong(player: player, month: month, timing: "initial")
+                    return
+                }
+            }
+        }
     }
     
     func mockDeck(cards: [Card]) {
@@ -68,6 +118,7 @@ class GameManager: ObservableObject {
     }
     
     func startGame() {
+        gLog("Game started. Player 1 turn.")
         currentTurnIndex = 0 // Player 1 starts
         gameState = .playing
     }
@@ -78,6 +129,46 @@ class GameManager: ObservableObject {
             counts[card.month.rawValue, default: 0] += 1
         }
         return counts.filter { $0.value >= 3 }.map { $0.key }.sorted()
+    }
+    
+    // Chongtong helpers
+    func getChongtongMonth(for player: Player) -> Int? {
+        var counts: [Int: Int] = [:]
+        for card in player.hand {
+            if card.month != .none {
+                counts[card.month.rawValue, default: 0] += 1
+            }
+        }
+        return counts.filter { $0.value == 4 }.map { $0.key }.first
+    }
+    
+    func resolveChongtong(player: Player, month: Int, timing: String) {
+        guard let rules = RuleLoader.shared.config else { return }
+        
+        self.chongtongMonth = month
+        self.chongtongTiming = timing
+        self.gameWinner = player
+        self.gameLoser = players.first { $0 !== player }
+        self.gameEndReason = .chongtong
+        
+        let score = (timing == "initial") ? 
+            rules.special_moves.chongtong.initial_chongtong_score : 
+            rules.special_moves.chongtong.midgame_chongtong_score
+            
+        player.score = score
+        // For Chongtong, we skip complex multiplier rules as it's an instant win
+        self.lastPenaltyResult = PenaltySystem.PenaltyResult(
+            finalScore: score,
+            isGwangbak: false,
+            isPibak: false,
+            isGobak: false,
+            isMungbak: false,
+            isJabak: false,
+            isYeokbak: false
+        )
+        
+        self.gameState = .ended
+        gLog("Game ended via CHONGTONG! Winner: \(player.name), Score: \(score)")
     }
     
     func respondToShake(month: Int, didShake: Bool) {
@@ -223,13 +314,12 @@ class GameManager: ObservableObject {
                 player.dummyCardCount -= 1
                 // Per rule: dummy_cards_disappear_on_play = true
                 // Dummy (도탄) cards vanish on play — they are NOT placed on the table/floor
-                // and there is no draw phase (it's a pass turn, not a real card play).
-                if let idx = player.hand.firstIndex(where: { $0.type == .dummy }) {
+                if let idx = player.hand.firstIndex(where: { $0.id == card.id }) {
                     player.hand.remove(at: idx)
                 }
                 gLog("\(player.name) dummy play complete. Hand: \(player.hand.count)")
-                endTurn()
-                return  // Skip draw phase and further processing
+                // Continue to draw phase
+                playedCard = nil 
             } else {
                 if let pCard = player.play(card: card) {
                     playedCard = pCard
@@ -370,7 +460,7 @@ class GameManager: ObservableObject {
         }
     }
     
-    private func executeStop(player: Player, rules: RuleConfig) {
+    private func executeStop(player: Player, rules: RuleConfig, reason: GameEndReason = .stop) {
         let opponentIndex = (currentTurnIndex + 1) % players.count
         let opponent = players[opponentIndex]
         
@@ -380,11 +470,16 @@ class GameManager: ObservableObject {
         opponent.score = ScoringSystem.calculateScore(for: opponent)
         
         let result = PenaltySystem.calculatePenalties(winner: player, loser: opponent, rules: rules)
-        gLog("\(player.name) calls STOP and wins! Final Score: \(result.finalScore)")
+        gLog("\(player.name) calls STOP (\(reason)) and wins! Final Score: \(result.finalScore)")
         
         opponent.money -= result.finalScore * 100
         player.money += result.finalScore * 100
 
+        self.gameEndReason = reason
+        self.lastPenaltyResult = result
+        self.gameWinner = player
+        self.gameLoser = opponent
+        
         settleResidualCardsIfHandsEmpty()
         gameState = .ended
     }
@@ -392,6 +487,8 @@ class GameManager: ObservableObject {
     private func fallbackEndTurn(player: Player) {
         if player.score >= 7 {
             gLog("\(player.name) Wins with score \(player.score)! (Fallback)")
+            self.gameEndReason = .stop
+            self.gameWinner = player
             settleResidualCardsIfHandsEmpty()
             gameState = .ended
         } else {
@@ -401,6 +498,7 @@ class GameManager: ObservableObject {
     
     private func endTurn() {
         if deck.cards.isEmpty {
+            self.gameEndReason = .nagari
             settleResidualCardsIfHandsEmpty()
             gameState = .ended
             gLog("Game Ended in Nagari!")
@@ -457,7 +555,7 @@ class GameManager: ObservableObject {
         }
     }
     
-    private func checkEndgameConditions(player: Player, opponent: Player, rules: RuleConfig, isAfterGo: Bool) -> Bool {
+    func checkEndgameConditions(player: Player, opponent: Player, rules: RuleConfig, isAfterGo: Bool = false) -> Bool {
         let endgame = rules.endgame
         let penalties = PenaltySystem.calculatePenalties(winner: player, loser: opponent, rules: rules)
         
@@ -465,7 +563,7 @@ class GameManager: ObservableObject {
            (endgame.instant_end_on_bak.pibak && penalties.isPibak) ||
            (endgame.instant_end_on_bak.mungbak && penalties.isMungbak) ||
            (endgame.instant_end_on_bak.bomb_mungdda && player.bombMungddaCount > 0) {
-            executeStop(player: player, rules: rules)
+            executeStop(player: player, rules: rules, reason: .maxScore)
             return true
         }
         
@@ -475,12 +573,12 @@ class GameManager: ObservableObject {
         }
         
         if currentScore >= endgame.max_round_score {
-            executeStop(player: player, rules: rules)
+            executeStop(player: player, rules: rules, reason: .maxScore)
             return true
         }
         
         if player.goCount >= endgame.max_go_count {
-            executeStop(player: player, rules: rules)
+            executeStop(player: player, rules: rules, reason: .maxScore)
             return true
         }
         

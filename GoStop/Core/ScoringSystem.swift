@@ -2,6 +2,12 @@ struct ScoreItem: Codable {
     let name: String
     let points: Int
     let count: Int?
+    
+    func serialize() -> [String: Any] {
+        var dict: [String: Any] = ["name": name, "points": points]
+        if let count = count { dict["count"] = count }
+        return dict
+    }
 }
 
 struct ScoringSystem {

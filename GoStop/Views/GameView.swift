@@ -139,10 +139,57 @@ struct GameView: View {
                 gameManager.startGame()
             })
         } else if gameManager.gameState == .ended {
-            colorBackgroundOverlay(text: "Game Over\nTap to Restart", action: {
-                gameManager.setupGame()
-                gameManager.startGame()
-            })
+            if gameManager.gameEndReason == .chongtong {
+                ZStack {
+                    Color.black.opacity(0.6).ignoresSafeArea()
+                    VStack(spacing: 20) {
+                        Text("총통! (Chongtong)")
+                            .font(.system(size: 60, weight: .black, design: .rounded))
+                            .foregroundColor(.yellow)
+                            .shadow(color: .orange, radius: 10, x: 0, y: 5)
+                        
+                        if let month = gameManager.chongtongMonth {
+                            Text("\(month)월 총통으로 즉시 승리!")
+                                .font(.title)
+                                .foregroundColor(.white)
+                        }
+                        
+                        Button(action: {
+                            gameManager.setupGame()
+                            gameManager.startGame()
+                        }) {
+                            Text("Restart Game")
+                                .font(.headline)
+                                .padding()
+                                .background(Color.yellow)
+                                .foregroundColor(.black)
+                                .cornerRadius(15)
+                        }
+                    }
+                }
+            } else if config.layoutV2?.debug.showSafeArea == true,
+               let result = gameManager.lastPenaltyResult,
+               let reason = gameManager.gameEndReason,
+               let winner = gameManager.gameWinner,
+               let loser = gameManager.gameLoser {
+                
+                DebugEndgameSummaryView(
+                    result: result,
+                    reason: reason,
+                    winner: winner,
+                    loser: loser,
+                    onRestart: {
+                        gameManager.setupGame()
+                        gameManager.startGame()
+                    },
+                    gameManager: gameManager
+                )
+            } else {
+                colorBackgroundOverlay(text: "Game Over\nTap to Restart", action: {
+                    gameManager.setupGame()
+                    gameManager.startGame()
+                })
+            }
         } else if gameManager.gameState == .askingGoStop {
             goStopOverlay()
         } else if gameManager.gameState == .askingShake {

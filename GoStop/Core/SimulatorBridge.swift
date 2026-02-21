@@ -98,6 +98,7 @@ class SimulatorBridge {
                 case "animal": type = .animal
                 case "ribbon": type = .ribbon
                 case "doubleJunk": type = .doubleJunk
+                case "dummy": type = .dummy
                 default: type = .junk
                 }
                 
@@ -136,6 +137,16 @@ class SimulatorBridge {
                 DispatchQueue.main.async {
                     self.gameManager.setupGame()
                     self.sendSimpleResponse(status: "action executed", action: action, connection: connection)
+                }
+                
+            case "mock_endgame_check":
+                DispatchQueue.main.async {
+                    if let rules = RuleLoader.shared.config {
+                        let winner = self.gameManager.players[0]
+                        let opponent = self.gameManager.players[1]
+                        _ = self.gameManager.checkEndgameConditions(player: winner, opponent: opponent, rules: rules)
+                    }
+                    self.sendState(connection: connection)
                 }
                 
             case "set_condition":
@@ -325,24 +336,37 @@ extension GameManager {
             playerDict["scoreItems"] = AnyCodable(ScoringSystem.calculateScoreDetail(for: player))
             return playerDict
         })
+        state["eventLogs"] = AnyCodable(eventLogs)
         
         if gameState == .askingShake {
             state["pendingShakeMonths"] = AnyCodable(pendingShakeMonths)
         }
         
-        if gameState == .ended, let rules = RuleLoader.shared.config {
-            let winner = players[0].score >= players[1].score ? players[0] : players[1]
-            let loser = winner === players[0] ? players[1] : players[0]
-            let penalty = PenaltySystem.calculatePenalties(winner: winner, loser: loser, rules: rules)
-            state["penaltyResult"] = AnyCodable([
-                "finalScore": penalty.finalScore,
-                "isGwangbak": penalty.isGwangbak,
-                "isPibak": penalty.isPibak,
-                "isGobak": penalty.isGobak,
-                "isMungbak": penalty.isMungbak,
-                "isJabak": penalty.isJabak,
-                "isYeokbak": penalty.isYeokbak
-            ])
+        if let month = chongtongMonth {
+            state["chongtongMonth"] = AnyCodable(month)
+        }
+        if let timing = chongtongTiming {
+            state["chongtongTiming"] = AnyCodable(timing)
+        }
+        
+        if gameState == .ended {
+            if let reason = gameEndReason {
+                state["gameEndReason"] = AnyCodable(reason.rawValue)
+            }
+            if let rules = RuleLoader.shared.config {
+                let winner = players[0].score >= players[1].score ? players[0] : players[1]
+                let loser = winner === players[0] ? players[1] : players[0]
+                let penalty = PenaltySystem.calculatePenalties(winner: winner, loser: loser, rules: rules)
+                state["penaltyResult"] = AnyCodable([
+                    "finalScore": penalty.finalScore,
+                    "isGwangbak": penalty.isGwangbak,
+                    "isPibak": penalty.isPibak,
+                    "isGobak": penalty.isGobak,
+                    "isMungbak": penalty.isMungbak,
+                    "isJabak": penalty.isJabak,
+                    "isYeokbak": penalty.isYeokbak
+                ])
+            }
         }
         
         state["status"] = AnyCodable("ok")

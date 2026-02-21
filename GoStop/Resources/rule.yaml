@@ -129,13 +129,20 @@ special_moves:
     steal_pi_count: 2
     multiplier_addition: 2
     description: "Opponent Bomb while player is in Pi-mungbak state"
+  chongtong:
+    enabled: true
+    resolution_type: "instant_win"
+    distinguish_timing: true
+    initial_chongtong_score: 10
+    midgame_chongtong_score: 20
+    description: "Hold all 4 cards of the same month for an instant win."
 
 nagari:
   enabled: true
   next_game_multiplier: 2
 
 endgame:
-  max_round_score: 50
+  max_round_score: 100
   score_check_timing: "post_multiplier" # pre_multiplier or post_multiplier
   max_go_count: 5
   instant_end_on_bak:

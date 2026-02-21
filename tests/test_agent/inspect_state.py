@@ -9,6 +9,8 @@ def print_card(card):
 def inspect_state(mode="cli"):
     # Try common build directories
     possible_paths = [
+        "build_v26/Build/Products/Debug/GoStopCLI",
+        "build_v25/Build/Products/Debug/GoStopCLI",
         "../../build_v4/Build/Products/Debug/GoStopCLI",
         "../../build_v3/Build/Products/Debug/GoStopCLI",
         "../../build/Build/Products/Debug/GoStopCLI",
@@ -22,6 +24,18 @@ def inspect_state(mode="cli"):
         if mode == "cli":
             agent.start_app()
             agent.set_condition({"rng_seed": 42})
+            if os.environ.get("MOCK_ENDED") == "1":
+                # Mock an ended state
+                agent.set_condition({
+                    "mock_gameState": "ended",
+                    "player0_data": {"score": 56},
+                    "player1_data": {"score": 0},
+                    "mock_captured_cards": [{"month": 1, "type": "junk"}] * 10
+                })
+                # Trigger endgame check to set reason
+                agent.send_user_action("mock_endgame_check")
+            else:
+                agent.send_user_action("start_game")
         else:
             print("Connecting to LIVE Simulator (Port 8080)...")
         
@@ -146,6 +160,30 @@ def inspect_state(mode="cli"):
         else:
             print(f"  STATUS: \U0001f534 INTEGRITY ERROR ({total_all} cards)")
         print("-" * 50)
+
+        # Event Logs
+        event_logs = state.get('eventLogs', [])
+        if event_logs:
+            print(f"RECENT EVENTS ({len(event_logs)}):")
+            for log in event_logs:
+                print(f"  > {log}")
+            print("-" * 50)
+
+        # Game End Details
+        if state.get('gameState') == "ended":
+            print("!!! GAME END DETAILS !!!")
+            print(f"  Reason: {state.get('gameEndReason', 'N/A')}")
+            penalty = state.get('penaltyResult', {})
+            if penalty:
+                print("  PENALTY REPORT:")
+                print(f"    - Final Score: {penalty.get('finalScore', 0)}")
+                print(f"    - Gwangbak:    {'YES' if penalty.get('isGwangbak') else 'No'}")
+                print(f"    - Pibak:      {'YES' if penalty.get('isPibak') else 'No'}")
+                print(f"    - Gobak:      {'YES' if penalty.get('isGobak') else 'No'}")
+                print(f"    - Mungbak:    {'YES' if penalty.get('isMungbak') else 'No'}")
+                print(f"    - Jabak:      {'YES' if penalty.get('isJabak') else 'No'}")
+                print(f"    - Yeokbak:     {'YES' if penalty.get('isYeokbak') else 'No'}")
+            print("-" * 50)
             
     except Exception as e:
         print(f"Error inspecting state: {e}")

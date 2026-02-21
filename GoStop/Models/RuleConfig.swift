@@ -35,6 +35,7 @@ struct SpecialMovesRule: Codable {
     let mungbak_pi_threshold: Int
     let mungdda: MungDdaRule
     let bomb_mungdda: BombMungDdaRule
+    let chongtong: ChongtongRule
 }
 
 struct MungDdaRule: Codable {
@@ -48,6 +49,15 @@ struct BombMungDdaRule: Codable {
     let enabled: Bool
     let steal_pi_count: Int
     let multiplier_addition: Int
+    let description: String?
+}
+
+struct ChongtongRule: Codable {
+    let enabled: Bool
+    let resolution_type: String
+    let distinguish_timing: Bool
+    let initial_chongtong_score: Int
+    let midgame_chongtong_score: Int
     let description: String?
 }
 
@@ -270,7 +280,7 @@ class RuleLoader {
             return
         }
         
-        FileHandle.standardError.write("Lodaing rules from: \(targetUrl.path)\n".data(using: .utf8)!)
+        FileHandle.standardError.write("Loading rules from: \(targetUrl.path)\n".data(using: .utf8)!)
         
         do {
             let data = try Data(contentsOf: targetUrl)

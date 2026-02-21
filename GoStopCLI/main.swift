@@ -138,6 +138,9 @@ class CLIEngine {
                         if let score = pData["score"] as? Int { p.score = score }
                         if let shakeCount = pData["shakeCount"] as? Int { p.shakeCount = shakeCount }
                         if let bombCount = pData["bombCount"] as? Int { p.bombCount = bombCount }
+                        if let captured = pData["capturedCards"] as? [[String: Any]] {
+                            p.capturedCards = self.parseCards(captured)
+                        }
                         if let sweepCount = pData["sweepCount"] as? Int { p.sweepCount = sweepCount }
                         if let ttadakCount = pData["ttadakCount"] as? Int { p.ttadakCount = ttadakCount }
                         if let jjokCount = pData["jjokCount"] as? Int { p.jjokCount = jjokCount }
@@ -172,6 +175,23 @@ class CLIEngine {
         case "click_restart_button":
             gameManager.setupGame(seed: currentSeed)
             return ["status": "action executed", "action": "click_restart_button"]
+            
+        case "mock_endgame_check":
+            if let rules = RuleLoader.shared.config {
+                let winner = gameManager.players[0]
+                let opponent = gameManager.players[1]
+                _ = gameManager.checkEndgameConditions(player: winner, opponent: opponent, rules: rules)
+            }
+            return ["status": "action executed", "action": "mock_endgame_check"]
+            
+        case "force_chongtong_check":
+            let timing = (request.data?["timing"]?.value as? String) ?? "initial"
+            for player in gameManager.players {
+                if let month = gameManager.getChongtongMonth(for: player) {
+                    gameManager.resolveChongtong(player: player, month: month, timing: timing)
+                }
+            }
+            return ["status": "action executed", "action": "force_chongtong_check"]
             
         case "invalid_action_triggering_crash":
             fatalError("Simulated App Crash for Testing")
@@ -231,9 +251,18 @@ class CLIEngine {
             dict["players"] = playersArray
         }
         
+        dict["eventLogs"] = gameManager.eventLogs
+        
         // Inject pending shakes if in askingShake state
         if gameManager.gameState == .askingShake {
             dict["pendingShakeMonths"] = gameManager.pendingShakeMonths
+        }
+        
+        if let month = gameManager.chongtongMonth {
+            dict["chongtongMonth"] = month
+        }
+        if let timing = gameManager.chongtongTiming {
+            dict["chongtongTiming"] = timing
         }
         
         // Inject penalty result if game ended
@@ -253,6 +282,10 @@ class CLIEngine {
                 "isJabak": penalty.isJabak,
                 "isYeokbak": penalty.isYeokbak
             ]
+
+            if let reason = gameManager.gameEndReason {
+                dict["gameEndReason"] = reason.rawValue
+            }
         }
         
         return dict

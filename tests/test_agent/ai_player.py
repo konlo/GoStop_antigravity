@@ -65,38 +65,63 @@ class AIPlayer(TestAgent):
             self.report_error(duplicates)
 
     def validate_game_results(self):
-        """Validates the game outcome against rules."""
+        """Validates the game outcome against rules and endgame parameters."""
         if not self.state_history:
             return
 
         final_snapshot = self.state_history[-1]["state"]
         players = final_snapshot.get("players", [])
+        end_reason = final_snapshot.get("gameEndReason")
+        penalty_result = final_snapshot.get("penaltyResult", {})
+        
         errors = []
 
         for p_idx, player in enumerate(players):
             reported_score = player.get("score", 0)
             score_items = player.get("scoreItems", [])
-            # Swift model ScoreItem uses 'points'. Check both for flexibility.
             calculated_score = sum(item.get("points") or item.get("score") or 0 for item in score_items)
 
-            # Rule 1: Score Consistency
+            # Rule 1: Score Consistency (Base Score without multipliers)
             if reported_score != calculated_score:
-                errors.append(f"Player {p_idx} ({player['name']}): Score mismatch. "
+                errors.append(f"Player {p_idx} ({player.get('name')}): Base Score mismatch. "
                               f"Reported={reported_score}, Sum of Items={calculated_score}")
             
-            # Sub-rule: Check card counts if possible (simplified check)
-            captured = player.get("capturedCards", [])
-            # Map type to count in items
-            for item in score_items:
-                label = item.get("label", "")
-                count_in_item = item.get("count", 0)
-                # This check needs to be specific based on how scoreItems are structures
-                # For now, we trust the core sum comparison first.
+            # Rule 2: Max Score Enforcement
+            if end_reason == "maxScore":
+                # A maxScore game end MUST mean someone reached the threshold or an instant end condition fired.
+                # In testing, max_round_score is 50.
+                if penalty_result:
+                    # Check if finalScore >= 50 or if instant end conditions triggered
+                    final_score = penalty_result.get("finalScore", 0)
+                    has_instant_end = penalty_result.get("isGwangbak") or penalty_result.get("isPibak") or penalty_result.get("isMungbak")
+                    go_count = player.get("goCount", 0)
+                    if final_score < 50 and go_count < 5 and not has_instant_end:
+                        # Log warning, not strict error, as rule.yaml config might change max_score
+                        logger.warning(f"Player {p_idx} ended via maxScore but stats seem low (Score:{final_score}, Go:{go_count})")
+
+        # Rule 3: Penalty Validation
+        if penalty_result and end_reason != "nagari":
+            winner = max(players, key=lambda x: x.get('score', 0))
+            loser = min(players, key=lambda x: x.get('score', 0))
+            
+            # Very basic Pi counting heuristic check for Pibak
+            def get_pi_count(p):
+                return sum(1 for c in p.get("capturedCards", []) if c.get("type") == "junk") + \
+                       sum(2 for c in p.get("capturedCards", []) if c.get("type") == "doubleJunk")
+            
+            winner_pi = get_pi_count(winner)
+            loser_pi = get_pi_count(loser)
+            
+            # If winner has >= 10 pi and loser is < 6 pi, Pibak SHOULD be true (unless Jabak nullifies it)
+            if winner_pi >= 10 and loser_pi < 6:
+                if not penalty_result.get("isPibak") and not penalty_result.get("isJabak"):
+                    # NOTE: Configuration could change PiSafe threshold, but 6 is standard.
+                    logger.warning(f"Validation Note: Pibak was NOT applied despite WinnerPi={winner_pi} and LoserPi={loser_pi}.")
 
         if errors:
             self.report_error(errors)
         else:
-            logger.info("Game validation passed. All scores consistent.")
+            logger.info(f"Game validation passed. End Reason: {end_reason}. Scores consistent.")
 
     def format_card(self, card):
         suffix = "(2P)" if card.get('type') == 'doubleJunk' else ""
@@ -199,6 +224,24 @@ class AIPlayer(TestAgent):
             status = "PAUSED" if self.paused else "RESUMED"
             logger.info(f"Simulation {status}. Press Enter (or Space+Enter) to toggle.")
 
+    def select_best_card(self, hand, table_cards):
+        """Simple matching heuristic."""
+        table_months = {c.get('month') for c in table_cards}
+        
+        # 1. Look for matches
+        for card in hand:
+            m = card.get('month')
+            if m != 0 and m in table_months:
+                return card
+        
+        # 2. If no matches, check for dummy cards
+        for card in hand:
+            if card.get('month') == 0:
+                return card
+        
+        # 3. Default to first card
+        return hand[0]
+
     def run_continuous_simulation(self):
         """Runs the game in a loop indefinitely using socket connection."""
         logger.info(f"Starting continuous AI simulation in {self.connection_mode} mode...")
@@ -243,14 +286,13 @@ class AIPlayer(TestAgent):
                         
                     player = players[current_turn]
                     if player.get("hand"):
-                        # Simple AI: Play the first card
-                        # NOTE on dummy (도탄) cards: after a bomb, the bomber receives dummy cards
-                        # (count set by rule.yaml bomb.dummy_card_count, default 2).
-                        # Dummy cards VANISH when played — they never go to the table and have no draw phase.
-                        # Playing them simply passes the turn. The AI plays them normally.
-                        card = player["hand"][0]
-                        logger.info(f"Player {current_turn} ({player['name']}) playing {card['month']} {card['type']}")
-                        self.send_user_action("play_card", {"month": card["month"], "type": card["type"]})
+                        # Select a card to play using matching heuristic
+                        card = self.select_best_card(player["hand"], state_resp.get("tableCards", []))
+                        month = card.get("month", 0) 
+                        card_type = card.get("type", "junk")
+                        
+                        logger.info(f"Player {current_turn} ({player['name']}) playing {month} {card_type}")
+                        self.send_user_action("play_card", {"month": month, "type": card_type})
                     else:
                         error_msg = f"INVARIANT VIOLATION: Player {current_turn} ({player.get('name')}) has an EMPTY hand but gameState is 'playing'. Hands and deck must exhaust exactly together."
                         logger.error(error_msg)
