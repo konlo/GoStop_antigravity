@@ -103,9 +103,8 @@ special_moves:
   sweep:
     enabled: true
     bonus_points: 0
-    score_multiplier_type: "additive" # 1 sweep = +1 to multiplier factor
     steal_pi_count: 1
-    description: "Clear all cards from table. Doubles score (additive factor) and steals 1 Pi."
+    description: "Clear all cards from table. Steals 1 Pi based on rule."
   ttadak:
     enabled: true
     steal_pi_count: 1
@@ -120,15 +119,15 @@ special_moves:
     description: "Play and draw matching cards but making it a triple, leaving them on table"
   mungbak_pi_threshold: 5 # threshold for Mung-dda condition
   mungdda:
-    enabled: true
+    enabled: false # Removed as non-standard rule
     steal_pi_count: 1
     multiplier_addition: 1
-    description: "Opponent Ttadak while player is in Pi-mungbak state"
+    description: "Removed: Opponent Ttadak while player is in Pi-mungbak state"
   bomb_mungdda:
-    enabled: true
+    enabled: false # Removed as non-standard rule
     steal_pi_count: 2
     multiplier_addition: 2
-    description: "Opponent Bomb while player is in Pi-mungbak state"
+    description: "Removed: Opponent Bomb while player is in Pi-mungbak state"
   chongtong:
     enabled: true
     resolution_type: "instant_win"
@@ -142,7 +141,7 @@ nagari:
   next_game_multiplier: 2
 
 endgame:
-  max_round_score: 100
+  max_round_score: 1000
   score_check_timing: "post_multiplier" # pre_multiplier or post_multiplier
   max_go_count: 5
   instant_end_on_bak:

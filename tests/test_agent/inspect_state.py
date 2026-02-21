@@ -169,22 +169,85 @@ def inspect_state(mode="cli"):
                 print(f"  > {log}")
             print("-" * 50)
 
-        # Game End Details
-        if state.get('gameState') == "ended":
-            print("!!! GAME END DETAILS !!!")
-            print(f"  Reason: {state.get('gameEndReason', 'N/A')}")
-            penalty = state.get('penaltyResult', {})
-            if penalty:
-                print("  PENALTY REPORT:")
-                print(f"    - Final Score: {penalty.get('finalScore', 0)}")
-                print(f"    - Gwangbak:    {'YES' if penalty.get('isGwangbak') else 'No'}")
-                print(f"    - Pibak:      {'YES' if penalty.get('isPibak') else 'No'}")
-                print(f"    - Gobak:      {'YES' if penalty.get('isGobak') else 'No'}")
-                print(f"    - Mungbak:    {'YES' if penalty.get('isMungbak') else 'No'}")
-                print(f"    - Jabak:      {'YES' if penalty.get('isJabak') else 'No'}")
-                print(f"    - Yeokbak:     {'YES' if penalty.get('isYeokbak') else 'No'}")
+        # Game Summary - always printed
+        print("\n" + "=" * 50)
+        print("!!! GAME SUMMARY !!!")
+        print("=" * 50)
+        reason = state.get('gameEndReason', 'N/A')
+        game_state_str = state.get('gameState', 'N/A')
+        print(f"  게임 상태  : {game_state_str.upper()}")
+        print(f"  종료 원인  : {reason}")
+
+        # Winner / Loser names
+        winner_name = state.get('winnerName') or state.get('gameWinner', 'N/A')
+        loser_name  = state.get('loserName')  or state.get('gameLoser',  'N/A')
+        print(f"  승자       : {winner_name}")
+        print(f"  패자       : {loser_name}")
+
+        # Per-player in-game event stats
+        print("-" * 50)
+        print("  [게임 중 이벤트]")
+        for player in state.get('players', []):
+            pname = player.get('name', '?')
+            go_cnt     = player.get('goCount', 0)
+            shake_cnt  = player.get('shakeCount', 0)
+            bomb_cnt   = player.get('bombCount', 0)
+            sweep_cnt  = player.get('sweepCount', 0)
+            ttadak_cnt = player.get('ttadakCount', 0)
+            seolsa_cnt = player.get('seolsaCount', 0)
+            jjok_cnt   = player.get('jjokCount', 0)
+
+            events = [
+                ("Go",          go_cnt,     "회"),
+                ("흔들기(Shake)", shake_cnt, "회"),
+                ("폭탄(Bomb)",   bomb_cnt,  "회"),
+                ("싹쓸이(Sweep)",sweep_cnt, "회"),
+                ("따닥(Ttadak)", ttadak_cnt,"회"),
+                ("뻑(Seolsa)",   seolsa_cnt,"회"),
+                ("쪽(Jjok)",     jjok_cnt,  "회"),
+            ]
+            has_any = any(cnt > 0 for _, cnt, _ in events)
+            if has_any:
+                for label, cnt, unit in events:
+                    if cnt > 0:
+                        print(f"    {pname:<12} | {label:<16} : {cnt}{unit}")
+            else:
+                print(f"    {pname:<12} | 없음")
+
+        # Chongtong details
+        if reason == "chongtong":
+            chongtong_month  = state.get('chongtongMonth',  'N/A')
+            chongtong_timing = state.get('chongtongTiming', 'N/A')
+            print(f"  총통 월    : {chongtong_month}월")
+            print(f"  총통 시점  : {'초기 총통' if chongtong_timing == 'initial' else '중반 총통'} ({chongtong_timing})")
+
+
+        # Penalty report
+        penalty = state.get('penaltyResult', {})
+        if penalty:
             print("-" * 50)
-            
+            print("  [점수 산출 내역]")
+            final_score = penalty.get('finalScore', 0)
+            formula     = penalty.get('scoreFormula', '')
+            print(f"  최종 점수  : {final_score} 점")
+            if formula:
+                print(f"  점수 공식  : {formula}")
+            print("-" * 50)
+            print("  [패널티 적용 여부]")
+            flags = [
+                ("광박(Gwangbak)", "isGwangbak"),
+                ("피박(Pibak)",    "isPibak"),
+                ("고박(Gobak)",    "isGobak"),
+                ("멍박(Mungbak)",  "isMungbak"),
+                ("자박(Jabak)",    "isJabak"),
+                ("역박(Yeokbak)",  "isYeokbak"),
+            ]
+            for label, key in flags:
+                val = penalty.get(key, False)
+                mark = "✅ YES" if val else "❌ No"
+                print(f"    {label:<16} : {mark}")
+        print("=" * 50)
+
     except Exception as e:
         print(f"Error inspecting state: {e}")
     finally:

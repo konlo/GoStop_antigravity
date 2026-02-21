@@ -245,25 +245,55 @@ struct GameView: View {
     
     @ViewBuilder
     func goStopOverlay() -> some View {
-        ZStack {
+        let currentGoCount = (gameManager.currentPlayer?.goCount ?? 0) + 1
+        let goCountText = "\(currentGoCount)고"
+        let playerName = gameManager.currentPlayer?.name ?? "플레이어"
+        let isHuman = !(gameManager.currentPlayer?.isComputer ?? false)
+        
+        return ZStack {
             Color.black.opacity(0.6).ignoresSafeArea()
-            VStack(spacing: 30) {
-                Text("점수가 났습니다!")
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
-                    .foregroundStyle(.white)
+            VStack(spacing: 20) {
+                Text(goCountText)
+                    .font(.system(size: 72, weight: .black, design: .rounded))
+                    .foregroundStyle(.yellow)
+                    .shadow(color: .orange, radius: 10)
+                
+                HStack(spacing: 8) {
+                    Image(systemName: isHuman ? "person.fill" : "desktopcomputer")
+                        .foregroundStyle(isHuman ? .green : .orange)
+                    Text("\(playerName)이(가) 고 중입니다")
+                        .fontWeight(.semibold)
+                        .foregroundStyle(isHuman ? .green : .orange)
+                }
+                .font(.title3)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 8)
+                .background(.white.opacity(0.15))
+                .cornerRadius(20)
+                
+                Text("점수가 났습니다! 고 또는 스탑을 선택하세요.")
+                    .font(.title2)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.white.opacity(0.9))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
                 
                 HStack(spacing: 40) {
                     Button(action: {
                         gameManager.respondToGoStop(isGo: true)
                     }) {
-                        Text("GO")
-                            .font(.title)
-                            .bold()
-                            .frame(width: 120, height: 60)
-                            .background(Color.blue)
-                            .foregroundColor(.white)
-                            .cornerRadius(15)
+                        VStack(spacing: 4) {
+                            Text("GO")
+                                .font(.title)
+                                .bold()
+                            Text(goCountText)
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                        }
+                        .frame(width: 130, height: 70)
+                        .background(Color.blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(15)
                     }
                     
                     Button(action: {
@@ -272,7 +302,7 @@ struct GameView: View {
                         Text("STOP")
                             .font(.title)
                             .bold()
-                            .frame(width: 120, height: 60)
+                            .frame(width: 130, height: 70)
                             .background(Color.red)
                             .foregroundColor(.white)
                             .cornerRadius(15)
@@ -281,6 +311,7 @@ struct GameView: View {
             }
         }
     }
+
     
     func colorBackgroundOverlay(text: String, action: @escaping () -> Void) -> some View {
         ZStack {

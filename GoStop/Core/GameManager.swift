@@ -89,8 +89,8 @@ class GameManager: ObservableObject {
         self.chongtongTiming = nil
         self.eventLogs = []
         self.deck.reset(seed: seed)
+        self.gameState = .ready      // Reset state BEFORE dealing; dealCards may override to .ended if Chongtong
         self.dealCards()
-        self.gameState = .ready
     }
     
     func dealCards() {
@@ -118,6 +118,10 @@ class GameManager: ObservableObject {
     }
     
     func startGame() {
+        if gameState == .ended {
+            gLog("Game already ended (e.g. initial Chongtong). Skipping startGame playing state.")
+            return
+        }
         gLog("Game started. Player 1 turn.")
         currentTurnIndex = 0 // Player 1 starts
         gameState = .playing
@@ -164,7 +168,8 @@ class GameManager: ObservableObject {
             isGobak: false,
             isMungbak: false,
             isJabak: false,
-            isYeokbak: false
+            isYeokbak: false,
+            scoreFormula: "Chongtong Rule (\(timing)) = \(score)"
         )
         
         self.gameState = .ended
@@ -279,7 +284,7 @@ class GameManager: ObservableObject {
                 playPhaseCaptured.append(target)
             }
             player.bombCount += 1
-            player.shakeCount += 1 
+            player.shakeCount += 1
             
             // Add dummy (도탄) cards as defined by rule:
             // dummy_card_count from rule.yaml, dummy_cards_disappear_on_play = true (never go to table)
@@ -345,7 +350,8 @@ class GameManager: ObservableObject {
             drawPhaseCaptured = performTableCapture(for: drawnCard, on: &tableCards)
             
             if !drawPhaseCaptured.isEmpty {
-                if !playPhaseCaptured.isEmpty && !isBomb && card.type != .dummy {
+                // Ttadak (따닥): play phase also captured AND draw phase captured 3+ (all of a month)
+                if !playPhaseCaptured.isEmpty && drawPhaseCaptured.count >= 3 {
                     isTtadak = true
                 }
                 if let pCard = playedCard, playPhaseCaptured.isEmpty {
@@ -373,24 +379,19 @@ class GameManager: ObservableObject {
         if let rules = RuleLoader.shared.config {
             if isBomb {
                 stealPi(from: opponent, to: player, count: rules.special_moves.bomb.steal_pi_count)
-                if opponent.isPiMungbak && rules.special_moves.bomb_mungdda.enabled {
-                    player.bombMungddaCount += 1
-                    stealPi(from: opponent, to: player, count: rules.special_moves.bomb_mungdda.steal_pi_count)
-                }
+                // Bomb Mungdda removed as per user request
             }
             if isTtadak && rules.special_moves.ttadak.enabled {
                 player.ttadakCount += 1
                 stealPi(from: opponent, to: player, count: rules.special_moves.ttadak.steal_pi_count)
-                if opponent.isPiMungbak && rules.special_moves.mungdda.enabled && !isBomb {
-                    player.mungddaCount += 1
-                    stealPi(from: opponent, to: player, count: rules.special_moves.mungdda.steal_pi_count)
-                }
+                // Mungdda removed as per user request
             }
             if isJjok && rules.special_moves.jjok.enabled {
                 player.jjokCount += 1
                 stealPi(from: opponent, to: player, count: rules.special_moves.jjok.steal_pi_count)
             }
-            if isSeolsa && rules.special_moves.seolsa.enabled && !playPhaseCaptured.isEmpty {
+            if isSeolsa && rules.special_moves.seolsa.enabled && playPhaseCaptured.isEmpty {
+                 // Real Seolsa: the card was played but left cards on the table with no capture
                  player.seolsaCount += 1
                  stealPi(from: opponent, to: player, count: rules.special_moves.seolsa.penalty_pi_count)
             }
@@ -443,10 +444,7 @@ class GameManager: ObservableObject {
             
             let opponentIndex = (currentTurnIndex + 1) % players.count
             let opponent = players[opponentIndex]
-            let threshold = rules.special_moves.mungbak_pi_threshold
-            if opponent.piCount <= threshold {
-                opponent.isPiMungbak = true
-            }
+            // isPiMungbak tracking removed as part of Mungdda rule removal
             
             gameState = .playing
             

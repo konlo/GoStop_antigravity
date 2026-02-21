@@ -23,6 +23,7 @@ targets:
         ENABLE_PREVIEWS: YES
         DEVELOPMENT_TEAM: ""
         PRODUCT_BUNDLE_IDENTIFIER: com.antigravity.GoStop
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     info:
       path: GoStop/Info.plist
       properties:

@@ -9,6 +9,7 @@ struct PenaltySystem {
         let isMungbak: Bool
         let isJabak: Bool
         let isYeokbak: Bool
+        let scoreFormula: String
     }
     
     static func calculatePenalties(winner: Player, loser: Player, rules: RuleConfig) -> PenaltyResult {
@@ -39,7 +40,7 @@ struct PenaltySystem {
             let winnerPi = ScoringSystem.calculatePiCount(cards: winnerCards, rules: rules)
             let loserPi = ScoringSystem.calculatePiCount(cards: loserCards, rules: rules)
             
-            if winnerPi >= 10 && loserPi < rules.penalties.pibak.opponent_min_pi_safe {
+            if winnerPi >= 10 && loserPi > 0 && loserPi < rules.penalties.pibak.opponent_min_pi_safe {
                 isPibak = true
                 if rules.penalties.pibak.resolution_type == "multiplier" || rules.penalties.pibak.resolution_type == "both" {
                     multiplier *= rules.penalties.pibak.multiplier
@@ -137,25 +138,29 @@ struct PenaltySystem {
             multiplier *= (1 + winner.shakeCount)
         }
         
-        // 6. Bomb Multiplier (폭탄) - Multiplicative (doubling)
+        // 6. Bomb Multiplier (폭탄) - Removed (Bomb inherently triggers Stake 2x effect)
+        /*
         if winner.bombCount > 0 {
             multiplier *= Int(pow(2.0, Double(winner.bombCount)))
         }
+        */
         
-        // 7. Sweep Multiplier (쓸기) - Additive
+        // 7. Sweep Multiplier (싹쓸이) - Removed as per user request (not a standard rule)
+        /*
         if winner.sweepCount > 0 {
             multiplier *= (1 + winner.sweepCount)
         }
+        */
         
-        // 8. Mung-dda Multiplier (멍따) - Additive
+        // 8+9. Mung-dda and Bomb Mung-dda Multipliers - Removed as per user request
+        /*
         if winner.mungddaCount > 0 {
             multiplier *= (1 + winner.mungddaCount * rules.special_moves.mungdda.multiplier_addition)
         }
-        
-        // 9. Bomb Mung-dda Multiplier (폭탄 멍따) - Additive
         if winner.bombMungddaCount > 0 {
             multiplier *= (1 + winner.bombMungddaCount * rules.special_moves.bomb_mungdda.multiplier_addition)
         }
+        */
         
         // Go Multipliers of Winner
         var goAddition = 0
@@ -184,6 +189,36 @@ struct PenaltySystem {
         
         let finalScore = (winner.score + goAddition) * multiplier * goMultiplier
         
+        // Construct detailed formula string
+        var formula = "(\(winner.score)"
+        if goAddition > 0 {
+            formula += " + \(goAddition) Go bonus"
+        }
+        formula += ")"
+        
+        if multiplier > 1 {
+            var multParts: [String] = []
+            if isGwangbak { multParts.append("Gwangbak(x\(rules.penalties.gwangbak.multiplier))") }
+            if isPibak { multParts.append("Pibak(x\(rules.penalties.pibak.multiplier))") }
+            if isMungbak { multParts.append("Mungbak(x\(rules.penalties.mungbak.multiplier))") }
+            if isGobak { multParts.append("Gobak(x\(rules.penalties.gobak.multiplier))") }
+            if winner.shakeCount > 0 { multParts.append("Shake/Bomb(x\(1 + winner.shakeCount))") }
+            // Bomb multiplier removed as per user request (integrated into Shake)
+            // Sweep multiplier removed as per user request
+            if winner.mungddaCount > 0 { multParts.append("Mungdda - REMOVED") }
+            if winner.bombMungddaCount > 0 { multParts.append("BombMungdda - REMOVED") }
+            
+            if !multParts.isEmpty {
+                formula += " x " + multParts.joined(separator: " x ")
+            }
+        }
+        
+        if goMultiplier > 1 {
+            formula += " x Multi-Go(x\(goMultiplier))"
+        }
+        
+        formula += " = \(finalScore)"
+        
         if finalScore == 0 && winner.score > 0 {
             // The original instruction had a typo 'Lodaing' and an incomplete line.
             // Assuming the intent was to log a warning about rules potentially being missing
@@ -193,6 +228,6 @@ struct PenaltySystem {
             FileHandle.standardError.write("WARNING: finalScore is 0 despite winner having points. Rules might be missing or misconfigured.\n".data(using: .utf8)!)
         }
         
-        return PenaltyResult(finalScore: finalScore, isGwangbak: isGwangbak, isPibak: isPibak, isGobak: isGobak, isMungbak: isMungbak, isJabak: isJabak, isYeokbak: isYeokbak)
+        return PenaltyResult(finalScore: finalScore, isGwangbak: isGwangbak, isPibak: isPibak, isGobak: isGobak, isMungbak: isMungbak, isJabak: isJabak, isYeokbak: isYeokbak, scoreFormula: formula)
     }
 }

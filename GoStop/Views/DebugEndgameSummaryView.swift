@@ -82,6 +82,20 @@ struct DebugEndgameSummaryView: View {
             .foregroundColor(.white.opacity(0.8))
             
             if isWinner, RuleLoader.shared.config != nil {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Score Formula:")
+                        .font(.headline)
+                        .foregroundColor(.yellow)
+                        .padding(.top, 5)
+                    
+                    Text(result.scoreFormula)
+                        .font(.system(.subheadline, design: .monospaced))
+                        .foregroundColor(.white)
+                        .padding(8)
+                        .background(Color.black.opacity(0.3))
+                        .cornerRadius(5)
+                }
+                
                 let details = ScoringSystem.calculateScoreDetail(for: player)
                 if !details.isEmpty {
                     VStack(alignment: .leading, spacing: 5) {
@@ -138,6 +152,6 @@ struct DebugEndgameSummaryView: View {
     let gm = GameManager()
     let p1 = Player(name: "Player 1")
     let p2 = Player(name: "Computer")
-    let res = PenaltySystem.PenaltyResult(finalScore: 56, isGwangbak: true, isPibak: true, isGobak: false, isMungbak: false, isJabak: false, isYeokbak: false)
+    let res = PenaltySystem.PenaltyResult(finalScore: 56, isGwangbak: true, isPibak: true, isGobak: false, isMungbak: false, isJabak: false, isYeokbak: false, scoreFormula: "(15) x Pibak(x2) = 30")
     DebugEndgameSummaryView(result: res, reason: .maxScore, winner: p1, loser: p2, onRestart: {}, gameManager: gm)
 }

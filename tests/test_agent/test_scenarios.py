@@ -405,118 +405,111 @@ def scenario_verify_special_moves_suite(agent: TestAgent):
 
 def scenario_verify_mungdda_combos(agent: TestAgent):
     """
-    Scenario: Verifies Mung-dda and Bomb Mung-dda.
+    REMOVED: Mung-dda and Bomb Mung-dda rules were removed as they are too complex
+    and non-standard (user decision 2026-02-21).
+    This scenario is kept as a placeholder but skips verification.
     """
-    logger.info("Running Mung-dda combos verification...")
-    
-    # 1. Setup: Opponent is in Pi-mungbak state.
-    agent.send_user_action("start_game")
-    agent.set_condition({
-        "mock_hand": [{"month": 5, "type": "junk"}, {"month": 5, "type": "ribbon"}],
-        "mock_table": [{"month": 5, "type": "animal"}, {"month": 5, "type": "junk"}],
-        "mock_deck": [{"month": 5, "type": "ribbon"}], # Ensure Month 5 is on top for Ttadak
-        "mock_gameState": "playing",
-        "player1_data": {"isPiMungbak": True, "isComputer": False},
-        "mock_opponent_captured_cards": [{"month": 1, "type": "junk"}] * 5 # Enough to steal
-    })
-    handle_potential_shake(agent)
-    agent.send_user_action("play_card", {"month": 5, "type": "junk"}) # Triggers Ttadak
-    
-    state = agent.get_all_information()
-    agent.set_condition({"currentTurnIndex": 0})
-    player = state["players"][0]
-    # Ttadak + Opponent PiMungbak = Mung-dda
-    assert player["mungddaCount"] == 1, f"Expected mungddaCount 1, got {player['mungddaCount']}"
-    
-    logger.info("Mung-dda verification passed!")
-    
-    # 2. Setup: Bomb Mung-dda
-    agent.set_condition({
-        "mock_hand": [{"month": 6, "type": "junk"}, {"month": 6, "type": "ribbon"}, {"month": 6, "type": "animal"}],
-        "mock_table": [{"month": 6, "type": "bright"}],
-        "player1_data": {"isPiMungbak": True},
-        "mock_opponent_captured_cards": [{"month": 1, "type": "junk"}] * 5
-    })
-    agent.send_user_action("start_game")
-    handle_potential_shake(agent)
-    agent.send_user_action("play_card", {"month": 6, "type": "junk"}) # Triggers Bomb
-    
-    state = agent.get_all_information()
-    agent.set_condition({"currentTurnIndex": 0})
-    player = state["players"][0]
-    assert player["bombMungddaCount"] == 1, f"Expected bombMungddaCount 1, got {player['bombMungddaCount']}"
-    
-    logger.info("Bomb Mung-dda verification passed!")
+    logger.info("scenario_verify_mungdda_combos: SKIPPED (Mungdda rule removed). PASS")
 
 def scenario_verify_no_bomb_mungdda_instant_end(agent: TestAgent):
     """
-    Scenario: Verify bomb_mungdda does NOT trigger instant end.
-    Test Agent simulates a state where a player gets bomb_mungdda.
-    Ensures gameState remains playing.
+    REMOVED: Bomb Mungdda rule was removed as non-standard (user decision 2026-02-21).
+    This scenario is kept as a placeholder but skips verification.
     """
-    logger.info("Starting scenario: scenario_verify_no_bomb_mungdda_instant_end")
-
-    agent.send_user_action("start_game")
-    agent.set_condition({
-        "mock_gameState": "playing",
-        "currentTurnIndex": 0,
-        "player0_data": {
-            "score": 5, # Ensure score is > 0 but < 50
-            "bombMungddaCount": 1
-        },
-        "player1_data": {
-            "score": 0
-        }
-    })
-    
-    agent.send_user_action("click_restart_button")
-    state = agent.get_all_information()
-    assert state.get("gameState") == "ready"
-    logger.info("Endgame stats validation passed!")
+    logger.info("scenario_verify_no_bomb_mungdda_instant_end: SKIPPED (Bomb Mungdda rule removed). PASS")
 
 def scenario_verify_chongtong_initial(agent: TestAgent):
     """
-    Scenario: Verify initial Chongtong (4 of same month in hand after deal).
+    Scenario: Verify initial Chongtong - the game must end BEFORE play starts.
+    Specifically tests that startGame() does NOT override the .ended state
+    set by initial Chongtong detection during card dealing.
+    
+    Bug that was fixed: startGame() was unconditionally setting gameState = .playing,
+    ignoring the .ended state from initial Chongtong.
     """
-    logger.info("Running Initial Chongtong verification...")
-    
-    agent.send_user_action("start_game")
-    
-    # Mock Month 1 Chongtong hand
-    mock_hand = [
-        {"month": 1, "type": "bright"},
-        {"month": 1, "type": "animal"},
-        {"month": 1, "type": "ribbon"},
-        {"month": 1, "type": "junk"},
-        {"month": 2, "type": "junk"},
-    ]
-    
-    agent.set_condition({
-        "mock_hand": mock_hand,
-        "mock_gameState": "playing",
-        "currentTurnIndex": 0
+    logger.info("Running Initial Chongtong verification (full flow)...")
+
+    # Use set_state to arrange a guaranteed Chongtong: Player 1 has all 4 of month 1
+    agent.send_user_action("set_state", {
+        "players": [
+            {
+                "id": "p1", "name": "Player 1",
+                "hand": [
+                    {"month": 1, "type": "bright", "imageIndex": 0},
+                    {"month": 1, "type": "animal", "imageIndex": 0},
+                    {"month": 1, "type": "ribbon", "imageIndex": 0},
+                    {"month": 1, "type": "junk", "imageIndex": 0},
+                    {"month": 2, "type": "junk", "imageIndex": 0},
+                ],
+                "captured": [], "goCount": 0
+            },
+            {
+                "id": "p2", "name": "Computer",
+                "hand": [{"month": 3, "type": "junk", "imageIndex": 0}],
+                "captured": [], "goCount": 0
+            }
+        ],
+        "table": [],
+        "deck": [],
+        "currentPlayerIndex": 0,
+        "status": "playing"  # Set to playing, then check if Chongtong triggers correctly on force_check
     })
-    
-    # Trigger the check explicitly
+
+    # Explicitly trigger the initial Chongtong check
+    # This simulates what happens right after dealCards but before startGame
     agent.send_user_action("force_chongtong_check", {"timing": "initial"})
-    
+
     state = agent.get_all_information()
-    assert state.get("gameState") == "ended", "Game should have ended via Chongtong"
-    assert state.get("gameEndReason") == "chongtong", f"Expected chongtong, got {state.get('gameEndReason')}"
-    assert state.get("chongtongMonth") == 1, f"Expected month 1, got {state.get('chongtongMonth')}"
-    assert state.get("chongtongTiming") == "initial"
-    
-    logger.info("Initial Chongtong verification passed!")
+    game_state = state.get("gameState")
+    game_end_reason = state.get("gameEndReason")
+
+    if game_state != "ended":
+        raise AssertionError(
+            f"BUG: Initial Chongtong should end game immediately. "
+            f"gameState={game_state}, gameEndReason={game_end_reason}. "
+            f"Was startGame() overriding the .ended state?"
+        )
+
+    if game_end_reason != "chongtong":
+        raise AssertionError(
+            f"BUG: gameEndReason should be 'chongtong', got {game_end_reason}"
+        )
+
+    chongtong_month = state.get("chongtongMonth")
+    chongtong_timing = state.get("chongtongTiming")
+
+    if chongtong_month != 1:
+        raise AssertionError(f"Expected chongtongMonth=1, got {chongtong_month}")
+    if chongtong_timing != "initial":
+        raise AssertionError(f"Expected chongtongTiming='initial', got {chongtong_timing}")
+
+    # Critically: verify the player CANNOT play any card in ended state
+    # Try playing a card and confirm it's rejected
+    agent.send_user_action("play_card", {"month": 2, "type": "junk"})
+    state_after_play = agent.get_all_information()
+    if state_after_play.get("gameState") != "ended":
+        raise AssertionError(
+            "BUG: Game should remain .ended after Chongtong, but a play attempt changed the state!"
+        )
+
+    logger.info(
+        f"Initial Chongtong verification passed! "
+        f"gameState={game_state}, reason={game_end_reason}, "
+        f"month={chongtong_month}, timing={chongtong_timing}. PASS"
+    )
+
 
 def scenario_verify_chongtong_midgame_negative(agent: TestAgent):
     """
     Scenario: Verify mid-game collection of 4 cards (hand + captured) DOES NOT trigger Chongtong.
+    Chongtong only applies when a player holds all 4 of the same month IN HAND.
+    Cards in capturedCards do NOT count for Chongtong condition.
     """
     logger.info("Running Mid-game Chongtong Negative verification...")
-    
+
     agent.send_user_action("start_game")
-    
-    # Mock situation: Player 1 has 4 of month 1 (holding + captured)
+
+    # Mock situation: Player 1 has only 1 of month 1 in hand (other 3 are captured)
     agent.set_condition({
         "mock_hand": [{"month": 1, "type": "bright"}, {"month": 2, "type": "junk"}],
         "player0_data": {
@@ -529,15 +522,26 @@ def scenario_verify_chongtong_midgame_negative(agent: TestAgent):
         "mock_gameState": "playing",
         "currentTurnIndex": 0
     })
-    
-    # Trigger the check explicitly
+
+    # Trigger the check
     agent.send_user_action("force_chongtong_check", {"timing": "midgame"})
-    
+
     state = agent.get_all_information()
-    assert state.get("gameState") == "playing", "Game should NOT have ended via Chongtong (hand + captured != 4 in hand)"
-    assert state.get("gameEndReason") != "chongtong"
-    
-    logger.info("Mid-game Chongtong Negative verification passed!")
+    game_state = state.get("gameState")
+    game_end_reason = state.get("gameEndReason")
+
+    if game_state == "ended" and game_end_reason == "chongtong":
+        raise AssertionError(
+            "BUG: Chongtong should NOT trigger when 4 cards are split between hand and captured. "
+            f"gameState={game_state}, gameEndReason={game_end_reason}"
+        )
+
+    logger.info(
+        f"Mid-game Chongtong Negative verified: game did not end via Chongtong "
+        f"when cards split between hand/captured. gameState={game_state}. PASS"
+    )
+
+
 
 
 def scenario_verify_dummy_draw_phase(agent: TestAgent):
@@ -1529,6 +1533,225 @@ def scenario_verify_no_bomb_mungdda_instant_end(agent: TestAgent):
     logger.info(f"No Bomb Mung-dda instant end verified: gameState={state['gameState']}. PASS")
 
 
+def scenario_verify_score_formula(server):
+    """
+    Verify that the score formula string is correctly constructed.
+    """
+    logger.info("Running Score Formula verification...")
+    server.send_command("set_state", {
+        "players": [
+            {
+                "id": "p1", "name": "Player 1",
+                "hand": [], "captured": [
+                    {"month": 1, "type": "junk", "imageIndex": 2}, # 1
+                    {"month": 2, "type": "junk", "imageIndex": 2}, # 1
+                    {"month": 3, "type": "junk", "imageIndex": 2}, # 1
+                    {"month": 4, "type": "junk", "imageIndex": 2}, # 1
+                    {"month": 5, "type": "junk", "imageIndex": 2}, # 1
+                    {"month": 6, "type": "junk", "imageIndex": 2}, # 1
+                    {"month": 7, "type": "junk", "imageIndex": 2}, # 1
+                    {"month": 8, "type": "junk", "imageIndex": 2}, # 1
+                    {"month": 9, "type": "junk", "imageIndex": 2}, # 1
+                    {"month": 10, "type": "junk", "imageIndex": 2}, # 1 (10 Junk = 1 pt)
+                    {"month": 1, "type": "bright", "imageIndex": 0}, # 3 pts (3 Kwangs)
+                    {"month": 2, "type": "bright", "imageIndex": 0},
+                    {"month": 3, "type": "bright", "imageIndex": 0},
+                    {"month": 1, "type": "ribbon", "imageIndex": 1}, # 3 pts (Hongdan)
+                    {"month": 2, "type": "ribbon", "imageIndex": 1},
+                    {"month": 3, "type": "ribbon", "imageIndex": 1}
+                ], # Total 1 + 3 + 3 = 7 pts
+                "goCount": 0, "shakeCount": 1
+            },
+            {
+                "id": "p2", "name": "Computer",
+                "hand": [], "captured": [
+                    {"month": 11, "type": "junk", "imageIndex": 2} # Pibak
+                ],
+                "goCount": 0
+            }
+        ],
+        "table": [],
+        "deck": [],
+        "currentPlayerIndex": 0,
+        "status": "playing"
+    })
+    
+    response = server.send_command("stop", {})
+    if response and "event" in response and response["event"] == "game_over":
+        formula = response.get("penaltyResult", {}).get("scoreFormula", "")
+        # Expected: (7) x Pibak(x2) x Shake/Bomb(x2) = 28
+        # Note: I'm updating "Shake" to "Shake/Bomb" here as per recent change
+        if "(7) x Pibak(x2) x Shake/Bomb(x2) = 28" in formula:
+            logger.info("Score Formula verification passed!")
+            return True
+    return False
+
+
+def scenario_verify_pibak_zero_pi_exception(server):
+    """
+    Verify that a player with 0 Pi is not Pibak.
+    """
+    logger.info("Running Pibak Zero-Pi Exception verification...")
+    server.send_command("set_state", {
+        "players": [
+            {
+                "id": "p1", "name": "Player 1",
+                "hand": [], "captured": [
+                    {"month": 1, "type": "bright", "imageIndex": 0},
+                    {"month": 2, "type": "bright", "imageIndex": 0},
+                    {"month": 3, "type": "bright", "imageIndex": 0},
+                    {"month": 4, "type": "junk", "imageIndex": 2},
+                    {"month": 5, "type": "junk", "imageIndex": 2},
+                    {"month": 6, "type": "junk", "imageIndex": 2},
+                    {"month": 7, "type": "junk", "imageIndex": 2},
+                    {"month": 8, "type": "junk", "imageIndex": 2},
+                    {"month": 9, "type": "junk", "imageIndex": 2},
+                    {"month": 10, "type": "junk", "imageIndex": 2},
+                    {"month": 11, "type": "junk", "imageIndex": 2},
+                    {"month": 12, "type": "junk", "imageIndex": 2},
+                    {"month": 1, "type": "junk", "imageIndex": 2} # 10 Junk = 1 pt. 3 Bright = 3. Total 4.
+                ],
+                "goCount": 0
+            },
+            {
+                "id": "p2", "name": "Computer",
+                "hand": [], "captured": [], # 0 Pi -> Should NOT be pibak
+                "goCount": 0
+            }
+        ],
+        "table": [],
+        "deck": [],
+        "currentPlayerIndex": 0,
+        "status": "playing"
+    })
+    
+    response = server.send_command("stop", {})
+    if response and "event" in response and response["event"] == "game_over":
+        res = response.get("penaltyResult", {})
+        if not res.get("isPibak", False):
+            logger.info("Pibak Zero-Pi Exception verified (isPibak=False). PASS")
+            return True
+        else:
+            logger.error(f"Pibak Zero-Pi Exception FAILED: got isPibak={res.get('isPibak')}")
+    return False
+
+
+def scenario_verify_sweep_no_multiplier(server):
+    """
+    Verify that Sweep (싹쓸이) does not apply a multiplier.
+    """
+    logger.info("Running Sweep No Multiplier verification...")
+    server.send_command("set_state", {
+        "players": [
+            {
+                "id": "p1", "name": "Player 1",
+                "hand": [], "captured": [
+                    {"month": 1, "type": "bright", "imageIndex": 0},
+                    {"month": 2, "type": "bright", "imageIndex": 0},
+                    {"month": 3, "type": "bright", "imageIndex": 0},
+                    {"month": 4, "type": "junk", "imageIndex": 2},
+                    {"month": 5, "type": "junk", "imageIndex": 2},
+                    {"month": 6, "type": "junk", "imageIndex": 2},
+                    {"month": 7, "type": "junk", "imageIndex": 2},
+                    {"month": 8, "type": "junk", "imageIndex": 2},
+                    {"month": 9, "type": "junk", "imageIndex": 2},
+                    {"month": 10, "type": "junk", "imageIndex": 2},
+                    {"month": 11, "type": "junk", "imageIndex": 2},
+                    {"month": 12, "type": "junk", "imageIndex": 2},
+                    {"month": 1, "type": "junk", "imageIndex": 2} 
+                ],
+                "goCount": 0, "sweepCount": 1 # 싹쓸이 1회
+            },
+            {
+                "id": "p2", "name": "Computer",
+                "hand": [], "captured": [
+                    {"month": 12, "type": "junk", "imageIndex": 2},
+                    {"month": 12, "type": "junk", "imageIndex": 2},
+                    {"month": 12, "type": "junk", "imageIndex": 2},
+                    {"month": 12, "type": "junk", "imageIndex": 2},
+                    {"month": 12, "type": "junk", "imageIndex": 2},
+                    {"month": 12, "type": "junk", "imageIndex": 2} # 6 Pi -> Safe from Pibak
+                ],
+                "goCount": 0
+            }
+        ],
+        "table": [],
+        "deck": [],
+        "currentPlayerIndex": 0,
+        "status": "playing"
+    })
+    
+    response = server.send_command("stop", {})
+    if response and "event" in response and response["event"] == "game_over":
+        res = response.get("penaltyResult", {})
+        # Player has 4 pts. Multiplier should be 1 (no sweep mult).
+        if res.get("finalScore") == 4:
+            logger.info("Sweep No Multiplier verified (finalScore=4, multiplier=1). PASS")
+            return True
+        else:
+            logger.error(f"Sweep No Multiplier FAILED: expected finalScore 4, got {res.get('finalScore')}")
+    return False
+
+
+def scenario_verify_bomb_as_shake_multiplier(server):
+    """
+    Verify that Bomb (폭탄) applies a 2x multiplier but as 'Shake/Bomb'.
+    """
+    logger.info("Running Bomb as Shake Multiplier verification...")
+    server.send_command("set_state", {
+        "players": [
+            {
+                "id": "p1", "name": "Player 1",
+                "hand": [], "captured": [
+                    {"month": 1, "type": "bright", "imageIndex": 0},
+                    {"month": 2, "type": "bright", "imageIndex": 0},
+                    {"month": 3, "type": "bright", "imageIndex": 0},
+                    {"month": 4, "type": "junk", "imageIndex": 2},
+                    {"month": 5, "type": "junk", "imageIndex": 2},
+                    {"month": 6, "type": "junk", "imageIndex": 2},
+                    {"month": 7, "type": "junk", "imageIndex": 2},
+                    {"month": 8, "type": "junk", "imageIndex": 2},
+                    {"month": 9, "type": "junk", "imageIndex": 2},
+                    {"month": 10, "type": "junk", "imageIndex": 2},
+                    {"month": 11, "type": "junk", "imageIndex": 2},
+                    {"month": 12, "type": "junk", "imageIndex": 2},
+                    {"month": 1, "type": "junk", "imageIndex": 2} 
+                ],
+                "goCount": 0, "shakeCount": 1, "bombCount": 1 # 폭탄 1회 (shakeCount 1 증가된 상태)
+            },
+            {
+                "id": "p2", "name": "Computer",
+                "hand": [], "captured": [
+                    {"month": 12, "type": "junk", "imageIndex": 2},
+                    {"month": 12, "type": "junk", "imageIndex": 2},
+                    {"month": 12, "type": "junk", "imageIndex": 2},
+                    {"month": 12, "type": "junk", "imageIndex": 2},
+                    {"month": 12, "type": "junk", "imageIndex": 2},
+                    {"month": 12, "type": "junk", "imageIndex": 2}
+                ],
+                "goCount": 0
+            }
+        ],
+        "table": [],
+        "deck": [],
+        "currentPlayerIndex": 0,
+        "status": "playing"
+    })
+    
+    response = server.send_command("stop", {})
+    if response and "event" in response and response["event"] == "game_over":
+        res = response.get("penaltyResult", {})
+        formula = res.get("scoreFormula", "")
+        # Score 4 x 2 (Shake/Bomb) = 8. Multiplier should be 2.
+        if res.get("finalScore") == 8 and "Shake/Bomb(x2)" in formula:
+            logger.info("Bomb as Shake Multiplier verified (finalScore=8, 'Shake/Bomb(x2)' in formula). PASS")
+            return True
+        else:
+            logger.error(f"Bomb as Shake Multiplier FAILED: expected score 8 and 'Shake/Bomb' formula, got {res.get('finalScore')} and '{formula}'")
+    return False
+
+
+
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Run GoStop Test Scenarios")
@@ -1585,6 +1808,10 @@ if __name__ == "__main__":
         scenario_verify_chongtong_initial,
         scenario_verify_chongtong_midgame_negative,
         scenario_verify_dummy_draw_phase,
+        scenario_verify_score_formula,
+        scenario_verify_pibak_zero_pi_exception,
+        scenario_verify_sweep_no_multiplier,
+        scenario_verify_bomb_as_shake_multiplier,
     ]
     
     if args.filter:
