@@ -97,15 +97,23 @@ def inspect_state(mode="cli"):
         # Month-Pair Validation Logic
         print("MONTH-PAIR VALIDATION (Accountability for all 48 cards):")
         all_cards = []
+        dummy_cards = []
         # 1. Hands and Captured
         for p in state.get('players', []):
-            all_cards.extend(p.get('hand', []))
-            all_cards.extend(p.get('capturedCards', []))
+            for c in p.get('hand', []):
+                (dummy_cards if c.get('type') == 'dummy' else all_cards).append(c)
+            for c in p.get('capturedCards', []):
+                (dummy_cards if c.get('type') == 'dummy' else all_cards).append(c)
         # 2. Table
-        all_cards.extend(state.get('tableCards', []))
+        for c in state.get('tableCards', []):
+            (dummy_cards if c.get('type') == 'dummy' else all_cards).append(c)
         # 3. Deck
-        all_cards.extend(state.get('deckCards', []))
+        for c in state.get('deckCards', []):
+            (dummy_cards if c.get('type') == 'dummy' else all_cards).append(c)
         
+        if dummy_cards:
+            print(f"  [NOTE] {len(dummy_cards)} dummy card(s) excluded from 48-card count")
+
         month_counts = {}
         for c in all_cards:
             m = c['month']

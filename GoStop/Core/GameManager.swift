@@ -188,11 +188,15 @@ class GameManager: ObservableObject {
             player.bombCount += 1
             player.shakeCount += 1 
             
-            for _ in 0..<2 {
+            // Add dummy (도탄) cards as defined by rule:
+            // dummy_card_count from rule.yaml, dummy_cards_disappear_on_play = true (never go to table)
+            let dummyCount = rules.special_moves.bomb.dummy_card_count
+            for _ in 0..<dummyCount {
                 let dummy = Card(month: .none, type: .dummy, imageIndex: 0)
                 player.hand.append(dummy)
                 player.dummyCardCount += 1
             }
+            gLog("\(player.name) received \(dummyCount) dummy (도탄) card(s). They vanish when played.")
             playedCard = nil
             
             // Draw Phase
@@ -213,11 +217,17 @@ class GameManager: ObservableObject {
             }
         } else {
             if card.type == .dummy {
-                gLog("\(player.name) played a DUMMY card.")
+                gLog("\(player.name) played a DUMMY card. (\(player.dummyCardCount - 1) remaining)")
                 player.dummyCardCount -= 1
-                if let pCard = player.play(card: card) {
-                    tableCards.append(pCard)
+                // Per rule: dummy_cards_disappear_on_play = true
+                // Dummy (도탄) cards vanish on play — they are NOT placed on the table/floor
+                // and there is no draw phase (it's a pass turn, not a real card play).
+                if let idx = player.hand.firstIndex(where: { $0.type == .dummy }) {
+                    player.hand.remove(at: idx)
                 }
+                gLog("\(player.name) dummy play complete. Hand: \(player.hand.count)")
+                endTurn()
+                return  // Skip draw phase and further processing
             } else {
                 if let pCard = player.play(card: card) {
                     playedCard = pCard
@@ -237,7 +247,7 @@ class GameManager: ObservableObject {
             }
         }
         
-        // 2. Draw Phase
+        // 2. Draw Phase (skip for bomb - it already drew; skip for dummy - no draw)
         if !isBomb, let drawnCard = deck.draw() {
             gLog("Drawn: \(drawnCard.month) (\(drawnCard.type))")
             drawPhaseCaptured = performTableCapture(for: drawnCard, on: &tableCards)

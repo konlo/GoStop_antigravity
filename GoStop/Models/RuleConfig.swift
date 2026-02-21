@@ -87,6 +87,8 @@ struct BombRule: Codable {
     let enabled: Bool
     let steal_pi_count: Int
     let score_multiplier: Int
+    let dummy_card_count: Int          // How many dummy (도탄) cards the bomber receives
+    let dummy_cards_disappear_on_play: Bool  // Dummy cards vanish on play, never go to table
     let description: String?
 }
 
