@@ -48,8 +48,16 @@ struct ScoringSystem {
     
     private static func getYulDetails(cards: [Card], rules: RuleConfig) -> [ScoreItem] {
         var items: [ScoreItem] = []
+        // Filter out Sep Animal if its role is doublePi
         let yuls = cards.filter { $0.type == .animal }
-        let count = yuls.count
+        let activeYuls = yuls.filter { card in
+            if card.month == Month.sep {
+                let defaultRole = rules.cards.chrysanthemum_rule.default_role
+                return (card.selectedRole == CardRole.animal) || (card.selectedRole == nil && defaultRole == "animal")
+            }
+            return true
+        }
+        let count = activeYuls.count
         let s = rules.scoring.yul
         
         if count >= s.min_count {
@@ -58,7 +66,9 @@ struct ScoringSystem {
         }
         
         let godoriMonths = rules.cards.yul.godori
-        let godoriCards = yuls.filter { godoriMonths.contains($0.month.rawValue) }
+        let godoriCards = activeYuls.filter { card in
+            godoriMonths.contains(card.month.rawValue) && (card.selectedRole == CardRole.animal || card.selectedRole == nil)
+        }
         if godoriCards.count == 3 {
             items.append(ScoreItem(name: "고도리 (Godori)", points: s.godori, count: 3))
         }
@@ -115,7 +125,7 @@ struct ScoringSystem {
                 var currentVal = 1
                 
                 // Check if this junk card is a conditional double pi
-                for condRule in rules.cards.pi.conditional_double_pi {
+                for condRule in rules.cards.pi.conditional_double_pi ?? [] {
                     if card.month.rawValue == condRule.month {
                         if condRule.condition == "has_cheongdan" && hasCheongdan {
                             currentVal += condRule.bonus_points
@@ -123,6 +133,12 @@ struct ScoringSystem {
                     }
                 }
                 piCount += currentVal
+            } else if card.month == .sep && card.type == .animal {
+                // September Animal card can be used as Double Pi
+                let defaultRole = rules.cards.chrysanthemum_rule.default_role
+                if card.selectedRole == .doublePi || (card.selectedRole == nil && defaultRole == "double_pi") {
+                    piCount += 2
+                }
             }
         }
         return piCount

@@ -2,20 +2,23 @@ import os
 import shutil
 
 def clean_artifacts():
-    artifacts_dir = "artifacts"
+    # Resolve directory relative to this script
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    repo_root = os.path.abspath(os.path.join(script_dir, "../../"))
+    artifacts_dir = os.path.join(repo_root, "test_artifacts")
     
     if not os.path.exists(artifacts_dir):
         print(f"Directory '{artifacts_dir}' not found. Nothing to clean.")
         return
 
-    # List of subdirectories to empty
+    print(f"Cleaning artifacts in {artifacts_dir}...")
+
+    # 1. Clean subdirectories
     subdirs = ["logs", "crash_dumps", "state_snapshots"]
-    
     for subdir in subdirs:
         path = os.path.join(artifacts_dir, subdir)
         if os.path.exists(path):
-            print(f"Cleaning {path}...")
-            # Delete all files in the subdirectory
+            print(f"  Cleaning {path}...")
             for filename in os.listdir(path):
                 file_path = os.path.join(path, filename)
                 try:
@@ -24,23 +27,28 @@ def clean_artifacts():
                     elif os.path.isdir(file_path):
                         shutil.rmtree(file_path)
                 except Exception as e:
-                    print(f'Failed to delete {file_path}. Reason: {e}')
-        else:
-            print(f"Subdirectory '{path}' not found.")
+                    print(f'  Failed to delete {file_path}. Reason: {e}')
 
-    # Also clean top-level repro_steps and log files
+    # 2. Clean top-level files in artifacts_dir
+    patterns = [
+        "repro_steps_",
+        "error_report.log",
+        "crash_report_"
+    ]
+    
     for filename in os.listdir(artifacts_dir):
-        is_repro = filename.startswith("repro_steps_") and filename.endswith(".json")
-        is_error_log = filename == "error_report.log"
-        is_general_log = filename.endswith(".log")
+        file_path = os.path.join(artifacts_dir, filename)
+        if not os.path.isfile(file_path):
+            continue
+            
+        should_delete = any(filename.startswith(p) for p in patterns) or filename.endswith(".log")
         
-        if is_repro or is_error_log or is_general_log:
-            file_path = os.path.join(artifacts_dir, filename)
+        if should_delete:
             try:
                 os.unlink(file_path)
-                print(f"Deleted {file_path}")
+                print(f"  Deleted {file_path}")
             except Exception as e:
-                print(f'Failed to delete {file_path}. Reason: {e}')
+                print(f'  Failed to delete {file_path}. Reason: {e}')
 
     print("Cleanup complete.")
 

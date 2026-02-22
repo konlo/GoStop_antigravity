@@ -464,6 +464,15 @@ struct CapturedGroupsAreaV2: View {
     }
     
     func matchCardType(card: Card, targetType: String) -> Bool {
+        // Special case: September Animal (Chrysanthemum) can switch between Animal and Pi
+        if card.month == .sep && card.type == .animal {
+            if let role = card.selectedRole {
+                if targetType == "animal" { return role == .animal }
+                if targetType == "pi" { return role == .doublePi }
+                return false
+            }
+        }
+        
         if targetType == "gwang" { return card.type == .bright }
         if targetType == "animal" { return card.type == .animal }
         if targetType == "ribbon" { return card.type == .ribbon }

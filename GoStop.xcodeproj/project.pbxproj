@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 77;
+	objectVersion = 63;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -72,7 +72,7 @@
 		1D8325DC94A43A7AB5739F02 /* GoStopTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoStopTests.swift; sourceTree = "<group>"; };
 		2857725433426BA8E4DE2D7C /* ConfigManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigManager.swift; sourceTree = "<group>"; };
 		2C9DC8F2B463C152AB92172B /* Deck.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Deck.swift; sourceTree = "<group>"; };
-		307B0A27C609202DD546A40A /* GoStopCLI */ = {isa = PBXFileReference; includeInIndex = 0; path = GoStopCLI; sourceTree = BUILT_PRODUCTS_DIR; };
+		307B0A27C609202DD546A40A /* GoStopCLI */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = text; path = GoStopCLI; sourceTree = BUILT_PRODUCTS_DIR; };
 		3085BB433FB735CFD683B342 /* LayoutConfigV2.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutConfigV2.swift; sourceTree = "<group>"; };
 		4A3C1F6EB55586E9BE2C8E36 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		4C817E2BC7A6C44D1434325E /* ScoringSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoringSystem.swift; sourceTree = "<group>"; };
@@ -95,7 +95,7 @@
 		CB1897B0ADA42D7A7EEFCE34 /* PlayerHandSlotManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerHandSlotManager.swift; sourceTree = "<group>"; };
 		E5D75C2B31530E390EDEB760 /* PenaltySystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PenaltySystem.swift; sourceTree = "<group>"; };
 		E6121B38C070C592434D33A1 /* DebugLayoutOverlayV2.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugLayoutOverlayV2.swift; sourceTree = "<group>"; };
-		E802832BAB9D5CCCB8D64414 /* GoStop.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = GoStop.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		E802832BAB9D5CCCB8D64414 /* GoStop.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GoStop.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -288,11 +288,6 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
-				TargetAttributes = {
-					A82194C81A40D4649BC7B765 = {
-						DevelopmentTeam = "";
-					};
-				};
 			};
 			buildConfigurationList = 27FBD34375465329B77CA194 /* Build configuration list for PBXProject "GoStop" */;
 			compatibilityVersion = "Xcode 14.0";
@@ -307,7 +302,6 @@
 			packageReferences = (
 				8067FC4FB28066011D3F927B /* XCRemoteSwiftPackageReference "Yams" */,
 			);
-			preferredProjectObjectVersion = 77;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -433,7 +427,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = CX4GUZT9FS;
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = GoStop/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = GoStop;
@@ -441,7 +435,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.antigravity.GoStop;
+				PRODUCT_BUNDLE_IDENTIFIER = com.konlona.GoStop;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -452,7 +446,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = CX4GUZT9FS;
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = GoStop/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = GoStop;
@@ -460,7 +454,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.antigravity.GoStop;
+				PRODUCT_BUNDLE_IDENTIFIER = com.konlona.GoStop;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};

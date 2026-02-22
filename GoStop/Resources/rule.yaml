@@ -8,12 +8,12 @@ cards:
   yul:
     godori: [2, 4, 8]
   pi:
-    double_pi_months: [] # Use explicit doubleJunk type instead
-    conditional_double_pi:
-      - month: 9 # Chrysanthemum
-        condition: "has_cheongdan"
-        bonus_points: 1
     bonus_cards: 2 # Number of bonus cards in deck
+  chrysanthemum_rule:
+    enabled: true
+    default_role: "animal" # "animal" or "double_pi"
+    choice_timing: "capture_time" # "capture_time" or "scoring_time"
+    allow_double_pi: true
 
 scoring:
   kwang:

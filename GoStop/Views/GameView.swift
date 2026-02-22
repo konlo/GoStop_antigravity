@@ -196,6 +196,8 @@ struct GameView: View {
             shakeOverlay()
         } else if gameManager.gameState == .choosingCapture {
             captureChoiceOverlay()
+        } else if gameManager.gameState == .choosingChrysanthemumRole {
+            chrysanthemumChoiceOverlay()
         }
     }
     
@@ -242,6 +244,67 @@ struct GameView: View {
                 }
                 
                 Text("탭하여 선택하세요")
+                    .font(.footnote)
+                    .foregroundStyle(.white.opacity(0.6))
+            }
+        }
+    }
+
+    @ViewBuilder
+    func chrysanthemumChoiceOverlay() -> some View {
+        ZStack {
+            Color.black.opacity(0.65).ignoresSafeArea()
+            VStack(spacing: 30) {
+                Text("국진(9월 열끗)의 역할을 선택하세요")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .foregroundStyle(.white)
+                
+                if let card = gameManager.pendingChrysanthemumCard {
+                    HStack(spacing: 50) {
+                        // Option 1: Animal
+                        Button(action: {
+                            gameManager.respondToChrysanthemumChoice(role: .animal)
+                        }) {
+                            VStack(spacing: 12) {
+                                CardView(card: card, scale: 1.8)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .stroke(Color.cyan, lineWidth: 4)
+                                    )
+                                
+                                Text("끗 (Animal)")
+                                    .font(.headline)
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 8)
+                                    .background(Capsule().fill(Color.cyan.opacity(0.4)))
+                            }
+                        }
+                        
+                        // Option 2: Double Pi
+                        Button(action: {
+                            gameManager.respondToChrysanthemumChoice(role: .doublePi)
+                        }) {
+                            VStack(spacing: 12) {
+                                CardView(card: card, scale: 1.8)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .stroke(Color.yellow, lineWidth: 4)
+                                    )
+                                
+                                Text("쌍피 (Double Pi)")
+                                    .font(.headline)
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 8)
+                                    .background(Capsule().fill(Color.yellow.opacity(0.4)))
+                            }
+                        }
+                    }
+                }
+                
+                Text("역할에 따라 점수 계산이 달라집니다")
                     .font(.footnote)
                     .foregroundStyle(.white.opacity(0.6))
             }

@@ -241,6 +241,8 @@ class AIPlayer(TestAgent):
                             m_str = f"M{c['month']}"
                             if c.get('type') == 'doubleJunk':
                                 m_str += "(2P)"
+                            if c.get('selectedRole'):
+                                m_str += f"[{c['selectedRole']}]"
                             card_list.append(m_str)
                         card_str = " ".join(card_list)
                         lines.append(f"    {label:<12}: {len(cards):>2} cards -> {card_str}")
@@ -301,10 +303,45 @@ class AIPlayer(TestAgent):
         # 3. Default to first card
         return hand[0]
 
-    def run_continuous_simulation(self):
-        """Runs the game in a loop indefinitely using socket connection."""
-        logger.info(f"Starting continuous AI simulation in {self.connection_mode} mode...")
+    def decide_chrysanthemum_role(self, state):
+        """Heuristic to decide role for September Animal."""
+        players = state.get("players", [])
+        current_turn = state.get("currentTurnIndex", 0)
+        if current_turn >= len(players):
+            return "animal"
+        
+        player = players[current_turn]
+        captured = player.get("capturedCards", [])
+        
+        # Calculate current Pi count
+        pi_count = sum(1 for c in captured if c.get('type') == 'junk') + \
+                   sum(2 for c in captured if c.get('type') == 'doubleJunk')
+        
+        # Heuristic: If we have < 10 pi, doublePi is usually better to reach scoring.
+        # If we already have 4 animals, picking animal might get us to the animal scoring bonus.
+        animal_count = sum(1 for c in captured if c.get('type') == 'animal')
+        
+        if pi_count < 10:
+            return "doublePi"
+        if animal_count >= 4:
+            return "animal"
+            
+        return "doublePi" # Default to doublePi as it's generally stronger
+
+    def run_continuous_simulation(self, num_games: int = 0):
+        """
+        Runs the game in a loop using socket connection.
+        :param num_games: Total number of games to play. 0 means infinite.
+        """
+        logger.info(f"Starting simulation in {self.connection_mode} mode...")
+        if num_games > 0:
+            logger.info(f"Target game count: {num_games}")
+        else:
+            logger.info("Running indefinitely (Press Ctrl+C to stop).")
+            
         logger.info("Tip: Press Enter to Pause/Resume simulation.")
+        
+        games_completed = 0
         
         while True:
             try:
@@ -404,10 +441,21 @@ class AIPlayer(TestAgent):
                         logger.warning("In askingShake state but no pendingShakeMonths found.")
                         time.sleep(1)
 
+                elif game_state == "choosingChrysanthemumRole":
+                    # Choose role for September Chrysanthemum Animal card
+                    role = self.decide_chrysanthemum_role(state_resp)
+                    logger.info(f"Chrysanthemum role choice required. AI Decision: '{role}'")
+                    self.send_user_action("respond_to_chrysanthemum_choice", {"role": role})
+
                 elif game_state == "ended":
                     self.validate_game_results()
+                    games_completed += 1
                     
-                    logger.info("Game ended. Waiting 1 second for manual input (Enter) before auto-restarting...")
+                    if num_games > 0 and games_completed >= num_games:
+                        logger.info(f"Target game count ({num_games}) reached. Simulation ending.")
+                        return
+
+                    logger.info(f"Game {games_completed} ended. Waiting 1 second for manual input (Enter) before auto-restarting...")
                     import select
                     import sys
                     # Non-blocking check for stdin with 1 second timeout
@@ -434,7 +482,8 @@ class AIPlayer(TestAgent):
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description="Run AI Player Simulation")
+    parser.add_argument("num_games", type=int, nargs="?", default=0, help="Number of games to play (0 for infinite)")
     parser.add_argument("--debug_level", type=str, default="normal", help="Set to 'high' to enable play tracing and month-pair validation.")
     args = parser.parse_args()
 
@@ -442,4 +491,4 @@ if __name__ == "__main__":
     ai = AIPlayer(connection_mode="socket", debug_level=args.debug_level)
     # You can set max_go_count to 4 or 5
     ai.max_go_count = 4 
-    ai.run_continuous_simulation()
+    ai.run_continuous_simulation(num_games=args.num_games)

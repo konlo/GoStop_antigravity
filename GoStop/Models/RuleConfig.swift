@@ -121,6 +121,14 @@ struct CardsRule: Codable {
     let dan: DanRule
     let yul: YulRule
     let pi: PiRule
+    let chrysanthemum_rule: ChrysanthemumRule
+}
+
+struct ChrysanthemumRule: Codable {
+    let enabled: Bool
+    let default_role: String
+    let choice_timing: String
+    let allow_double_pi: Bool
 }
 
 struct KwangRule: Codable {
@@ -138,8 +146,8 @@ struct YulRule: Codable {
 }
 
 struct PiRule: Codable {
-    let double_pi_months: [Int]
-    let conditional_double_pi: [ConditionalPiRule]
+    let double_pi_months: [Int]?
+    let conditional_double_pi: [ConditionalPiRule]?
     let bonus_cards: Int
 }
 
@@ -301,9 +309,12 @@ class RuleLoader {
             if let yamlString = String(data: data, encoding: .utf8) {
                 let decoder = YAMLDecoder()
                 config = try decoder.decode(RuleConfig.self, from: yamlString)
+                gLog("Successfully loaded RuleConfig.")
             }
         } catch {
-            FileHandle.standardError.write("Error parsing rule.yaml: \(error)\n".data(using: .utf8)!)
+            let errMsg = "Error parsing rule.yaml: \(error)"
+            FileHandle.standardError.write("\(errMsg)\n".data(using: .utf8)!)
+            gLog("CRITICAL: \(errMsg)")
         }
     }
 }

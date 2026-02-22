@@ -11,13 +11,19 @@ enum Month: Int, CaseIterable, Comparable, Codable {
 }
 
 /// Represents the type of Hwatu card for scoring
-enum CardType: String, Equatable, Codable, CaseIterable {
-    case bright         // Gwang (광)
-    case animal         // Yul (열)
-    case ribbon         // Tti (띠)
-    case junk           // Pi (피)
-    case doubleJunk     // SsangPi (쌍피)
-    case dummy          // Dummy card for Bomb (폭탄용 더미)
+enum CardType: String, Codable {
+    case bright          // 광
+    case animal          // 끗
+    case ribbon          // 띠
+    case junk            // 피
+    case doubleJunk      // 쌍피
+    case dummy           // Dummy card for Bomb (폭탄용 더미)
+}
+
+/// Represents the selected role of a card (for flexible cards like Sep Animal)
+enum CardRole: String, Codable {
+    case animal
+    case doublePi
 }
 
 /// Represents a single Hwatu card
@@ -26,12 +32,14 @@ struct Card: Identifiable, Equatable, CustomStringConvertible, Codable {
     let month: Month
     let type: CardType
     let imageIndex: Int
+    var selectedRole: CardRole?
     
-    init(id: String = UUID().uuidString, month: Month, type: CardType, imageIndex: Int) {
+    init(id: String = UUID().uuidString, month: Month, type: CardType, imageIndex: Int, selectedRole: CardRole? = nil) {
         self.id = id
         self.month = month
         self.type = type
         self.imageIndex = imageIndex
+        self.selectedRole = selectedRole
     }
     
     static func == (lhs: Card, rhs: Card) -> Bool {
@@ -49,11 +57,15 @@ struct Card: Identifiable, Equatable, CustomStringConvertible, Codable {
     }
     
     func serialize() -> [String: Any] {
-        return [
+        var dict: [String: Any] = [
             "id": id,
             "month": month.rawValue,
             "type": type.rawValue,
             "imageIndex": imageIndex
         ]
+        if let selectedRole = selectedRole {
+            dict["selectedRole"] = selectedRole.rawValue
+        }
+        return dict
     }
 }

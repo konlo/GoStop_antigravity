@@ -136,8 +136,8 @@ class Player: ObservableObject, Identifiable, Codable {
         return [
             "id": id.uuidString,
             "name": name,
-            "hand": hand,
-            "capturedCards": capturedCards,
+            "hand": hand.map { $0.serialize() },
+            "capturedCards": capturedCards.map { $0.serialize() },
             "score": score,
             "money": money,
             "goCount": goCount,

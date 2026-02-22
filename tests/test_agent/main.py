@@ -11,7 +11,7 @@ from datetime import datetime
 # Configure Artifact Directories
 script_dir = os.path.dirname(os.path.abspath(__file__))
 repo_root = os.path.abspath(os.path.join(script_dir, "../../"))
-artifacts_dir = os.path.join(repo_root, "test_artifacts") # Use test_artifacts to avoid permission issues
+artifacts_dir = "/tmp/gostop_test_artifacts" # Use /tmp to avoid permission issues on macOS
 log_dir = os.path.join(artifacts_dir, "logs")
 crash_dir = os.path.join(artifacts_dir, "crash_dumps")
 snapshot_dir = os.path.join(artifacts_dir, "state_snapshots")
@@ -32,18 +32,21 @@ repro_file = os.path.join(artifacts_dir, f"repro_steps_{timestamp}.json")
 logger = logging.getLogger("TestAgent")
 logger.setLevel(logging.DEBUG)
 
-# File handler
-fh = logging.FileHandler(log_file)
-fh.setLevel(logging.DEBUG)
-# Console handler
+# Console handler (Always available)
 ch = logging.StreamHandler()
 ch.setLevel(logging.INFO)
-
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-fh.setFormatter(formatter)
 ch.setFormatter(formatter)
-logger.addHandler(fh)
 logger.addHandler(ch)
+
+# File handler (Optional, with fallback)
+try:
+    fh = logging.FileHandler(log_file)
+    fh.setLevel(logging.DEBUG)
+    fh.setFormatter(formatter)
+    logger.addHandler(fh)
+except (PermissionError, OSError) as e:
+    print(f"Warning: Could not create log file at {log_file} due to permissions. Console logging only.")
 
 class TestAgent:
     def __init__(self, 
@@ -68,7 +71,7 @@ class TestAgent:
         self.process = None
         self.action_log = []
         self.last_state = {}
-        self.results = [] # Track (Iteration, Scenario, Status, Message)
+        self.results = [] # Track (Iteration, Index, Scenario, Status, Message)
         logger.info(f"TestAgent initialized with mode: {connection_mode}")
 
     def start_app(self):
@@ -85,7 +88,8 @@ class TestAgent:
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True
+                text=True,
+                cwd=repo_root
             )
             time.sleep(1) # wait for startup
         else:
@@ -233,7 +237,8 @@ class TestAgent:
             logger.info(f"--- Starting Iteration {iteration + 1}/{repeat_count} ---")
             for idx, scenario_func in enumerate(scenarios):
                 scenario_name = scenario_func.__name__
-                logger.info(f"Running Scenario {idx + 1}: {scenario_name}")
+                scenario_idx = getattr(scenario_func, "scenario_index", idx)
+                logger.info(f"Running Scenario [{scenario_idx}]: {scenario_name}")
                 
                 try:
                     self.start_app()
@@ -248,13 +253,13 @@ class TestAgent:
                     # Save normal execution path
                     self._save_repro_steps()
                     logger.info(f"Scenario {scenario_name} completed successfully.")
-                    self.results.append((iteration + 1, scenario_name, "PASS", "Success"))
+                    self.results.append((iteration + 1, scenario_idx, scenario_name, "PASS", "Success"))
                 except Exception as e:
                     # Check if the exception was expected (scenarios can signal this by raising specific errors or returning status)
                     # For now, we'll continue logging errors but scenarios will be updated to catch them.
                     logger.error(f"Scenario {scenario_name} failed with exception: {e}")
                     self.handle_crash(e, scenario_name)
-                    self.results.append((iteration + 1, scenario_name, "FAIL", str(e)))
+                    self.results.append((iteration + 1, scenario_idx, scenario_name, "FAIL", str(e)))
                 finally:
                     self.stop_app()
                     
@@ -264,12 +269,12 @@ class TestAgent:
 
     def print_summary(self):
         """Prints a clear summary table of all test results."""
-        print("\n" + "="*60)
-        print(f"{'ITER':<5} | {'SCENARIO':<30} | {'STATUS':<10}")
-        print("-" * 60)
-        for iter_num, name, status, msg in self.results:
-            print(f"{iter_num:<5} | {name:<30} | {status:<10}")
-        print("="*60 + "\n")
+        print("\n" + "="*70)
+        print(f"{'ITER':<5} | {'ID':<4} | {'SCENARIO':<35} | {'STATUS':<10}")
+        print("-" * 70)
+        for iter_num, s_idx, name, status, msg in self.results:
+            print(f"{iter_num:<5} | {s_idx:<4} | {name:<35} | {status:<10}")
+        print("="*70 + "\n")
 
     def handle_crash(self, exception: Exception, context: str):
         """

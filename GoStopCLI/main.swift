@@ -20,6 +20,7 @@ struct GameStateDump: Codable {
     let deckCards: [Card]
     let outOfPlayCount: Int
     let outOfPlayCards: [Card]
+    let pendingChrysanthemumCard: Card?
 }
 
 class CLIEngine {
@@ -91,6 +92,15 @@ class CLIEngine {
             }
             gameManager.respondToCapture(selectedCard: tableCard)
             return ["status": "action executed", "action": "respond_to_capture"]
+            
+        case "respond_to_chrysanthemum_choice":
+            guard let data = request.data,
+                  let roleStr = data["role"]?.value as? String else {
+                return ["status": "error", "message": "Missing role for respond_to_chrysanthemum_choice"]
+            }
+            let role: CardRole = roleStr == "doublePi" ? .doublePi : .animal
+            gameManager.respondToChrysanthemumChoice(role: role)
+            return ["status": "action executed", "action": "respond_to_chrysanthemum_choice"]
 
         case "set_condition":
             if let data = request.data {
@@ -130,6 +140,10 @@ class CLIEngine {
                      gameManager.players[0].hand = parseCards(mockHand)
                 }
                 
+                if let clearDeck = data["clear_deck"]?.value as? Bool, clearDeck {
+                    _ = gameManager.deck.drainAll()
+                }
+
                 if let mockDeckArr = data["mock_deck"]?.value as? [[String: Any]] {
                     gameManager.mockDeck(cards: parseCards(mockDeckArr))
                 }
@@ -270,7 +284,8 @@ class CLIEngine {
             deckCount: gameManager.deck.cards.count,
             deckCards: gameManager.deck.cards,
             outOfPlayCount: gameManager.outOfPlayCards.count,
-            outOfPlayCards: gameManager.outOfPlayCards
+            outOfPlayCards: gameManager.outOfPlayCards,
+            pendingChrysanthemumCard: gameManager.pendingChrysanthemumCard
         )
         
         guard let data = try? JSONEncoder().encode(dump),
@@ -332,7 +347,8 @@ class CLIEngine {
                 "isGobak": penalty.isGobak,
                 "isMungbak": penalty.isMungbak,
                 "isJabak": penalty.isJabak,
-                "isYeokbak": penalty.isYeokbak
+                "isYeokbak": penalty.isYeokbak,
+                "scoreFormula": penalty.scoreFormula
             ]
 
             if let reason = gameManager.gameEndReason {

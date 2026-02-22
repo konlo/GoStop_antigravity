@@ -149,6 +149,20 @@ class SimulatorBridge {
                     }
                     self.sendSimpleResponse(status: "action executed", action: action, connection: connection)
                 }
+
+            case "respond_to_chrysanthemum_choice":
+                guard let dataDict = json["data"] as? [String: Any],
+                      let roleStr = dataDict["role"] as? String else {
+                    sendErrorResponse(message: "Missing role", connection: connection)
+                    return
+                }
+                
+                let role: CardRole = roleStr == "doublePi" ? .doublePi : .animal
+                
+                DispatchQueue.main.async {
+                    self.gameManager.respondToChrysanthemumChoice(role: role)
+                    self.sendSimpleResponse(status: "action executed", action: action, connection: connection)
+                }
                 
             case "click_restart_button":
                 DispatchQueue.main.async {
@@ -239,6 +253,14 @@ class SimulatorBridge {
                             if let mungddaCount = pData["mungddaCount"] as? Int { p.mungddaCount = mungddaCount }
                             if let bombMungddaCount = pData["bombMungddaCount"] as? Int { p.bombMungddaCount = bombMungddaCount }
                             if let isComputer = pData["isComputer"] as? Bool { p.isComputer = isComputer }
+                            
+                            if let h = pData["hand"] as? [[String: Any]] {
+                                p.hand = self.parseCards(h)
+                            }
+                            if let c = pData["capturedCards"] as? [[String: Any]] {
+                                p.capturedCards = self.parseCards(c)
+                                p.score = ScoringSystem.calculateScore(for: p)
+                            }
                         }
                     }
                     
@@ -282,7 +304,11 @@ class SimulatorBridge {
                 default: type = .junk
                 }
                 let imageIndex = dict["imageIndex"] as? Int ?? 0
-                cards.append(Card(month: month, type: type, imageIndex: imageIndex))
+                var card = Card(month: month, type: type, imageIndex: imageIndex)
+                if let roleStr = dict["selectedRole"] as? String {
+                    card.selectedRole = CardRole(rawValue: roleStr)
+                }
+                cards.append(card)
             }
         }
         return cards
@@ -364,6 +390,12 @@ extension GameManager {
         
         if gameState == .choosingCapture {
             state["pendingCaptureOptions"] = AnyCodable(pendingCaptureOptions)
+        }
+        
+        if gameState == .choosingChrysanthemumRole {
+            if let chrysCard = pendingChrysanthemumCard {
+                state["pendingChrysanthemumCard"] = AnyCodable(chrysCard)
+            }
         }
         
         if gameState == .askingShake {
