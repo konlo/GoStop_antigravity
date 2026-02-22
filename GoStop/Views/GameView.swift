@@ -194,9 +194,61 @@ struct GameView: View {
             goStopOverlay()
         } else if gameManager.gameState == .askingShake {
             shakeOverlay()
+        } else if gameManager.gameState == .choosingCapture {
+            captureChoiceOverlay()
         }
     }
     
+    @ViewBuilder
+    func captureChoiceOverlay() -> some View {
+        ZStack {
+            Color.black.opacity(0.65).ignoresSafeArea()
+            VStack(spacing: 24) {
+                Text("어느 카드를 먹을까요?")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .foregroundStyle(.white)
+                
+                HStack(spacing: 40) {
+                    ForEach(gameManager.pendingCaptureOptions, id: \.id) { option in
+                        Button(action: {
+                            gameManager.respondToCapture(selectedCard: option)
+                        }) {
+                            VStack(spacing: 10) {
+                                // Real hanafuda card image via CardView
+                                CardView(card: option, scale: 1.6)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .stroke(
+                                                option.type == .doubleJunk ? Color.yellow :
+                                                option.type == .bright     ? Color.orange :
+                                                Color.white.opacity(0.4),
+                                                lineWidth: 3
+                                            )
+                                    )
+                                
+                                Text(cardTypeLabel(for: option))
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(cardTypeLabelColor(for: option))
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 4)
+                                    .background(
+                                        Capsule().fill(cardTypeLabelColor(for: option).opacity(0.2))
+                                    )
+                            }
+                        }
+                    }
+                }
+                
+                Text("탭하여 선택하세요")
+                    .font(.footnote)
+                    .foregroundStyle(.white.opacity(0.6))
+            }
+        }
+    }
+
+
     @ViewBuilder
     func shakeOverlay() -> some View {
         if let month = gameManager.pendingShakeMonths.first {
@@ -250,7 +302,7 @@ struct GameView: View {
         let playerName = gameManager.currentPlayer?.name ?? "플레이어"
         let isHuman = !(gameManager.currentPlayer?.isComputer ?? false)
         
-        return ZStack {
+        ZStack {
             Color.black.opacity(0.6).ignoresSafeArea()
             VStack(spacing: 20) {
                 Text(goCountText)
@@ -313,6 +365,27 @@ struct GameView: View {
     }
 
     
+    private func cardTypeLabel(for card: Card) -> String {
+        switch card.type {
+        case .bright:     return "🌟 광 (3pt+)"
+        case .animal:     return "🐦 끗 (+1)"
+        case .ribbon:     return "🎀 띠 (+1)"
+        case .doubleJunk: return "⭐️ 쌍피 (+2)"
+        case .junk:       return "피 (+1)"
+        default:          return card.type.rawValue
+        }
+    }
+    
+    private func cardTypeLabelColor(for card: Card) -> Color {
+        switch card.type {
+        case .bright:     return .orange
+        case .animal:     return .cyan
+        case .ribbon:     return .pink
+        case .doubleJunk: return .yellow
+        default:          return .white.opacity(0.9)
+        }
+    }
+
     func colorBackgroundOverlay(text: String, action: @escaping () -> Void) -> some View {
         ZStack {
             Color.black.opacity(0.4).ignoresSafeArea()

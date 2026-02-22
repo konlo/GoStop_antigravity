@@ -22,12 +22,12 @@ enum CardType: String, Equatable, Codable, CaseIterable {
 
 /// Represents a single Hwatu card
 struct Card: Identifiable, Equatable, CustomStringConvertible, Codable {
-    let id: UUID
+    let id: String
     let month: Month
     let type: CardType
     let imageIndex: Int
     
-    init(id: UUID = UUID(), month: Month, type: CardType, imageIndex: Int) {
+    init(id: String = UUID().uuidString, month: Month, type: CardType, imageIndex: Int) {
         self.id = id
         self.month = month
         self.type = type
@@ -35,7 +35,7 @@ struct Card: Identifiable, Equatable, CustomStringConvertible, Codable {
     }
     
     static func == (lhs: Card, rhs: Card) -> Bool {
-        return lhs.month == rhs.month && lhs.type == rhs.type && lhs.imageIndex == rhs.imageIndex
+        return lhs.id == rhs.id
     }
     
     var isBird: Bool {
@@ -50,7 +50,7 @@ struct Card: Identifiable, Equatable, CustomStringConvertible, Codable {
     
     func serialize() -> [String: Any] {
         return [
-            "id": id.uuidString,
+            "id": id,
             "month": month.rawValue,
             "type": type.rawValue,
             "imageIndex": imageIndex

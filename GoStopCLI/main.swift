@@ -81,6 +81,17 @@ class CLIEngine {
             gameManager.respondToShake(month: monthIdx, didShake: didShake)
             return ["status": "action executed", "action": "respond_to_shake"]
 
+        case "respond_to_capture":
+            guard let data = request.data,
+                  let cardId = data["id"]?.value as? String else {
+                return ["status": "error", "message": "Missing id for respond_to_capture"]
+            }
+            guard let tableCard = gameManager.tableCards.first(where: { $0.id == cardId }) else {
+                return ["status": "error", "message": "Card with ID \(cardId) not found on table"]
+            }
+            gameManager.respondToCapture(selectedCard: tableCard)
+            return ["status": "action executed", "action": "respond_to_capture"]
+
         case "set_condition":
             if let data = request.data {
                 if let scenario = data["mock_scenario"]?.value as? String, scenario == "game_over" {
@@ -141,6 +152,9 @@ class CLIEngine {
                         if let captured = pData["capturedCards"] as? [[String: Any]] {
                             p.capturedCards = self.parseCards(captured)
                         }
+                        if let hand = pData["hand"] as? [[String: Any]] {
+                            p.hand = self.parseCards(hand)
+                        }
                         if let sweepCount = pData["sweepCount"] as? Int { p.sweepCount = sweepCount }
                         if let ttadakCount = pData["ttadakCount"] as? Int { p.ttadakCount = ttadakCount }
                         if let jjokCount = pData["jjokCount"] as? Int { p.jjokCount = jjokCount }
@@ -169,6 +183,9 @@ class CLIEngine {
                         }
                     }
                 }
+                if let mockEndReason = data["mock_gameEndReason"]?.value as? String {
+                    gameManager.gameEndReason = GameEndReason(rawValue: mockEndReason)
+                }
             }
             return ["status": "ok", "message": "Condition set"]
             
@@ -195,6 +212,28 @@ class CLIEngine {
             
         case "invalid_action_triggering_crash":
             fatalError("Simulated App Crash for Testing")
+            
+        case "debug_test_dec_bug":
+            gameManager.setupGame(seed: 42)
+            gameManager.players[1].isComputer = true
+            gameManager.tableCards = [
+                Card(month: .dec, type: .bright, imageIndex: 0),
+                Card(month: .dec, type: .doubleJunk, imageIndex: 3)
+            ]
+            let pCard = Card(month: .dec, type: .animal, imageIndex: 1)
+            gameManager.players[1].hand = [pCard]
+            gameManager.mockDeck(cards: [Card(month: .may, type: .junk, imageIndex: 0)])
+            gameManager.currentTurnIndex = 1
+            gameManager.gameState = .playing
+            
+            gLog("DEBUG START: Table: \(gameManager.tableCards.map{$0.type})")
+            
+            gameManager.playTurn(card: pCard)
+            
+            gLog("DEBUG AFTER PLAY: Table: \(gameManager.tableCards.map{$0.type})")
+            gLog("DEBUG CAPTURED: \(gameManager.players[1].capturedCards.map{$0.type})")
+            
+            return ["status": "action executed", "action": request.action]
             
         default:
             return ["status": "action executed", "action": request.action]
@@ -252,6 +291,19 @@ class CLIEngine {
         }
         
         dict["eventLogs"] = gameManager.eventLogs
+        
+        if let playedCard = gameManager.pendingCapturePlayedCard,
+           let cardData = try? JSONEncoder().encode(playedCard),
+           let dictVal = try? JSONSerialization.jsonObject(with: cardData) {
+            dict["pendingCapturePlayedCard"] = dictVal
+        }
+        
+        if gameManager.gameState == .choosingCapture {
+            if let optionsData = try? JSONEncoder().encode(gameManager.pendingCaptureOptions),
+               let optionsArray = try? JSONSerialization.jsonObject(with: optionsData) as? [[String: Any]] {
+                dict["pendingCaptureOptions"] = optionsArray
+            }
+        }
         
         // Inject pending shakes if in askingShake state
         if gameManager.gameState == .askingShake {

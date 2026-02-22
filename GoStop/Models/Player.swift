@@ -16,6 +16,7 @@ class Player: ObservableObject, Identifiable, Codable {
     @Published var ttadakCount: Int = 0
     @Published var jjokCount: Int = 0
     @Published var seolsaCount: Int = 0
+    @Published var seolsaEatCount: Int = 0
     @Published var isPiMungbak: Bool = false
     @Published var mungddaCount: Int = 0
     @Published var bombMungddaCount: Int = 0
@@ -23,7 +24,7 @@ class Player: ObservableObject, Identifiable, Codable {
     @Published var dummyCardCount: Int = 0
     
     enum CodingKeys: String, CodingKey {
-        case id, name, hand, capturedCards, score, money, goCount, lastGoScore, shakeCount, shakenMonths, bombCount, sweepCount, ttadakCount, jjokCount, seolsaCount, isPiMungbak, mungddaCount, bombMungddaCount, isComputer, dummyCardCount
+        case id, name, hand, capturedCards, score, money, goCount, lastGoScore, shakeCount, shakenMonths, bombCount, sweepCount, ttadakCount, jjokCount, seolsaCount, seolsaEatCount, isPiMungbak, mungddaCount, bombMungddaCount, isComputer, dummyCardCount
     }
     
     required init(from decoder: Decoder) throws {
@@ -43,6 +44,7 @@ class Player: ObservableObject, Identifiable, Codable {
         ttadakCount = try container.decode(Int.self, forKey: .ttadakCount)
         jjokCount = try container.decode(Int.self, forKey: .jjokCount)
         seolsaCount = try container.decode(Int.self, forKey: .seolsaCount)
+        seolsaEatCount = try container.decodeIfPresent(Int.self, forKey: .seolsaEatCount) ?? 0
         isPiMungbak = try container.decode(Bool.self, forKey: .isPiMungbak)
         mungddaCount = try container.decode(Int.self, forKey: .mungddaCount)
         bombMungddaCount = try container.decode(Int.self, forKey: .bombMungddaCount)
@@ -67,6 +69,7 @@ class Player: ObservableObject, Identifiable, Codable {
         try container.encode(ttadakCount, forKey: .ttadakCount)
         try container.encode(jjokCount, forKey: .jjokCount)
         try container.encode(seolsaCount, forKey: .seolsaCount)
+        try container.encode(seolsaEatCount, forKey: .seolsaEatCount)
         try container.encode(isPiMungbak, forKey: .isPiMungbak)
         try container.encode(mungddaCount, forKey: .mungddaCount)
         try container.encode(bombMungddaCount, forKey: .bombMungddaCount)
@@ -93,6 +96,7 @@ class Player: ObservableObject, Identifiable, Codable {
         ttadakCount = 0
         jjokCount = 0
         seolsaCount = 0
+        seolsaEatCount = 0
         isPiMungbak = false
         mungddaCount = 0
         bombMungddaCount = 0
@@ -145,6 +149,7 @@ class Player: ObservableObject, Identifiable, Codable {
             "ttadakCount": ttadakCount,
             "jjokCount": jjokCount,
             "seolsaCount": seolsaCount,
+            "seolsaEatCount": seolsaEatCount,
             "isPiMungbak": isPiMungbak,
             "mungddaCount": mungddaCount,
             "bombMungddaCount": bombMungddaCount,

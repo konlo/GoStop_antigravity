@@ -56,7 +56,7 @@ class PlayerHandSlotManager: ObservableObject {
         }
         
         // Snapshot current card locations
-        var existingCards: [UUID: Int] = [:] // CardID -> SlotIndex
+        var existingCards: [String: Int] = [:] // CardID -> SlotIndex
         
         for (idx, state) in slots {
             if let c = state.card {

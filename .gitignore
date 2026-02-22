@@ -9,3 +9,9 @@ tests/test_agent/artifacts/
 build_log*.txt
 build_test_cli/
 build_v*/
+build_debug_tmp/
+build_tmp/
+test_artifacts/
+build_error_cli*.txt
+*.swift.tmp
+

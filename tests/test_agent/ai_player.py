@@ -10,6 +10,7 @@ from main import TestAgent, logger, artifacts_dir
 
 class AIPlayer(TestAgent):
     def __init__(self, **kwargs):
+        self.debug_level = kwargs.pop("debug_level", "normal")
         super().__init__(**kwargs)
         self.max_go_count = 4 # Target go count (can be 4 or 5)
         self.paused = False
@@ -35,6 +36,12 @@ class AIPlayer(TestAgent):
         
         add_cards(state.get('tableCards', []), 'Table')
         add_cards(state.get('outOfPlayCards', []), 'OutOfPlay')
+        
+        if 'pendingCapturePlayedCard' in state and state['pendingCapturePlayedCard']:
+            add_cards([state['pendingCapturePlayedCard']], 'PendingPlayed')
+        
+        if 'pendingCaptureDrawnCard' in state and state['pendingCaptureDrawnCard']:
+            add_cards([state['pendingCaptureDrawnCard']], 'PendingDrawn')
         
         # Check if full deck is exposed
         if 'deck' in state and isinstance(state['deck'], dict):
@@ -63,6 +70,51 @@ class AIPlayer(TestAgent):
         if duplicates:
             logger.error(f"DUPLICATE CARDS DETECTED: {duplicates}")
             self.report_error(duplicates)
+
+    def validate_monthly_pair_integrity(self, state):
+        """Validates that for EVERY month (1-12), exactly 4 cards exist across all areas."""
+        if state.get("gameState", "ready") in ["ready"]:
+            return # Skip if game hasn't started
+            
+        all_cards = []
+        
+        def add_cards(cards):
+            for c in cards:
+                if isinstance(c, dict):
+                    all_cards.append(c)
+                    
+        add_cards(state.get('tableCards', []))
+        add_cards(state.get('outOfPlayCards', []))
+        
+        if 'pendingCapturePlayedCard' in state and state['pendingCapturePlayedCard']:
+            add_cards([state['pendingCapturePlayedCard']])
+        
+        if 'pendingCaptureDrawnCard' in state and state['pendingCaptureDrawnCard']:
+            add_cards([state['pendingCaptureDrawnCard']])
+        
+        if 'deck' in state and isinstance(state['deck'], dict):
+            add_cards(state['deck'].get('cards', []))
+        elif 'deckCards' in state:
+            add_cards(state.get('deckCards', []))
+            
+        for p in state.get('players', []):
+            add_cards(p.get('hand', []))
+            add_cards(p.get('capturedCards', []))
+            
+        month_counts = {}
+        for c in all_cards:
+            m = c.get('month')
+            if m is not None and m != 0: # Ignore dummy cards (month 0)
+                month_counts[m] = month_counts.get(m, 0) + 1
+                
+        for m in range(1, 13):
+            count = month_counts.get(m, 0)
+            if count != 4:
+                raise ValueError(f"Monthly integrity violation! Month {m} has {count} cards (Expected 4). Total valid cards checked: {len(all_cards)}")
+                
+        base_cards_count = sum(month_counts.values())
+        if base_cards_count != 48:
+            raise ValueError(f"Total base cards={base_cards_count} (Expected 48). Monthly pair integrity failed!")
 
     def validate_game_results(self):
         """Validates the game outcome against rules and endgame parameters."""
@@ -142,6 +194,13 @@ class AIPlayer(TestAgent):
         lines.append(f"TABLE CARDS ({len(table_cards)}):")
         for i, card in enumerate(table_cards):
             lines.append(f"  {i+1:>2}. {self.format_card(card)}")
+        
+        # Pending Choice Cards
+        if state.get('pendingCapturePlayedCard'):
+            lines.append(f"PENDING PLAYED CARD: {self.format_card(state['pendingCapturePlayedCard'])}")
+        if state.get('pendingCaptureDrawnCard'):
+            lines.append(f"PENDING DRAWN CARD : {self.format_card(state['pendingCaptureDrawnCard'])}")
+        
         lines.append("-" * 50)
         
         # Players
@@ -263,6 +322,17 @@ class AIPlayer(TestAgent):
                 self.record_state(state_resp)
                 self.check_duplicate_cards(state_resp)
                 
+                if self.debug_level == "high":
+                    try:
+                        self.validate_monthly_pair_integrity(state_resp)
+                        logger.debug("Play Tracing: Month-pair validation passed.")
+                    except ValueError as e:
+                        error_msg = f"Play Tracing Error: {str(e)}"
+                        logger.error(error_msg)
+                        self.report_error([error_msg])
+                        import sys
+                        sys.exit(1)
+                
                 game_state = state_resp.get("gameState")
                 current_turn = state_resp.get("currentTurnIndex", 0)
                 players = state_resp.get("players", [])
@@ -308,6 +378,20 @@ class AIPlayer(TestAgent):
                     logger.info(f"Player {current_turn} ({player['name']}) GoCount: {go_count}. [RANDOM] Decision: {'GO' if is_go else 'STOP'}")
                     self.send_user_action("respond_go_stop", {"isGo": is_go})
 
+                elif game_state == "choosingCapture":
+                    # When multiple cards of the same month are on the table, the user must choose one to capture
+                    options = state_resp.get("pendingCaptureOptions", [])
+                    if options:
+                        # Auto-select the first option for the bot
+                        chosen_card = options[0]
+                        logger.info(f"Capture Choice required. Auto-selecting: M{chosen_card.get('month')} {chosen_card.get('type')}")
+                        self.send_user_action("respond_to_capture", {
+                            "id": chosen_card.get("id")
+                        })
+                    else:
+                        logger.warning("In choosingCapture state but no pendingCaptureOptions found.")
+                        time.sleep(1)
+
                 elif game_state == "askingShake":
                     pending = state_resp.get("pendingShakeMonths", [])
                     if pending:
@@ -349,8 +433,13 @@ class AIPlayer(TestAgent):
                 time.sleep(2)
 
 if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--debug_level", type=str, default="normal", help="Set to 'high' to enable play tracing and month-pair validation.")
+    args = parser.parse_args()
+
     # In socket mode, we don't need app_executable_path
-    ai = AIPlayer(connection_mode="socket")
+    ai = AIPlayer(connection_mode="socket", debug_level=args.debug_level)
     # You can set max_go_count to 4 or 5
     ai.max_go_count = 4 
     ai.run_continuous_simulation()

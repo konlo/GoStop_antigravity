@@ -51,11 +51,25 @@ struct CardView: View {
         .shadow(color: Color.black.opacity(shadowOpacity), radius: shadowRadius, x: 0, y: shadowY)
     }
     
+    @ViewBuilder
     var frontView: some View {
-        Image("\(config.layout.images.prefix)\(card.month)_\(card.imageIndex)")
-            .resizable()
-            .scaledToFit()
-            .background(Color.white)
+        if card.month == .none {
+            // Dummy (도탄) card – no image asset exists for month .none
+            ZStack {
+                Color.gray.opacity(0.25)
+                VStack(spacing: 2) {
+                    Text("도탄")
+                        .font(.caption2)
+                        .fontWeight(.bold)
+                        .foregroundStyle(.gray)
+                }
+            }
+        } else {
+            Image("\(config.layout.images.prefix)\(card.month)_\(card.imageIndex)")
+                .resizable()
+                .scaledToFit()
+                .background(Color.white)
+        }
     }
     
     func backView(size: CGSize) -> some View {

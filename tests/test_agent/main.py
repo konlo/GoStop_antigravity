@@ -1,3 +1,4 @@
+print("Main script starting...")
 import json
 import logging
 import os
@@ -8,13 +9,20 @@ import traceback
 from datetime import datetime
 
 # Configure Artifact Directories
-artifacts_dir = "artifacts"
+script_dir = os.path.dirname(os.path.abspath(__file__))
+repo_root = os.path.abspath(os.path.join(script_dir, "../../"))
+artifacts_dir = os.path.join(repo_root, "test_artifacts") # Use test_artifacts to avoid permission issues
 log_dir = os.path.join(artifacts_dir, "logs")
 crash_dir = os.path.join(artifacts_dir, "crash_dumps")
 snapshot_dir = os.path.join(artifacts_dir, "state_snapshots")
 
 for d in [artifacts_dir, log_dir, crash_dir, snapshot_dir]:
-    os.makedirs(d, exist_ok=True)
+    if not os.path.isdir(d):
+        try:
+            os.makedirs(d, exist_ok=True)
+        except OSError:
+            if not os.path.isdir(d):
+                pass # Silently continue if we can't create it, logger might just fail later
 
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 log_file = os.path.join(log_dir, f"test_agent_{timestamp}.log")

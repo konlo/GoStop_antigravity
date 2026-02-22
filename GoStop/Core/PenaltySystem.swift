@@ -134,16 +134,13 @@ struct PenaltySystem {
         }
         
         // 5. Shake Multiplier (흔들기) - Additive per user request
-        if winner.shakeCount > 0 {
-            multiplier *= (1 + winner.shakeCount)
+        // 6. Shake & Bomb Multiplier (폭탄 & 흔듦)
+        // Rule: Both bombs and shakes count towards the same additive multiplier.
+        // Formula: (1 + totalShakeBombCount)
+        let totalShakeBomb = winner.shakeCount + winner.bombCount
+        if totalShakeBomb > 0 {
+            multiplier *= (1 + totalShakeBomb)
         }
-        
-        // 6. Bomb Multiplier (폭탄) - Removed (Bomb inherently triggers Stake 2x effect)
-        /*
-        if winner.bombCount > 0 {
-            multiplier *= Int(pow(2.0, Double(winner.bombCount)))
-        }
-        */
         
         // 7. Sweep Multiplier (싹쓸이) - Removed as per user request (not a standard rule)
         /*
@@ -202,7 +199,8 @@ struct PenaltySystem {
             if isPibak { multParts.append("Pibak(x\(rules.penalties.pibak.multiplier))") }
             if isMungbak { multParts.append("Mungbak(x\(rules.penalties.mungbak.multiplier))") }
             if isGobak { multParts.append("Gobak(x\(rules.penalties.gobak.multiplier))") }
-            if winner.shakeCount > 0 { multParts.append("Shake/Bomb(x\(1 + winner.shakeCount))") }
+            let totalShakeBomb = winner.shakeCount + winner.bombCount
+            if totalShakeBomb > 0 { multParts.append("Shake/Bomb(x\(1 + totalShakeBomb))") }
             // Bomb multiplier removed as per user request (integrated into Shake)
             // Sweep multiplier removed as per user request
             if winner.mungddaCount > 0 { multParts.append("Mungdda - REMOVED") }

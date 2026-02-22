@@ -5,6 +5,7 @@ enum GameState: String, Codable {
     case askingShake
     case playing
     case askingGoStop
+    case choosingCapture  // Waiting for player to pick which table card to capture (junk vs doubleJunk)
     case ended
 }
 
@@ -44,6 +45,16 @@ class GameManager: ObservableObject {
     
     // For Seolsa (뻑/설사) tracking
     @Published var monthOwners: [Int: Player] = [:]
+    @Published var seolsaMonths: [Int: Player] = [:] // Tracks which months are in a "뻑" state and who made it
+    
+    // For capture card selection (테이블 2장 중 선택)
+    @Published var pendingCapturePlayedCard: Card? = nil
+    @Published var pendingCaptureDrawnCard: Card? = nil
+    @Published var pendingCaptureOptions: [Card] = []
+    
+    // Captured flags for current turn processing
+    private var isSeolsaEatFlag = false
+    private var isSelfSeolsaEatFlag = false
     
     // Endgame state tracking
     @Published var gameEndReason: GameEndReason?
@@ -89,6 +100,11 @@ class GameManager: ObservableObject {
         self.chongtongTiming = nil
         self.eventLogs = []
         self.deck.reset(seed: seed)
+        self.monthOwners = [:]          // ← 이전 게임 뻑 추적 초기화
+        self.seolsaMonths = [:]         // ← 뻑 상태 월 초기화
+        self.eventLogs = []             // ← 로그 초기화
+        self.pendingCapturePlayedCard = nil
+        self.pendingCaptureOptions = []
         self.gameState = .ready      // Reset state BEFORE dealing; dealCards may override to .ended if Chongtong
         self.dealCards()
     }
@@ -101,6 +117,20 @@ class GameManager: ObservableObject {
         }
         tableCards = deck.draw(count: 8)
         
+        // Initial Table 4-card Nagari check
+        var tableMonthCounts: [Int: Int] = [:]
+        for card in tableCards {
+            tableMonthCounts[card.month.rawValue, default: 0] += 1
+        }
+        
+        if let monthIdx = tableMonthCounts.first(where: { $0.value == 4 })?.key {
+            let month = Month(rawValue: monthIdx) ?? .none
+            gLog("Initial Table Nagari (4 cards of month \(month)) detected!")
+            self.gameState = .ended
+            self.gameEndReason = .nagari
+            return
+        }
+
         // Initial Chongtong check
         if let rules = RuleLoader.shared.config, rules.special_moves.chongtong.enabled {
             for player in players {
@@ -206,7 +236,136 @@ class GameManager: ObservableObject {
         }
     }
     
-    // Game Loop Logic
+    /// Called when the user selects which of the 2 table cards (of same month, different type) to capture.
+    func respondToCapture(selectedCard: Card) {
+        guard gameState == .choosingCapture,
+              let player = currentPlayer else { return }
+        
+        let playedCard = pendingCapturePlayedCard
+        let drawnCard = pendingCaptureDrawnCard
+        
+        gLog("\(player.name) chose \(selectedCard.type) for month \(selectedCard.month) capture")
+        
+        // Remove the chosen card from the table
+        if let idx = tableCards.firstIndex(where: { $0.id == selectedCard.id }) {
+            tableCards.remove(at: idx)
+        }
+        
+        // Identify which phase we are resuming from
+        let triggerCard = playedCard ?? drawnCard
+        guard let pCard = triggerCard else {
+            gLog("ERROR: respondToCapture called but no trigger card found.")
+            return
+        }
+        
+        // Capture: trigger card + chosen table card
+        let captured = [pCard, selectedCard]
+        player.capture(cards: captured)
+        player.score = ScoringSystem.calculateScore(for: player)
+        monthOwners.removeValue(forKey: selectedCard.month.rawValue)
+        
+        gLog("\(player.name) captured \(captured.count) cards (choice). Total: \(player.capturedCards.count)")
+        
+        // Clear pending states
+        pendingCapturePlayedCard = nil
+        pendingCaptureDrawnCard = nil
+        pendingCaptureOptions = []
+        gameState = .playing
+        
+        let opponentIndex = (currentTurnIndex + 1) % players.count
+        let opponent = players[opponentIndex]
+        guard let rules = RuleLoader.shared.config else {
+            endTurn()
+            return
+        }
+
+        // If this was a PLAY choice, we MUST continue to the DRAW phase
+        if playedCard != nil {
+            var drawPhaseCaptured: [Card] = []
+            var isSeolsa = false
+            if let drawn = deck.draw() {
+                gLog("Drawn after play-choice: \(drawn.month) (\(drawn.type))")
+                
+                // Seolsa (뻑) creation check:
+                if captured[0].month == drawn.month {
+                    isSeolsa = true
+                    gLog("SEOLSA (뻑) via choice! Play match followed by draw match for month \(drawn.month)")
+                    
+                    // VOID the capture: put them back on table, plus the drawn card
+                    tableCards.append(contentsOf: captured)
+                    tableCards.append(drawn)
+                    player.capturedCards.removeAll { c in captured.contains(where: { $0.id == c.id }) }
+                } else {
+                    if let dCaptured = performTableCapture(for: drawn, on: &tableCards, player: player) {
+                        drawPhaseCaptured = dCaptured
+                        if !drawPhaseCaptured.isEmpty {
+                            player.capture(cards: drawPhaseCaptured)
+                            for c in drawPhaseCaptured {
+                                monthOwners.removeValue(forKey: c.month.rawValue)
+                                seolsaMonths.removeValue(forKey: c.month.rawValue)
+                            }
+                        } else {
+                            monthOwners[drawn.month.rawValue] = player
+                        }
+                    } else {
+                        // Choice needed for Draw Phase too!
+                        gLog("Secondary choice needed for Draw Phase!")
+                        pendingCaptureDrawnCard = drawn
+                        pendingCaptureOptions = tableCards.filter { $0.month == drawn.month }
+                        gameState = .choosingCapture
+                        player.score = ScoringSystem.calculateScore(for: player)
+                        return // Wait again
+                    }
+                }
+            }
+            // Standard Steal/Sweep/End logic for Play choices
+            finalizeTurn(player: player, opponent: opponent, rules: rules, isSeolsa: isSeolsa, capturedForSeolsa: captured)
+        } else {
+            // If this was a DRAW choice, we just finalize the turn
+            finalizeTurn(player: player, opponent: opponent, rules: rules, isSeolsa: false, capturedForSeolsa: [])
+        }
+    }
+
+    private func finalizeTurn(player: Player, opponent: Player, rules: RuleConfig, isSeolsa: Bool, capturedForSeolsa: [Card]) {
+        player.score = ScoringSystem.calculateScore(for: player)
+        
+        if rules.special_moves.seolsa.enabled && isSeolsa {
+            player.seolsaCount += 1
+            stealPi(from: player, to: opponent, count: rules.special_moves.seolsa.penalty_pi_count, reason: "뻑(Seolsa) 패널티")
+            seolsaMonths[capturedForSeolsa[0].month.rawValue] = player
+        }
+        
+        // Seolsa Eat flags (set by performTableCapture)
+        if isSeolsaEatFlag && rules.special_moves.seolsaEat.enabled {
+            player.seolsaEatCount += 1
+            stealPi(from: opponent, to: player, count: rules.special_moves.seolsaEat.steal_pi_count, reason: "뻑 먹기(Seolsa Eat)")
+        }
+        if isSelfSeolsaEatFlag && rules.special_moves.seolsaEat.enabled {
+            player.seolsaEatCount += 1
+            stealPi(from: opponent, to: player, count: rules.special_moves.seolsaEat.self_eat_steal_pi_count, reason: "자뻑(Self Seolsa Eat)")
+        }
+        
+        // Sweep check
+        if rules.special_moves.sweep.enabled && tableCards.isEmpty && !player.hand.isEmpty {
+            gLog("\(player.name) swept the table (싹쓸이)!")
+            player.sweepCount += 1
+            stealPi(from: opponent, to: player, count: rules.special_moves.sweep.steal_pi_count, reason: "싹쓸이")
+        }
+        
+        if checkEndgameConditions(player: player, opponent: opponent, rules: rules) { return }
+        
+        let minScore = rules.go_stop.min_score_2_players
+        if player.score >= minScore && player.score > player.lastGoScore {
+            if player.hand.isEmpty {
+                executeStop(player: player, rules: rules)
+            } else {
+                gameState = .askingGoStop
+            }
+        } else {
+            endTurn()
+        }
+    }
+    
     func playTurn(card: Card) {
         guard gameState == .playing, let player = currentPlayer else { 
             gLog("playTurn aborted: gameState \(gameState), player \(currentPlayer?.name ?? "unknown")")
@@ -246,26 +405,16 @@ class GameManager: ObservableObject {
         
         let tableWasNotEmpty = !tableCards.isEmpty
         
-        // Helper to perform a capture on table
-        func performTableCapture(for monthCard: Card, on table: inout [Card]) -> [Card] {
+        // Helper: does the play phase need player capture choice?
+        func needsCaptureChoice(for monthCard: Card, in table: [Card]) -> Bool {
             let m = table.filter { $0.month == monthCard.month }
-            if m.isEmpty {
-                table.append(monthCard)
-                return []
-            } else if m.count == 3 {
-                let allFour = [monthCard] + m
-                table.removeAll { $0.month == monthCard.month }
-                gLog("CHOK! Captured all 4 of month \(monthCard.month)")
-                return allFour
-            } else {
-                if let target = m.first, let idx = table.firstIndex(of: target) {
-                    table.remove(at: idx)
-                    return [monthCard, target]
-                }
-                table.append(monthCard)
-                return []
-            }
+            return m.count == 2 && m[0].type != m[1].type
         }
+
+        // Reset flags
+        isSeolsaEatFlag = false
+        isSelfSeolsaEatFlag = false
+
         
         // 1. Play Card Phase
         if let rules = RuleLoader.shared.config, rules.special_moves.bomb.enabled,
@@ -299,7 +448,24 @@ class GameManager: ObservableObject {
             // Draw Phase
             if let drawnCard = deck.draw() {
                 gLog("Bomb Draw: \(drawnCard.month) (\(drawnCard.type))")
-                drawPhaseCaptured = performTableCapture(for: drawnCard, on: &tableCards)
+                if let captured = performTableCapture(for: drawnCard, on: &tableCards, player: player) {
+                    drawPhaseCaptured = captured
+                } else {
+                    // Human choice needed during Bomb draw
+                    let options = tableCards.filter { $0.month == drawnCard.month }
+                    gLog("Player must choose which card to capture for BOMB drawn month \(drawnCard.month). Options: \(options.map { $0.type })")
+                    pendingCaptureDrawnCard = drawnCard
+                    pendingCaptureOptions = options
+                    gameState = .choosingCapture
+                    
+                    // Capture playPhaseCaptured cards (bomb cards + table match) before pausing
+                    if !playPhaseCaptured.isEmpty {
+                        player.capture(cards: playPhaseCaptured)
+                        player.score = ScoringSystem.calculateScore(for: player)
+                        gLog("\(player.name) captured \(playPhaseCaptured.count) (bomb play phase) before pausing for bomb draw choice.")
+                    }
+                    return // Pause
+                }
             }
             
             // Finalize Bomb captures
@@ -314,13 +480,12 @@ class GameManager: ObservableObject {
             }
 
             // Sweep check for Bomb path (싹쓸이 via Bomb)
-            // Only count if player still has cards left (not a natural game-end empty)
             let opponentIndexForBomb = (currentTurnIndex + 1) % players.count
             let opponentForBomb = players[opponentIndexForBomb]
             if rules.special_moves.sweep.enabled && tableWasNotEmpty && tableCards.isEmpty && !player.hand.isEmpty {
                 gLog("\(player.name) swept the table via BOMB (싹쓸이)!")
                 player.sweepCount += 1
-                stealPi(from: opponentForBomb, to: player, count: rules.special_moves.sweep.steal_pi_count)
+                stealPi(from: opponentForBomb, to: player, count: rules.special_moves.sweep.steal_pi_count, reason: "싹쓸이 via 폭탄")
             }
         } else {
             if card.type == .dummy {
@@ -338,18 +503,30 @@ class GameManager: ObservableObject {
                 if let pCard = player.play(card: card) {
                     playedCard = pCard
                     if let owner = monthOwners[pCard.month.rawValue], owner.id != player.id {
-                        isSeolsa = true 
-                        gLog("Seolsa (뻑) match check triggered for month \(pCard.month)")
+                        // This identifies a candidate for Seolsa (following someone else's card)
+                        gLog("Seolsa candidate: \(player.name) may follow \(owner.name)'s missed card for month \(pCard.month)")
                     }
-                    playPhaseCaptured = performTableCapture(for: pCard, on: &tableCards)
-                    if playPhaseCaptured.isEmpty {
-                        // Card went to table (no capture) – record who left it there
-                        monthOwners[pCard.month.rawValue] = player
+                    
+                    if let captured = performTableCapture(for: pCard, on: &tableCards, player: player) {
+                        playPhaseCaptured = captured
+                        if playPhaseCaptured.isEmpty {
+                            // Card went to table (no capture) – record who left it there
+                            monthOwners[pCard.month.rawValue] = player
+                        } else {
+                            // Capture happened – clear the monthOwners chain for this month
+                            monthOwners.removeValue(forKey: pCard.month.rawValue)
+                        }
                     } else {
-                        // Capture happened – clear the monthOwners chain for this month
-                        monthOwners.removeValue(forKey: pCard.month.rawValue)
+                        // Human player must choose - pause turn
+                        let options = tableCards.filter { $0.month == pCard.month }
+                        gLog("Player must choose which card to capture for month \(pCard.month). Options: \(options.map { $0.type })")
+                        pendingCapturePlayedCard = pCard
+                        pendingCaptureOptions = options
+                        gameState = .choosingCapture
+                        return  // Pause - will resume via respondToCapture()
                     }
-                } else {
+                }
+ else {
                     gLog("ERROR: Card NOT found in hand! Card: \(card.month) \(card.type)")
                     endTurn()
                     return
@@ -360,24 +537,55 @@ class GameManager: ObservableObject {
         // 2. Draw Phase (skip for bomb - it already drew; skip for dummy - no draw)
         if !isBomb, let drawnCard = deck.draw() {
             gLog("Drawn: \(drawnCard.month) (\(drawnCard.type))")
-            drawPhaseCaptured = performTableCapture(for: drawnCard, on: &tableCards)
             
-            if !drawPhaseCaptured.isEmpty {
-                // Ttadak (따닥): play phase also captured AND draw phase captured 3+ (all of a month)
-                if !playPhaseCaptured.isEmpty && drawPhaseCaptured.count >= 3 {
-                    isTtadak = true
-                }
-                // Jjok (쪽): play phase had NO capture, but draw phase DID capture the played card back
-                if playPhaseCaptured.isEmpty, let pCard = playedCard,
-                   drawPhaseCaptured.contains(where: { $0.month == pCard.month }) {
-                    isJjok = true
-                }
-                // Clear monthOwners for draw-phase captured months (vein resolved)
-                for captured in drawPhaseCaptured {
-                    monthOwners.removeValue(forKey: captured.month.rawValue)
-                }
+            // Seolsa (뻑) creation check:
+            // Condition: play phase captured 2 cards (matched 1 on floor), and drawn card is same month.
+            if !playPhaseCaptured.isEmpty && playPhaseCaptured.count == 2 && playPhaseCaptured[0].month == drawnCard.month {
+                isSeolsa = true
+                gLog("SEOLSA (뻑)! Play match followed by draw match for month \(drawnCard.month)")
+                
+                // VOID the play capture: put them back on table, plus the drawn card
+                tableCards.append(contentsOf: playPhaseCaptured)
+                tableCards.append(drawnCard)
+                playPhaseCaptured = []
+                drawPhaseCaptured = []
             } else {
-                monthOwners[drawnCard.month.rawValue] = player
+                if let captured = performTableCapture(for: drawnCard, on: &tableCards, player: player) {
+                    drawPhaseCaptured = captured
+                    if !drawPhaseCaptured.isEmpty {
+                        // Ttadak (따닥): play phase also captured AND draw phase captured (any match)
+                        if !playPhaseCaptured.isEmpty && drawPhaseCaptured.count >= 2 {
+                            isTtadak = true
+                        }
+                        // Jjok (쪽): play phase had NO capture, but draw phase DID capture the played card back
+                        if playPhaseCaptured.isEmpty, let pCard = playedCard,
+                           drawPhaseCaptured.contains(where: { $0.month == pCard.month }) {
+                            isJjok = true
+                        }
+                        // Clear monthOwners/seolsaMonths for draw-phase captured months
+                        for captured in drawPhaseCaptured {
+                            monthOwners.removeValue(forKey: captured.month.rawValue)
+                            seolsaMonths.removeValue(forKey: captured.month.rawValue)
+                        }
+                    } else {
+                        monthOwners[drawnCard.month.rawValue] = player
+                    }
+                } else {
+                    // Human player must choose for DRAW phase - pause turn
+                    let options = tableCards.filter { $0.month == drawnCard.month }
+                    gLog("Player must choose which card to capture for drawn month \(drawnCard.month). Options: \(options.map { $0.type })")
+                    pendingCaptureDrawnCard = drawnCard
+                    pendingCaptureOptions = options
+                    gameState = .choosingCapture
+                    
+                    // We must capture the playPhaseCaptured cards now before pausing
+                    if !playPhaseCaptured.isEmpty {
+                        player.capture(cards: playPhaseCaptured)
+                        player.score = ScoringSystem.calculateScore(for: player)
+                        gLog("\(player.name) captured \(playPhaseCaptured.count) (play phase) before pausing for draw choice.")
+                    }
+                    return // Pause - will resume via respondToCapture()
+                }
             }
         }
         
@@ -395,22 +603,33 @@ class GameManager: ObservableObject {
         let opponent = players[opponentIndex]
         if let rules = RuleLoader.shared.config {
             if isBomb {
-                stealPi(from: opponent, to: player, count: rules.special_moves.bomb.steal_pi_count)
+                stealPi(from: opponent, to: player, count: rules.special_moves.bomb.steal_pi_count, reason: "폭탄(Bomb)")
                 // Bomb Mungdda removed as per user request
             }
             if isTtadak && rules.special_moves.ttadak.enabled {
                 player.ttadakCount += 1
-                stealPi(from: opponent, to: player, count: rules.special_moves.ttadak.steal_pi_count)
+                stealPi(from: opponent, to: player, count: rules.special_moves.ttadak.steal_pi_count, reason: "따닥(Ttadak)")
                 // Mungdda removed as per user request
             }
             if isJjok && rules.special_moves.jjok.enabled {
                 player.jjokCount += 1
-                stealPi(from: opponent, to: player, count: rules.special_moves.jjok.steal_pi_count)
+                stealPi(from: opponent, to: player, count: rules.special_moves.jjok.steal_pi_count, reason: "쪽(Jjok)")
             }
             if isSeolsa && rules.special_moves.seolsa.enabled && playPhaseCaptured.isEmpty {
                  // Real Seolsa: the card was played but left cards on the table with no capture
                  player.seolsaCount += 1
-                 stealPi(from: opponent, to: player, count: rules.special_moves.seolsa.penalty_pi_count)
+                 // Penalty: Player GIVES pi to opponent
+                 stealPi(from: player, to: opponent, count: rules.special_moves.seolsa.penalty_pi_count, reason: "뻑(Seolsa) 패널티")
+                 // Record the puck creator for later "Seolsa Eat" bonus
+                 seolsaMonths[card.month.rawValue] = player
+            }
+            if isSeolsaEatFlag && rules.special_moves.seolsaEat.enabled {
+                player.seolsaEatCount += 1
+                stealPi(from: opponent, to: player, count: rules.special_moves.seolsaEat.steal_pi_count, reason: "뻑 먹기(Seolsa Eat)")
+            }
+            if isSelfSeolsaEatFlag && rules.special_moves.seolsaEat.enabled {
+                player.seolsaEatCount += 1
+                stealPi(from: opponent, to: player, count: rules.special_moves.seolsaEat.self_eat_steal_pi_count, reason: "자뻑(Self Seolsa Eat)")
             }
         }
         
@@ -420,7 +639,7 @@ class GameManager: ObservableObject {
            tableWasNotEmpty, tableCards.isEmpty, !player.hand.isEmpty {
             gLog("\(player.name) swept the table (싹쓸이)!")
             player.sweepCount += 1
-            stealPi(from: opponent, to: player, count: rules.special_moves.sweep.steal_pi_count)
+            stealPi(from: opponent, to: player, count: rules.special_moves.sweep.steal_pi_count, reason: "싹쓸이(Sweep)")
         }
         
         // 4. End Turn Logic
@@ -513,7 +732,11 @@ class GameManager: ObservableObject {
     }
     
     private func endTurn() {
-        if deck.cards.isEmpty {
+        for p in players {
+            gLog("DEBUG: \(p.name) hand: \(p.hand.count)")
+        }
+        let allHandsEmpty = players.allSatisfy { $0.hand.isEmpty }
+        if deck.cards.isEmpty || allHandsEmpty {
             self.gameEndReason = .nagari
             settleResidualCardsIfHandsEmpty()
             gameState = .ended
@@ -546,7 +769,7 @@ class GameManager: ObservableObject {
             let loserKwangs = loser.capturedCards.filter { $0.type == .bright }.count
             if winnerKwangs >= 3 && loserKwangs <= rules.penalties.gwangbak.opponent_max_kwang {
                 if rules.penalties.gwangbak.resolution_type == "pi_transfer" || rules.penalties.gwangbak.resolution_type == "both" {
-                    stealPi(from: loser, to: winner, count: rules.penalties.gwangbak.pi_to_transfer)
+                    stealPi(from: loser, to: winner, count: rules.penalties.gwangbak.pi_to_transfer, reason: "광박(Gwangbak) 피이전")
                 }
             }
         }
@@ -557,7 +780,7 @@ class GameManager: ObservableObject {
             // loserPi > 0: exclude 0-Pi players (matches calculatePenalties condition)
             if winnerPi >= 10 && loserPi > 0 && loserPi < rules.penalties.pibak.opponent_min_pi_safe {
                 if rules.penalties.pibak.resolution_type == "pi_transfer" || rules.penalties.pibak.resolution_type == "both" {
-                    stealPi(from: loser, to: winner, count: rules.penalties.pibak.pi_to_transfer)
+                    stealPi(from: loser, to: winner, count: rules.penalties.pibak.pi_to_transfer, reason: "피박(Pibak) 피이전")
                 }
             }
         }
@@ -566,7 +789,7 @@ class GameManager: ObservableObject {
             let winnerAnimals = winner.capturedCards.filter { $0.type == .animal }.count
             if winnerAnimals >= rules.penalties.mungbak.winner_min_animal {
                 if rules.penalties.mungbak.resolution_type == "pi_transfer" || rules.penalties.mungbak.resolution_type == "both" {
-                    stealPi(from: loser, to: winner, count: rules.penalties.mungbak.pi_to_transfer)
+                    stealPi(from: loser, to: winner, count: rules.penalties.mungbak.pi_to_transfer, reason: "멍박(Mungbak) 피이전")
                 }
             }
         }
@@ -602,20 +825,84 @@ class GameManager: ObservableObject {
         return false
     }
     
-    private func stealPi(from: Player, to: Player, count: Int) {
+    private func performTableCapture(for monthCard: Card, on table: inout [Card], player: Player) -> [Card]? {
+        let m = table.filter { $0.month == monthCard.month }
+        if m.isEmpty {
+            table.append(monthCard)
+            return []
+        } else if m.count == 3 {
+            let allFour = [monthCard] + m
+            table.removeAll { $0.month == monthCard.month }
+            gLog("CHOK! Captured all 4 of month \(monthCard.month)")
+            
+            // Seolsa Eat (뻑 먹기) bonus detection
+            if let puckCreator = seolsaMonths[monthCard.month.rawValue] {
+                if puckCreator.id == player.id {
+                    isSelfSeolsaEatFlag = true
+                } else {
+                    isSeolsaEatFlag = true
+                }
+                seolsaMonths.removeValue(forKey: monthCard.month.rawValue)
+            } else {
+                // Initial Seolsa (바닥 뻑) capture gives normal Seolsa Eat bonus (1 pi)
+                isSeolsaEatFlag = true
+            }
+            
+            return allFour
+        } else if m.count == 2 {
+            // 2 matches on table: if they differ in type (e.g. junk vs doubleJunk), player must choose
+            let typesDistinct = m[0].type != m[1].type
+            if typesDistinct {
+                if player.isComputer {
+                    // AI auto-selects: prefer doubleJunk for maximum points
+                    let bestOption = m.first { $0.type == .doubleJunk } ?? m[0]
+                    gLog("AI auto-selects \(bestOption.type) for month \(monthCard.month) capture")
+                    if let idx = table.firstIndex(where: { $0.id == bestOption.id }) {
+                        table.remove(at: idx)
+                    }
+                    return [monthCard, bestOption]
+                } else {
+                    // Human player must choose - return nil to indicate "Pause for Choice"
+                    // IMPORTANT: We do NOT append monthCard to table yet; it's held in pending state
+                    return nil
+                }
+            } else {
+                // Same type – just take the first one
+                if let target = m.first, let idx = table.firstIndex(where: { $0.id == target.id }) {
+                    table.remove(at: idx)
+                    return [monthCard, target]
+                }
+                table.append(monthCard)
+                return []
+            }
+        } else {
+            // 1 match
+            if let target = m.first, let idx = table.firstIndex(where: { $0.id == target.id }) {
+                table.remove(at: idx)
+                return [monthCard, target]
+            }
+            table.append(monthCard)
+            return []
+        }
+    }
+    
+    private func stealPi(from: Player, to: Player, count: Int, reason: String = "") {
         guard RuleLoader.shared.config != nil else { return }
         var stolenCount = 0
+        var stolenCards: [String] = []
         for _ in 0..<count {
             if let piToSteal = from.capturedCards.first(where: { $0.type == .junk }) {
                 if let index = from.capturedCards.firstIndex(of: piToSteal) {
                     from.capturedCards.remove(at: index)
                     to.capturedCards.append(piToSteal)
+                    stolenCards.append("\(piToSteal.month.rawValue)월 피")
                     stolenCount += 1
                 }
             } else if let doublePiToSteal = from.capturedCards.first(where: { $0.type == .doubleJunk }) {
                 if let index = from.capturedCards.firstIndex(of: doublePiToSteal) {
                     from.capturedCards.remove(at: index)
                     to.capturedCards.append(doublePiToSteal)
+                    stolenCards.append("\(doublePiToSteal.month.rawValue)월 쌍피")
                     stolenCount += 1
                 }
             }
@@ -623,6 +910,12 @@ class GameManager: ObservableObject {
         if stolenCount > 0 {
             from.score = ScoringSystem.calculateScore(for: from)
             to.score = ScoringSystem.calculateScore(for: to)
+            let cardList = stolenCards.joined(separator: ", ")
+            let reasonStr = reason.isEmpty ? "" : " [\(reason)]"
+            gLog("피 이동\(reasonStr): \(from.name) → \(to.name) | \(cardList) (\(stolenCount)장)")
+        } else {
+            let reasonStr = reason.isEmpty ? "" : " [\(reason)]"
+            gLog("피 이동 실패\(reasonStr): \(from.name) 에게 피가 없음")
         }
     }
 

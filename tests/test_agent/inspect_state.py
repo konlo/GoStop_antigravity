@@ -136,6 +136,12 @@ def inspect_state(mode="cli"):
         # 4. Out-of-play sink
         for c in state.get('outOfPlayCards', []):
             (dummy_cards if c.get('type') == 'dummy' else all_cards).append(c)
+        # 5. In-flight card during choosingCapture (played card not yet captured)
+        pending = state.get('pendingCapturePlayedCard')
+        if pending:
+            (dummy_cards if pending.get('type') == 'dummy' else all_cards).append(pending)
+            print(f"  [NOTE] pendingCapturePlayedCard ({pending.get('month')}월 {pending.get('type')}) included in count")
+
         
         if dummy_cards:
             print(f"  [NOTE] {len(dummy_cards)} dummy card(s) excluded from 48-card count")

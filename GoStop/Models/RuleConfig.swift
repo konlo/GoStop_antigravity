@@ -32,10 +32,17 @@ struct SpecialMovesRule: Codable {
     let ttadak: TtadakRule
     let jjok: JjokRule
     let seolsa: SeolsaRule
+    let seolsaEat: SeolsaEatRule
     let mungbak_pi_threshold: Int
     let mungdda: MungDdaRule
     let bomb_mungdda: BombMungDdaRule
     let chongtong: ChongtongRule
+    
+    enum CodingKeys: String, CodingKey {
+        case bomb, shake, sweep, ttadak, jjok, seolsa
+        case seolsaEat = "seolsa_eat"
+        case mungbak_pi_threshold, mungdda, bomb_mungdda, chongtong
+    }
 }
 
 struct MungDdaRule: Codable {
@@ -76,6 +83,13 @@ struct JjokRule: Codable {
 struct SeolsaRule: Codable {
     let enabled: Bool
     let penalty_pi_count: Int
+    let description: String?
+}
+
+struct SeolsaEatRule: Codable {
+    let enabled: Bool
+    let steal_pi_count: Int
+    let self_eat_steal_pi_count: Int
     let description: String?
 }
 

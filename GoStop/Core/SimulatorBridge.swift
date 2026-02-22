@@ -133,6 +133,23 @@ class SimulatorBridge {
                     self.sendSimpleResponse(status: "action executed", action: action, connection: connection)
                 }
                 
+            case "respond_to_capture":
+                guard let dataDict = json["data"] as? [String: Any],
+                      let cardId = dataDict["id"] as? String else {
+                    sendErrorResponse(message: "Missing id for respond_to_capture", connection: connection)
+                    return
+                }
+                
+                DispatchQueue.main.async {
+                    if let tableCard = self.gameManager.tableCards.first(where: { $0.id == cardId }) {
+                        self.gameManager.respondToCapture(selectedCard: tableCard)
+                    } else {
+                        self.sendErrorResponse(message: "Card with ID \(cardId) not found on table", connection: connection)
+                        return
+                    }
+                    self.sendSimpleResponse(status: "action executed", action: action, connection: connection)
+                }
+                
             case "click_restart_button":
                 DispatchQueue.main.async {
                     self.gameManager.setupGame()
@@ -338,6 +355,17 @@ extension GameManager {
         })
         state["eventLogs"] = AnyCodable(eventLogs)
         
+        if let playedCard = pendingCapturePlayedCard {
+            state["pendingCapturePlayedCard"] = AnyCodable(playedCard)
+        }
+        if let drawnCard = pendingCaptureDrawnCard {
+            state["pendingCaptureDrawnCard"] = AnyCodable(drawnCard)
+        }
+        
+        if gameState == .choosingCapture {
+            state["pendingCaptureOptions"] = AnyCodable(pendingCaptureOptions)
+        }
+        
         if gameState == .askingShake {
             state["pendingShakeMonths"] = AnyCodable(pendingShakeMonths)
         }
@@ -364,7 +392,8 @@ extension GameManager {
                     "isGobak": penalty.isGobak,
                     "isMungbak": penalty.isMungbak,
                     "isJabak": penalty.isJabak,
-                    "isYeokbak": penalty.isYeokbak
+                    "isYeokbak": penalty.isYeokbak,
+                    "scoreFormula": penalty.scoreFormula
                 ])
             }
         }

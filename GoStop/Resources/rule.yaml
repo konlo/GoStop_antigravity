@@ -117,6 +117,11 @@ special_moves:
     enabled: true
     penalty_pi_count: 1
     description: "Play and draw matching cards but making it a triple, leaving them on table"
+  seolsa_eat:
+    enabled: true
+    steal_pi_count: 1
+    self_eat_steal_pi_count: 2
+    description: "Capture 3 cards of the same month on the table (Seolsa Eat)"
   mungbak_pi_threshold: 5 # threshold for Mung-dda condition
   mungdda:
     enabled: false # Removed as non-standard rule
