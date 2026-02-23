@@ -109,12 +109,16 @@ class Player: ObservableObject, Identifiable, Codable {
     }
     
     var piCount: Int {
-        var count = 0
-        for card in capturedCards {
-            if card.type == .junk { count += 1 }
-            else if card.type == .doubleJunk { count += 2 }
+        guard let rules = RuleLoader.shared.config else {
+            // Fallback to basic counting if rules are not loaded
+            var count = 0
+            for card in capturedCards {
+                if card.type == .junk { count += 1 }
+                else if card.type == .doubleJunk { count += 2 }
+            }
+            return count
         }
-        return count
+        return ScoringSystem.calculatePiCount(cards: capturedCards, rules: rules)
     }
     
     func play(card: Card) -> Card? {
@@ -123,13 +127,13 @@ class Player: ObservableObject, Identifiable, Codable {
     }
     
     func capture(cards: [Card]) {
+        self.objectWillChange.send()
         capturedCards.append(contentsOf: cards)
-        calculateScore()
+        self.score = ScoringSystem.calculateScore(for: self)
     }
     
     func calculateScore() {
-        // Placeholder for scoring logic
-        // Will be implemented in the next phase
+        self.score = ScoringSystem.calculateScore(for: self)
     }
 
     func serialize() -> [String: Any] {

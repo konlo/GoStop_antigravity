@@ -257,28 +257,22 @@ class GameManager: ObservableObject {
         
         gLog("\(player.name) chose role \(role.rawValue) for Chrysanthemum card.")
         
-        // Find the card in captured cards and update role. 
-        // Use ID first, but fall back to month/type for robustness in mocked scenarios.
-        if let idx = player.capturedCards.firstIndex(where: { $0.id == card.id }) {
-            player.capturedCards[idx].selectedRole = role
-        } else if let idx = player.capturedCards.firstIndex(where: { $0.month == .sep && $0.type == .animal }) {
-            player.capturedCards[idx].selectedRole = role
-            gLog("Warning: Chrysanthemum card ID mismatch, fall back to month/type match.")
-        } else {
-            gLog("Error: Chrysanthemum card not found in captured cards!")
-        }
+        // Finalize capture of the deferred Chrysanthemum card
+        player.objectWillChange.send()
+        var updatedCard = card
+        updatedCard.selectedRole = role
+        
+        // Formally capture it now
+        player.capture(cards: [updatedCard])
+        gLog("Successfully captured Chrysanthemum with role \(role.rawValue).")
+        
+        pendingChrysanthemumCard = nil
+        gameState = .playing
         
         // Recalculate score after role change
         player.score = ScoringSystem.calculateScore(for: player)
         
-        // Clear pending State
-        pendingChrysanthemumCard = nil
-        
-        if gameState == .choosingChrysanthemumRole {
-            gameState = .playing
-            // Resume the turn completion logic
-            finalizeTurnAfterCapture(player: player)
-        }
+        finalizeTurnAfterCapture(player: player)
     }
 
     /// Resumes the turn logic after all captures and choices are finalized
@@ -367,9 +361,21 @@ class GameManager: ObservableObject {
         
         // Capture: trigger card + chosen table card
         let captured = [pCard, selectedCard]
-        player.capture(cards: captured)
+        // Exclude deferred September card from immediate formal capture
+        let finalCaptures = captured.filter { !($0.month == .sep && $0.type == .animal) }
+        if !finalCaptures.isEmpty {
+            player.capture(cards: finalCaptures)
+        }
+        
         player.score = ScoringSystem.calculateScore(for: player)
         monthOwners.removeValue(forKey: selectedCard.month.rawValue)
+        
+        // Track for turn state (so Chrysanthemum role selection and other turn-end checks work)
+        if playedCard != nil {
+            turnPlayPhaseCaptured = captured
+        } else if drawnCard != nil {
+            turnDrawPhaseCaptured = captured
+        }
         
         gLog("\(player.name) captured \(captured.count) cards (choice). Total: \(player.capturedCards.count)")
         
@@ -401,13 +407,17 @@ class GameManager: ObservableObject {
                     // VOID the capture: put them back on table, plus the drawn card
                     tableCards.append(contentsOf: captured)
                     tableCards.append(drawn)
-                    player.capturedCards.removeAll { c in captured.contains(where: { $0.id == c.id }) }
+                    player.capturedCards.removeAll { c in finalCaptures.contains(where: { $0.id == c.id }) }
                     turnPlayPhaseCaptured = []
                 } else {
                     if let dCaptured = performTableCapture(for: drawn, on: &tableCards, player: player) {
                         turnDrawPhaseCaptured = dCaptured
                         if !turnDrawPhaseCaptured.isEmpty {
-                            player.capture(cards: turnDrawPhaseCaptured)
+                            // Defer September card capture
+                            let finalDCaptures = turnDrawPhaseCaptured.filter { !($0.month == .sep && $0.type == .animal) }
+                            if !finalDCaptures.isEmpty {
+                                player.capture(cards: finalDCaptures)
+                            }
                             // Ttadak check: play phase also captured AND draw phase captured SAME month
                             if let pCard = turnPlayedCard, turnDrawPhaseCaptured.contains(where: { $0.month == pCard.month }) {
                                 turnIsTtadak = true
@@ -439,7 +449,7 @@ class GameManager: ObservableObject {
         // Final Chrysanthemum Check for the whole turn's new captures
         let allNewCaptures = turnPlayPhaseCaptured + turnDrawPhaseCaptured
         if checkAndHandleChrysanthemumRole(capturedCards: allNewCaptures, player: player, rules: rules) {
-            return
+            return // PAUSE - finalizeTurnAfterCapture will be called from respondToChrysanthemumChoice
         }
 
         finalizeTurnAfterCapture(player: player)
@@ -455,7 +465,7 @@ class GameManager: ObservableObject {
             gLog("playTurn aborted: gameState \(gameState), player \(currentPlayer?.name ?? "unknown")")
             return 
         }
-        gLog("--- playTurn start (v2026.02.22_2155): \(player.name) plays \(card.month) (\(card.type)). Hand: \(player.hand.count), Table: \(tableCards.count) ---")
+        gLog("--- playTurn start (v2026.02.23_2155): \(player.name) plays \(card.month) (\(card.type)). Hand: \(player.hand.count), Table: \(tableCards.count) ---")
         
         // Mid-game shake check: if player has 3 cards of same month and hasn't shaken for this month yet.
         // NOTE: Bomb (폭탄) takes priority: if 3 in hand + 1 on table, skip shake and let bomb fire.
@@ -489,8 +499,6 @@ class GameManager: ObservableObject {
         turnPlayedCard = nil
         turnTableWasNotEmpty = !tableCards.isEmpty
         gLog("DEBUG: turnTableWasNotEmpty set to \(turnTableWasNotEmpty). Table count: \(tableCards.count)")
-        
-        let tableWasNotEmpty = turnTableWasNotEmpty
         
         // Helper: does the play phase need player capture choice?
         func needsCaptureChoice(for monthCard: Card, in table: [Card]) -> Bool {
@@ -561,12 +569,15 @@ class GameManager: ObservableObject {
                 }
             }
             
-            // Finalize Bomb captures
+            // Finalize Bomb captures (Deferred September check)
             let bombCaptures = turnPlayPhaseCaptured + turnDrawPhaseCaptured
             if !bombCaptures.isEmpty {
-                player.capture(cards: bombCaptures)
+                let finalBCaptures = bombCaptures.filter { !($0.month == .sep && $0.type == .animal) }
+                if !finalBCaptures.isEmpty {
+                    player.capture(cards: finalBCaptures)
+                }
                 player.score = ScoringSystem.calculateScore(for: player)
-                gLog("\(player.name) captured \(bombCaptures.count) cards via BOMB. Total: \(player.capturedCards.count)")
+                gLog("\(player.name) captured \(finalBCaptures.count) cards via BOMB. Total: \(player.capturedCards.count)")
                 
                 if checkAndHandleChrysanthemumRole(capturedCards: bombCaptures, player: player, rules: rules) {
                     return 
@@ -685,9 +696,14 @@ class GameManager: ObservableObject {
         let finalCaptures = turnPlayPhaseCaptured + turnDrawPhaseCaptured
         
         if !finalCaptures.isEmpty {
-            player.capture(cards: finalCaptures)
+            // Exclude deferred September card from immediate formal capture
+            let finalCapturesToProcess = finalCaptures.filter { !($0.month == .sep && $0.type == .animal) }
+            if !finalCapturesToProcess.isEmpty {
+                player.capture(cards: finalCapturesToProcess)
+            }
+            
             player.score = ScoringSystem.calculateScore(for: player)
-            gLog("\(player.name) captured \(finalCaptures.count) cards. Total: \(player.capturedCards.count)")
+            gLog("\(player.name) captured \(finalCapturesToProcess.count) cards. Total: \(player.capturedCards.count)")
             
             // September Chrysanthemum Choice Check
             if checkAndHandleChrysanthemumRole(capturedCards: finalCaptures, player: player, rules: rules) {
@@ -704,9 +720,11 @@ class GameManager: ObservableObject {
                 if player.isComputer {
                     let defaultRole = CardRole(rawValue: chrysRule.default_role) ?? .animal
                     gLog("Computer auto-selecting default role \(defaultRole) for Chrysanthemum.")
-                    if let idx = player.capturedCards.firstIndex(where: { $0.id == chrysCard.id }) {
-                        player.capturedCards[idx].selectedRole = defaultRole
-                    }
+                    
+                    var updatedCard = chrysCard
+                    updatedCard.selectedRole = defaultRole
+                    player.capture(cards: [updatedCard])
+                    
                     player.score = ScoringSystem.calculateScore(for: player)
                 } else {
                     gLog("Pausing turn for Chrysanthemum role selection.")
@@ -816,12 +834,46 @@ class GameManager: ObservableObject {
         let allHandsEmpty = players.allSatisfy { $0.hand.isEmpty }
         if deck.cards.isEmpty || allHandsEmpty {
             self.gameEndReason = .nagari
+            // Populate lastPenaltyResult for Nagari so summary can be shown
+            self.lastPenaltyResult = PenaltySystem.PenaltyResult(
+                finalScore: 0,
+                isGwangbak: false,
+                isPibak: false,
+                isGobak: false,
+                isMungbak: false,
+                isJabak: false,
+                isYeokbak: false,
+                scoreFormula: "Nagari (Draw) - No winner"
+            )
+            self.gameWinner = nil
+            self.gameLoser = nil
+            
             settleResidualCardsIfHandsEmpty()
             gameState = .ended
             gLog("Game Ended in Nagari!")
             return
         }
         currentTurnIndex = (currentTurnIndex + 1) % players.count
+
+        // Dummy-card turns can leave one player with no hand while others still have cards.
+        // Skip empty-hand turns so the round can continue until Nagari/all-hands-empty.
+        if gameState == .playing {
+            var skips = 0
+            while let player = currentPlayer, player.hand.isEmpty, skips < players.count {
+                gLog("Skipping \(player.name) turn: no cards in hand.")
+                currentTurnIndex = (currentTurnIndex + 1) % players.count
+                skips += 1
+            }
+
+            let noPlayableHands = players.allSatisfy { $0.hand.isEmpty }
+            if noPlayableHands {
+                self.gameEndReason = .nagari
+                settleResidualCardsIfHandsEmpty()
+                gameState = .ended
+                gLog("Game Ended in Nagari! (no playable hands)")
+                return
+            }
+        }
         
         if currentPlayer?.isComputer == true && gameState == .playing {
             if let aiCard = currentPlayer?.hand.first {

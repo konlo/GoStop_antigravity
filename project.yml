@@ -21,7 +21,7 @@ targets:
       base:
         INFOPLIST_KEY_CFBundleDisplayName: GoStop
         ENABLE_PREVIEWS: YES
-        DEVELOPMENT_TEAM: ""
+        CODE_SIGN_STYLE: Automatic
         PRODUCT_BUNDLE_IDENTIFIER: com.antigravity.GoStop
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     info:

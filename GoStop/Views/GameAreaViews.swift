@@ -439,12 +439,6 @@ struct CapturedGroupsAreaV2: View {
             HStack(alignment: .bottom, spacing: vSpacing) {
                 ForEach(groups, id: \.type) { group in
                     let groupCards = cards.filter { matchCardType(card: $0, targetType: group.type) }
-                        .sorted {
-                            if $0.month == $1.month {
-                                return "\($0.type)" < "\($1.type)"
-                            }
-                            return $0.month.rawValue < $1.month.rawValue
-                        }
                     let groupWidth = totalWeight > 0 ? baseActiveWidth * (group.priorityWeight / totalWeight) : 0
                     
                     CapturedGroupSlotView(
@@ -466,11 +460,20 @@ struct CapturedGroupsAreaV2: View {
     func matchCardType(card: Card, targetType: String) -> Bool {
         // Special case: September Animal (Chrysanthemum) can switch between Animal and Pi
         if card.month == .sep && card.type == .animal {
-            if let role = card.selectedRole {
-                if targetType == "animal" { return role == .animal }
-                if targetType == "pi" { return role == .doublePi }
-                return false
-            }
+            let role = card.selectedRole ?? {
+                let defaultRoleStr = RuleLoader.shared.config?.cards.chrysanthemum_rule.default_role ?? "animal"
+                return CardRole(rawValue: defaultRoleStr) ?? .animal
+            }()
+            
+            if targetType == "animal" { return role == .animal }
+            if targetType == "pi" { return role == .doublePi }
+            return false
+        }
+        
+        // Special case: November Junk is actually Double Pi
+        if card.month == .nov && (card.type == .junk || card.type == .doubleJunk) {
+            if targetType == "pi" { return true }
+            return false
         }
         
         if targetType == "gwang" { return card.type == .bright }
@@ -546,11 +549,20 @@ struct CapturedGroupSlotView: View {
                 ZStack {
                     CardView(card: card, isFaceUp: true, scale: scale)
                     
-                    // Show count indicator on the very last 'pi' card
+                    // Show count indicator on the very last 'pi' card.
+                    // Use the same engine scoring path as logs/penalty checks to avoid UI drift.
                     if groupConfig.type == "pi", index == cards.count - 1 {
-                        let piCount = cards.reduce(0) { total, card in
-                            total + (card.type == .doubleJunk ? 2 : 1)
-                        }
+                        let piCount: Int = {
+                            if let rules = RuleLoader.shared.config {
+                                return ScoringSystem.calculatePiCount(cards: cards, rules: rules)
+                            }
+                            // Fallback if rules are unavailable
+                            return cards.reduce(0) { total, card in
+                                if card.type == .doubleJunk { return total + 2 }
+                                if card.month == .sep && card.selectedRole == .doublePi { return total + 2 }
+                                return total + 1
+                            }
+                        }()
                         Text("\(piCount)")
                             .font(.system(size: 11 * ctx.globalScale, weight: .bold))
                             .foregroundColor(.white)

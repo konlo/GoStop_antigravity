@@ -119,6 +119,17 @@ struct ScoringSystem {
         let hasCheongdan = cards.filter { $0.type == .ribbon && danRules.cheongdan.contains($0.month.rawValue) }.count == 3
         
         for card in cards {
+            // First check if a flexible role is selected (e.g., September Animal chosen as Double Pi)
+            if let role = card.selectedRole {
+                if role == .doublePi {
+                    piCount += 2
+                    continue // Counted as Double Pi based on selection
+                } else if role == .animal {
+                    continue // Explicitly animal, not pi
+                }
+            }
+
+            // Normal card type checks
             if card.type == .doubleJunk {
                 piCount += 2
             } else if card.type == .junk {
@@ -134,9 +145,9 @@ struct ScoringSystem {
                 }
                 piCount += currentVal
             } else if card.month == .sep && card.type == .animal {
-                // September Animal card can be used as Double Pi
+                // September Animal card can be used as Double Pi (fallback if selectedRole is nil)
                 let defaultRole = rules.cards.chrysanthemum_rule.default_role
-                if card.selectedRole == .doublePi || (card.selectedRole == nil && defaultRole == "double_pi") {
+                if defaultRole == "double_pi" {
                     piCount += 2
                 }
             }

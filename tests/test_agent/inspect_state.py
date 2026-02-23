@@ -77,23 +77,33 @@ def inspect_state(mode="cli"):
                 print("  CAPTURED GROUPS:")
                 groups = {
                     "광(Bright)": [c for c in captured if c['type'] == 'bright'],
-                    "끗(Animal)": [c for c in captured if c['type'] == 'animal'],
+                    "끗(Animal)": [c for c in captured if (c['type'] == 'animal' and (c.get('month') != 9 or c.get('selectedRole', 'animal') == 'animal'))],
                     "띠(Ribbon)": [c for c in captured if c['type'] == 'ribbon'],
-                    "피(Junk)  ": [c for c in captured if c['type'] in ['junk', 'doubleJunk']]
+                    "피(Junk)  ": [c for c in captured if c['type'] in ['junk', 'doubleJunk'] or (c.get('month') == 9 and c.get('selectedRole') == 'doublePi')]
                 }
                 
                 for label, cards in groups.items():
                     if cards:
                         # Add (2P) marker for doubleJunk cards
+                        total_units = 0
                         card_list = []
                         for c in cards:
                             m_str = f"M{c['month']}"
-                            if c['type'] == 'doubleJunk':
+                            is_double = False
+                            if c['type'] == 'doubleJunk' or (c.get('month') == 9 and c.get('selectedRole') == 'doublePi'):
                                 m_str += "(2P)"
+                                is_double = True
                             card_list.append(m_str)
+                            
+                            # Simple unit calculation (matching ScoringSystem.calculatePiCount basics)
+                            if label.startswith("피"):
+                                total_units += 2 if is_double else 1
+                            else:
+                                total_units += 1
                         
                         card_str = " ".join(card_list)
-                        print(f"    {label:<12}: {len(cards):>2} cards -> {card_str}")
+                        unit_str = f" ({total_units} units)" if label.startswith("피") else ""
+                        print(f"    {label:<12}: {len(cards):>2} cards{unit_str} -> {card_str}")
                     else:
                         print(f"    {label:<12}:  0 cards")
             print("-" * 50)

@@ -216,6 +216,15 @@ def scenario_verify_penalties(agent: TestAgent):
     Scenario: Verifies Gwangbak, Pibak, Mungbak, and Gobak multipliers.
     """
     logger.info("Running Penalties verification scenario...")
+
+    # The runner seeds each scenario with a fixed RNG (often 42), which can occasionally
+    # produce an initial Chongtong and leave a stale lastPenaltyResult in .ended state.
+    # Re-seed until we get a normal, non-ended round before applying penalty mocks.
+    for seed in (1, 7, 13, 99, 123):
+        agent.set_condition({"rng_seed": seed})
+        pre_state = agent.get_all_information()
+        if pre_state.get("gameState") != "ended":
+            break
     
     # Setup winner with multiple score triggers:
     # 3 Brights (Kwang)
@@ -238,8 +247,8 @@ def scenario_verify_penalties(agent: TestAgent):
         "currentTurnIndex": 0,
         "mock_captured_cards": winner_cards,
         "mock_opponent_captured_cards": loser_cards,
-        "player1_data": {"goCount": 1}, # Loser called Go
-        "player0_data": {"goCount": 0}, # Winner called 0 Go (essential for Gobak)
+        "player1_data": {"goCount": 1, "isComputer": False}, # Loser called Go
+        "player0_data": {"goCount": 0, "isComputer": False}, # Winner called 0 Go (essential for Gobak)
         "mock_scenario": "game_over" 
     })
     
@@ -903,6 +912,9 @@ def scenario_verify_card_integrity_full_game(agent: TestAgent):
     
     step_count = 0
     max_steps = 200 # Safety limit for the loop
+
+    def is_dummy(card):
+        return card.get("type") == "dummy"
     
     while step_count < max_steps:
         state = agent.get_all_information()
@@ -911,19 +923,32 @@ def scenario_verify_card_integrity_full_game(agent: TestAgent):
         # --- CARD INTEGRITY CHECK ---
         # Dummy cards (from bomb action) are NOT part of the 48-card deck — exclude them.
         players = state.get("players", [])
-        def is_dummy(c): return c.get("type") == "dummy"
         hand_count = sum(len([c for c in p.get("hand", []) if not is_dummy(c)]) for p in players)
         captured_count = sum(len([c for c in p.get("capturedCards", []) if not is_dummy(c)]) for p in players)
         table_count = len([c for c in state.get("tableCards", []) if not is_dummy(c)])
         deck_count = state.get("deckCount", 0)
         out_of_play_count = len([c for c in state.get("outOfPlayCards", []) if not is_dummy(c)])
+        pending_capture_count = 0
+        for key in ("pendingCapturePlayedCard", "pendingCaptureDrawnCard"):
+            if state.get(key) and not is_dummy(state[key]):
+                pending_capture_count += 1
+        pending_chry_count = 1 if state.get("pendingChrysanthemumCard") else 0
         
-        total_cards = hand_count + captured_count + table_count + deck_count + out_of_play_count
+        total_cards = (
+            hand_count
+            + captured_count
+            + table_count
+            + deck_count
+            + out_of_play_count
+            + pending_capture_count
+            + pending_chry_count
+        )
         
         # Total real cards should always be exactly 48.
         assert total_cards == 48, (
             f"Step {step_count}: Card integrity violation! Total={total_cards} (Expected 48). "
-            f"Hands={hand_count}, Captured={captured_count}, Table={table_count}, Deck={deck_count}, OutOfPlay={out_of_play_count}"
+            f"Hands={hand_count}, Captured={captured_count}, Table={table_count}, Deck={deck_count}, "
+            f"OutOfPlay={out_of_play_count}, PendingCapture={pending_capture_count}, PendingChry={pending_chry_count}"
         )
         # ----------------------------
 
@@ -938,10 +963,9 @@ def scenario_verify_card_integrity_full_game(agent: TestAgent):
                 card = player["hand"][0]
                 agent.send_user_action("play_card", {"month": card["month"], "type": card["type"]})
             else:
-                # This shouldn't really happen in 'playing' state if others have cards,
-                # but we'll defensive break to avoid infinite loop.
-                logger.warning(f"Player {current_turn} has no cards in 'playing' state.")
-                break
+                raise AssertionError(
+                    f"Step {step_count}: Player {current_turn} has no cards while gameState='playing'."
+                )
 
         elif game_state == "askingGoStop":
             # Per user request: ALWAYS GO
@@ -950,12 +974,25 @@ def scenario_verify_card_integrity_full_game(agent: TestAgent):
 
         elif game_state == "askingShake":
             months = state.get("pendingShakeMonths", [])
+            assert months, f"Step {step_count}: askingShake with empty pendingShakeMonths"
             for month in months:
                 agent.send_user_action("respond_to_shake", {"month": month, "didShake": True})
 
+        elif game_state == "choosingCapture":
+            options = state.get("pendingCaptureOptions", [])
+            assert options, f"Step {step_count}: choosingCapture with empty pendingCaptureOptions"
+            selected_option = options[0]
+            assert "id" in selected_option, (
+                f"Step {step_count}: choosingCapture option missing id: {selected_option}"
+            )
+            agent.send_user_action("respond_to_capture", {"id": selected_option["id"]})
+
+        elif game_state == "choosingChrysanthemumRole":
+            # Deterministic choice; integrity checks are independent of role value.
+            agent.send_user_action("respond_to_chrysanthemum_choice", {"role": "doublePi"})
+
         else:
-            logger.warning(f"Unexpected game state: {game_state}")
-            break
+            raise AssertionError(f"Step {step_count}: Unexpected game state: {game_state}")
             
         step_count += 1
         
@@ -973,23 +1010,32 @@ def scenario_verify_monthly_pair_integrity(agent: TestAgent):
     
     step_count = 0
     max_steps = 200
+
+    def is_dummy(card):
+        return card.get("type") == "dummy"
     
     while step_count < max_steps:
         state = agent.get_all_information()
         game_state = state.get("gameState")
         
         # --- MONTHLY PAIR INTEGRITY AUDIT ---
+        # Combine all cards from all locations
         all_cards = []
-        # 1. Hands and Captured
         for p in state.get("players", []):
-            all_cards.extend(p.get("hand", []))
-            all_cards.extend(p.get("capturedCards", []))
-        # 2. Table
-        all_cards.extend(state.get("tableCards", []))
-        # 3. Deck
-        all_cards.extend(state.get("deckCards", []))
-        # 4. Ended-state residual sink (terminal cleanup)
-        all_cards.extend(state.get("outOfPlayCards", []))
+            all_cards.extend([c for c in p.get("hand", []) if not is_dummy(c)])
+            all_cards.extend([c for c in p.get("capturedCards", []) if not is_dummy(c)])
+        all_cards.extend([c for c in state.get("tableCards", []) if not is_dummy(c)])
+        all_cards.extend([c for c in state.get("deckCards", []) if not is_dummy(c)])
+        all_cards.extend([c for c in state.get("outOfPlayCards", []) if not is_dummy(c)])
+        pending_chry = state.get("pendingChrysanthemumCard")
+        if pending_chry and not is_dummy(pending_chry):
+            all_cards.append(pending_chry)
+        pending_capture_played = state.get("pendingCapturePlayedCard")
+        if pending_capture_played and not is_dummy(pending_capture_played):
+            all_cards.append(pending_capture_played)
+        pending_capture_drawn = state.get("pendingCaptureDrawnCard")
+        if pending_capture_drawn and not is_dummy(pending_capture_drawn):
+            all_cards.append(pending_capture_drawn)
         
         month_counts = {}
         for c in all_cards:
@@ -1017,17 +1063,37 @@ def scenario_verify_monthly_pair_integrity(agent: TestAgent):
                 card = player["hand"][0]
                 agent.send_user_action("play_card", {"month": card["month"], "type": card["type"]})
             else:
-                break
+                raise AssertionError(
+                    f"Step {step_count}: Player {current_turn} has no cards while gameState='playing'."
+                )
 
         elif game_state == "askingGoStop":
             agent.send_user_action("respond_go_stop", {"isGo": True})
 
         elif game_state == "askingShake":
             months = state.get("pendingShakeMonths", [])
+            assert months, f"Step {step_count}: askingShake with empty pendingShakeMonths"
             for month in months:
                 agent.send_user_action("respond_to_shake", {"month": month, "didShake": True})
+
+        elif game_state == "choosingCapture":
+            options = state.get("pendingCaptureOptions", [])
+            assert options, f"Step {step_count}: choosingCapture with empty pendingCaptureOptions"
+            selected_option = options[0]
+            assert "id" in selected_option, (
+                f"Step {step_count}: choosingCapture option missing id: {selected_option}"
+            )
+            agent.send_user_action("respond_to_capture", {"id": selected_option["id"]})
+
+        elif game_state == "choosingChrysanthemumRole":
+            agent.send_user_action("respond_to_chrysanthemum_choice", {"role": "doublePi"})
+
+        else:
+            raise AssertionError(f"Step {step_count}: Unexpected game state: {game_state}")
         
         step_count += 1
+
+    assert False, f"Game did not end within {max_steps} steps. Potential infinite loop or stuck state."
         
 def scenario_verify_bomb_with_dummy_cards(agent: TestAgent):
     """
@@ -1282,6 +1348,18 @@ def scenario_verify_nagari(agent: TestAgent):
             pending = state.get("pendingShakeMonths", [])
             month = pending[0] if pending else 1
             agent.send_user_action("respond_to_shake", {"month": month, "didShake": False})
+            continue
+
+        if state.get("gameState") == "choosingCapture":
+            options = state.get("pendingCaptureOptions", [])
+            assert options, "Nagari test: choosingCapture with no pendingCaptureOptions"
+            selected = options[0]
+            assert "id" in selected, f"Nagari test: pending capture option missing id: {selected}"
+            agent.send_user_action("respond_to_capture", {"id": selected["id"]})
+            continue
+
+        if state.get("gameState") == "choosingChrysanthemumRole":
+            agent.send_user_action("respond_to_chrysanthemum_choice", {"role": "doublePi"})
             continue
 
         if state.get("currentTurnIndex") != 0:
@@ -1667,7 +1745,10 @@ def scenario_verify_sweep_no_multiplier(agent: TestAgent):
     agent.send_user_action("respond_go_stop", {"isGo": False})
     state = agent.get_all_information()
     res = state.get("penaltyResult", {})
+    # Current rules: sweep multiplier is removed and sweep bonus_points = 0, so final score stays at base 4.
     assert res.get("finalScore") == 4, f"Sweep No Multiplier FAILED: expected score 4, got {res.get('finalScore')}"
+    formula = res.get("scoreFormula", "")
+    assert "Sweep" not in formula, f"Sweep No Multiplier FAILED: sweep multiplier leaked into formula: {formula}"
     logger.info("Sweep No Multiplier verified. PASS")
 
 
@@ -1768,6 +1849,9 @@ def scenario_verify_capture_choice(agent: TestAgent):
         "mock_deck": [{"month": 9, "type": "ribbon"}],  # Draw phase: no month-5 match
         "mock_gameState": "playing",
         "currentTurnIndex": 0,
+        # Freeze turn progression after choice so assertions inspect immediate result.
+        "player0_data": {"isComputer": False},
+        "player1_data": {"isComputer": False},
     })
 
     # 1. Play the matching card → should pause in choosingCapture
@@ -2179,6 +2263,15 @@ def scenario_verify_chrysanthemum_via_bomb(agent: TestAgent):
     chrys_card = next((c for c in player["capturedCards"] if c["month"] == 9 and c["type"] == "animal"), None)
     assert chrys_card.get("selectedRole") == "doublePi", "Role should be doublePi after bomb capture"
     
+    # 3 units: Month 9 junk(1) from hand + Month 9 animal(2 role=doublePi) from table
+    # The Ribbon and Bright don't count for Pi. 
+    # (ScoringSystem: 1+2=3)
+    # Note: If count < 10, pi_item might be None in some versions if it only shows scoring items.
+    # But calculateScoreDetail should return it if it's there.
+    pi_item = next((item for item in player["scoreItems"] if item["name"].startswith("피")), None)
+    if pi_item:
+        assert pi_item["count"] == 3, f"Expected 3 pi units, got {pi_item['count']}"
+    
     logger.info("Chrysanthemum via Bomb verification passed!")
 
 def scenario_verify_chrysanthemum_via_draw(agent: TestAgent):
@@ -2212,6 +2305,11 @@ def scenario_verify_chrysanthemum_via_draw(agent: TestAgent):
     player = state["players"][0]
     chrys_card = next((c for c in player["capturedCards"] if c["month"] == 9 and c["type"] == "animal"), None)
     assert chrys_card.get("selectedRole") == "animal", "Role should be animal after draw capture"
+    
+    # 1 unit: Month 9 junk from table. Month 9 animal is animal rôle.
+    pi_item = next((item for item in player["scoreItems"] if item["name"].startswith("피")), None)
+    if pi_item:
+        assert pi_item["count"] == 1, f"Expected 1 pi unit, got {pi_item['count']}"
     
     logger.info("Chrysanthemum via Draw Phase verification passed!")
 
@@ -2256,6 +2354,11 @@ def scenario_verify_chrysanthemum_choice_persistence(agent: TestAgent):
     chrys_card = next((c for c in player["capturedCards"] if c["month"] == 9 and c["type"] == "animal"), None)
     assert chrys_card.get("selectedRole") == "doublePi", "Role should persist after opponent's turn"
     
+    # 3 units: Month 9 junk(1) + Month 9 animal(2 role=doublePi)
+    pi_item = next((item for item in player["scoreItems"] if item["name"].startswith("피")), None)
+    if pi_item:
+        assert pi_item["count"] == 3, f"Expected 3 pi units, got {pi_item['count']}"
+    
     logger.info("Chrysanthemum Choice Persistence verification passed!")
 
 def scenario_verify_chrysanthemum_score_at_round_end(agent: TestAgent):
@@ -2275,8 +2378,8 @@ def scenario_verify_chrysanthemum_score_at_round_end(agent: TestAgent):
         "mock_deck": [{"month": 12, "type": "bright"}], # Non-matching to end turn
         "mock_captured_cards": [{"month": 1, "type": "junk"}] * 8, # 8 normal pi
         "mock_opponent_captured_cards": [{"month": 2, "type": "junk"}] * 5, # Vulnerable to Pibak
-        "player0_data": {"score": 0},
-        "player1_data": {"goCount": 1}, # Required for Pibak if winner stops (bak_only_if_opponent_go: true)
+        "player0_data": {"score": 0, "isComputer": False},
+        "player1_data": {"goCount": 1, "isComputer": False}, # Required for Pibak if winner stops (bak_only_if_opponent_go: true)
         "mock_gameState": "playing"
     })
     
@@ -2286,7 +2389,9 @@ def scenario_verify_chrysanthemum_score_at_round_end(agent: TestAgent):
     # Force Stop state
     agent.set_condition({
         "mock_gameState": "askingGoStop",
-        "player0_data": {"score": 10} # Force enough points
+        "currentTurnIndex": 0,
+        "player0_data": {"score": 10, "isComputer": False}, # Force enough points
+        "player1_data": {"isComputer": False}
     })
     
     agent.send_user_action("respond_go_stop", {"isGo": False})
@@ -2300,6 +2405,54 @@ def scenario_verify_chrysanthemum_score_at_round_end(agent: TestAgent):
     assert penalty.get("isPibak") is True, f"Expected Pibak due to Double Pi role, got {penalty}"
     
     logger.info("Chrysanthemum Round-End Scoring verification passed!")
+def scenario_verify_nagari_end_flow(agent: TestAgent):
+    """
+    Scenario: Verifies that Nagari occurs when both players' hands are empty and deck is empty.
+    Checks that the end summary (penaltyResult) is present and correct.
+    """
+    logger.info("Running Nagari end flow verification...")
+
+    # Runner-level fixed seed can occasionally start in initial Chongtong (.ended).
+    # Re-seed until we have a normal round before constructing the Nagari end-state.
+    for seed in (1, 7, 13, 99, 123):
+        agent.set_condition({"rng_seed": seed})
+        pre_state = agent.get_all_information()
+        if pre_state.get("gameState") != "ended":
+            break
+
+    agent.send_user_action("start_game")
+    
+    # Setup condition:
+    # Player 0 has 1 card left.
+    # Player 1 has 0 cards left.
+    # Deck is empty.
+    # Table is empty to avoid capture choice prompts.
+    agent.set_condition({
+        "currentTurnIndex": 0,
+        "player0_data": {"hand": [{"month": 1, "type": "bright"}], "isComputer": False, "score": 0, "goCount": 0},
+        "player1_data": {"hand": [], "isComputer": False, "score": 0, "goCount": 0},
+        "clear_deck": True,
+        "mock_table": [],
+        "mock_captured_cards": [],
+        "mock_opponent_captured_cards": [],
+        "mock_gameState": "playing"
+    })
+    
+    # Play the last card
+    agent.send_user_action("play_card", {"month": 1, "type": "bright"})
+    
+    # Verification
+    state = agent.get_all_information()
+    assert state["gameState"] == "ended", f"Expected ended state, got {state['gameState']}"
+    assert state.get("gameEndReason") == "nagari", f"Expected Nagari reason, got {state.get('gameEndReason')}"
+    
+    penalty = state.get("penaltyResult")
+    assert penalty is not None, "Failed to retrieve penaltyResult for Nagari"
+    assert penalty["finalScore"] == 0, f"Expected finalScore 0 for Nagari, got {penalty['finalScore']}"
+    assert "Nagari" in penalty["scoreFormula"], f"Expected Nagari in scoreFormula, got {penalty['scoreFormula']}"
+    
+    logger.info("Nagari end flow verification passed!")
+
 
 def scenario_verify_table_4_card_nagari(agent: TestAgent):
     """
@@ -2458,6 +2611,140 @@ def scenario_verify_ttadak_with_initial_double_on_table(agent: TestAgent):
     # Verify Ttadak was triggered
     has_ttadak = any("따닥(Ttadak)" in e for e in events)
     assert has_ttadak, "Ttadak was NOT triggered despite 4 cards capture!"
+
+def scenario_verify_chrysanthemum_role_selection_and_state(agent: TestAgent):
+    """
+    Scenario: Verify that the September Chrysanthemum card correctly updates its selectedRole
+    and moves to the 'pi' group in capturedCards when 'doublePi' is chosen.
+    """
+    logger.info("Running Chrysanthemum Role Selection and State verification...")
+    
+    agent.send_user_action("start_game")
+    
+    # 1. Setup: Player has 8 Junk + captures Month 9 Animal
+    agent.set_condition({
+        "currentTurnIndex": 0,
+        "mock_hand": [{"month": 9, "type": "junk"}],
+        "mock_table": [{"month": 9, "type": "animal"}],
+        "mock_deck": [{"month": 5, "type": "junk"}],
+        "mock_captured_cards": [{"month": 1, "type": "junk"}] * 8, # 8 normal pi
+        "mock_gameState": "playing",
+        "player0_data": {"isComputer": False},
+        "player1_data": {"isComputer": False}
+    })
+    
+    # 2. Action: Capture the card
+    agent.send_user_action("play_card", {"month": 9, "type": "junk"})
+    
+    # Ensure state is choosingChrysanthemumRole
+    state = agent.get_all_information()
+    assert state["gameState"] == "choosingChrysanthemumRole"
+    
+    # 3. Choose Double Pi
+    agent.send_user_action("respond_to_chrysanthemum_choice", {"role": "doublePi"})
+    
+    state = agent.get_all_information()
+    player = state["players"][0]
+    
+    # Find the card in captured cards
+    chrys_card = next((c for c in player["capturedCards"] if c["month"] == 9 and c["type"] == "animal"), None)
+    
+    assert chrys_card is not None
+    assert chrys_card.get("selectedRole") == "doublePi", f"Expected selectedRole 'doublePi', got {chrys_card.get('selectedRole')}"
+    
+    # Verify Pi count: 8 (initial) + 1 (month 9 junk match) + 2 (sep animal role=doublePi) = 11 units
+    pi_item = next((item for item in player["scoreItems"] if item["name"].startswith("피")), None)
+    assert pi_item is not None, "Pi score item should exist given 11 units"
+    assert pi_item["count"] == 11, f"Expected 11 pi units (8 + 1 + 2), got {pi_item['count']}"
+    
+    logger.info("Chrysanthemum Role Selection and State verification passed!")
+
+def scenario_repro_chrysanthemum_score_bug(agent: TestAgent):
+    """
+    Reproduction case for the issue where September Double Pi is visually in Pi area 
+    but not counted as 2 units in the score.
+    """
+    logger.info("Running Repro Chrysanthemum Score Bug...")
+    agent.send_user_action("start_game")
+    
+    # Setup: 8 initial junk cards + Month 9 animal captured as Double Pi
+    # Total Pi should be 8 + 2 = 10 units (Score = 1 points)
+    agent.set_condition({
+        "currentTurnIndex": 0,
+        "mock_hand": [{"month": 9, "type": "junk"}],
+        "mock_table": [{"month": 9, "type": "animal"}],
+        "mock_deck": [{"month": 5, "type": "junk"}],
+        "mock_captured_cards": [
+            {"month": 1, "type": "junk"}, {"month": 1, "type": "junk"},
+            {"month": 2, "type": "junk"}, {"month": 2, "type": "junk"},
+            {"month": 3, "type": "junk"}, {"month": 3, "type": "junk"},
+            {"month": 4, "type": "junk"}, {"month": 4, "type": "junk"}
+        ],
+        "mock_gameState": "playing",
+        "player0_data": {"isComputer": False},
+        "player1_data": {"isComputer": False}
+    })
+    
+    # 1. Play Month 9 Junk to capture Month 9 Animal
+    agent.send_user_action("play_card", {"month": 9, "type": "junk"})
+    
+    # 2. Respond with Double Pi
+    agent.send_user_action("respond_to_chrysanthemum_choice", {"role": "doublePi"})
+    
+    # 3. Verify state
+    state = agent.get_all_information()
+    player = state["players"][0]
+    
+    # Verify groupings (visual check)
+    captured = player["capturedCards"]
+    chrys_card = next((c for c in captured if c["month"] == 9 and c["type"] == "animal"), None)
+    assert chrys_card is not None
+    assert chrys_card.get("selectedRole") == "doublePi"
+    
+    # Verify score items
+    score_items = player.get("scoreItems", [])
+    logger.info(f"Score Items: {score_items}")
+    pi_item = next((item for item in score_items if item["name"].startswith("피")), None)
+    
+    assert pi_item is not None, "Pi item should exist for 11 units"
+    assert pi_item["count"] == 11, f"Expected 11 pi units (8+1+2), got {pi_item['count']}"
+    assert pi_item["points"] == 2, f"Expected 2 points for 11 units, got {pi_item['points']}"
+    
+    logger.info("Repro Chrysanthemum Score Bug verification passed!")
+
+def scenario_verify_ttadak_correct_detection(agent: TestAgent):
+    """
+    Scenario: Verifies that Ttadak IS triggered when play and draw capture the SAME month.
+    """
+    logger.info("Running Ttadak correct detection scenario...")
+    
+    agent.send_user_action("start_game")
+    
+    # Setup:
+    # - Hand: Jan Junk
+    # - Table: Two Jan Junk cards
+    # - Deck: Jan Bright (drawn after play)
+    # Result: Ttadak for Jan (4 cards of the same month resolved across play+draw).
+    agent.set_condition({
+        "currentTurnIndex": 0,
+        "mock_hand": [{"month": 1, "type": "junk"}],
+        "mock_table": [{"month": 1, "type": "junk"}, {"month": 1, "type": "junk"}],
+        "mock_deck": [{"month": 1, "type": "bright"}],
+        "mock_opponent_captured_cards": [{"month": 2, "type": "junk"}],
+        "player1_data": {"isComputer": False},
+        "player0_data": {"isComputer": False}
+    })
+    
+    agent.send_user_action("play_card", {"month": 1, "type": "junk"})
+    
+    state = agent.get_all_information()
+    events = state.get("eventLogs", state.get("recentEvents", []))
+    
+    # Verify Ttadak event log
+    has_ttadak = any("따닥(Ttadak)" in e for e in events)
+    assert has_ttadak, "Ttadak was NOT triggered for same-month capture!"
+    
+    # Verify Ttadak counter and Pi stealing
     player = state["players"][0]
     assert player.get("ttadakCount", 0) >= 1, "ttadakCount should increment for Ttadak case"
     
@@ -2538,11 +2825,193 @@ if __name__ == "__main__":
     print(f"\n[EXECUTION] Using executable: {app_executable}")
     print(f"[EXECUTION] Binary modified at: {time.ctime(os.path.getmtime(app_executable)) if os.path.exists(app_executable) else 'N/A'}\n")
 
-    agent = TestAgent(app_executable_path=app_executable, 
-                      connection_mode=args.mode,
-                      max_steps_per_scenario=100, 
-                      rng_seed=42) # Deterministic seed
+
+def scenario_repro_pi_unit_mismatch(agent: TestAgent):
+    """
+    Scenario: Verifies a specific Pi unit count reported by the user.
+    Card list: M11 junk, M3 junk, M6 junk, M7 junk, M8 junk, M8 junk, M2 junk, M9 junk, M9(doublePi)
+    Total expected: 1(M11) + 1(M3) + 1(M6) + 1(M7) + 1(M8) + 1(M8) + 1(M2) + 1(M9) + 2(M9 2P) = 10 units.
+    """
+    logger.info("Running Repro Pi Unit Mismatch verification...")
+    agent.send_user_action("start_game")
     
+    mock_captured = [
+        {"month": 11, "type": "junk"},
+        {"month": 3, "type": "junk"},
+        {"month": 6, "type": "junk"},
+        {"month": 7, "type": "junk"},
+        {"month": 8, "type": "junk"},
+        {"month": 8, "type": "junk"},
+        {"month": 2, "type": "junk"},
+        {"month": 9, "type": "junk"},
+        {"month": 9, "type": "animal", "selectedRole": "doublePi"}
+    ]
+    
+    agent.set_condition({
+        "currentTurnIndex": 0,
+        "mock_gameState": "playing",
+        "player0_data": {
+            "isComputer": False,
+            "capturedCards": mock_captured
+        }
+    })
+    
+    state = agent.get_all_information()
+    player = state["players"][0]
+    
+    pi_score_item = next((item for item in player.get("scoreItems", []) if "Junk" in item["name"]), None)
+    
+    if pi_score_item:
+        actual_units = pi_score_item["count"]
+        logger.info(f"Detected Pi Score Item: {pi_score_item}")
+        # Regression check: November plain junk is 1 pi (not 2). Expected total is 10.
+        assert actual_units == 10, f"Expected 10 Pi units, but got {actual_units}"
+    else:
+        logger.error("Pi Score Item NOT found. This suggests units might be < 10.")
+        junk_cards = [c for c in player["capturedCards"] if c["type"] in ["junk", "doubleJunk"] or (c["month"] == 9 and c.get("selectedRole") == "doublePi")]
+        logger.info(f"Captured Junk Cards: {len(junk_cards)}")
+        raise AssertionError("Pi Score Item not found (expected at least 10 units)")
+
+    logger.info("Repro Pi Unit Mismatch verification passed!")
+
+
+def scenario_verify_pibak_threshold_boundary(agent: TestAgent):
+    """
+    Verify Pibak threshold boundary from rule.yaml.
+    Current rule: opponent_min_pi_safe = 8  -> loser Pi 1~7 => Pibak, 8+ => no Pibak.
+    """
+    logger.info("Running Pibak threshold boundary verification...")
+    agent.send_user_action("start_game")
+
+    winner_cards = [{"month": m, "type": "junk"} for m in range(1, 11)]  # 10 pi -> winnerPi >= 10
+
+    def check_case(loser_pi_count: int, expected: bool):
+        loser_cards = [{"month": ((i % 12) + 1), "type": "junk"} for i in range(loser_pi_count)]
+        agent.set_condition({
+            "mock_captured_cards": winner_cards,
+            "mock_opponent_captured_cards": loser_cards,
+            # Winner called Go once so bak applies even when opponent did not Go.
+            "player0_data": {"goCount": 1},
+            "player1_data": {"goCount": 0},
+            "mock_scenario": "game_over"
+        })
+        state = agent.get_all_information()
+        penalty = state.get("penaltyResult", {})
+        actual = penalty.get("isPibak", False)
+        assert actual is expected, (
+            f"Pibak boundary failed for loserPi={loser_pi_count}: expected {expected}, got {actual}. "
+            f"penalty={penalty}"
+        )
+        logger.info(f"  loserPi={loser_pi_count} -> isPibak={actual}")
+
+    check_case(7, True)
+    check_case(8, False)
+    logger.info("Pibak threshold boundary verification passed!")
+
+
+def scenario_verify_gwangbak_threshold_boundary(agent: TestAgent):
+    """
+    Verify Gwangbak threshold boundary from rule.yaml.
+    Current rule: opponent_max_kwang = 0 -> opponent 0 Kwang => Gwangbak, 1+ Kwang => no Gwangbak.
+    """
+    logger.info("Running Gwangbak threshold boundary verification...")
+    agent.send_user_action("start_game")
+
+    # Samgwang (3 points) without December bright.
+    winner_cards = [
+        {"month": 1, "type": "bright"},
+        {"month": 3, "type": "bright"},
+        {"month": 8, "type": "bright"},
+    ]
+
+    def check_case(loser_kwangs: int, expected: bool):
+        loser_cards = []
+        if loser_kwangs >= 1:
+            loser_cards.append({"month": 12, "type": "bright"})  # Any bright count >=1 should block gwangbak
+        # Pad with harmless cards so score inference remains deterministic
+        loser_cards.extend([{"month": 11, "type": "junk"} for _ in range(2)])
+
+        agent.set_condition({
+            "mock_captured_cards": winner_cards,
+            "mock_opponent_captured_cards": loser_cards,
+            "player0_data": {"goCount": 1},
+            "player1_data": {"goCount": 0},
+            "mock_scenario": "game_over"
+        })
+        state = agent.get_all_information()
+        penalty = state.get("penaltyResult", {})
+        actual = penalty.get("isGwangbak", False)
+        assert actual is expected, (
+            f"Gwangbak boundary failed for loserKwangs={loser_kwangs}: expected {expected}, got {actual}. "
+            f"penalty={penalty}"
+        )
+        logger.info(f"  loserKwangs={loser_kwangs} -> isGwangbak={actual}")
+
+    check_case(0, True)
+    check_case(1, False)
+    logger.info("Gwangbak threshold boundary verification passed!")
+
+
+def scenario_verify_mungbak_threshold_boundary(agent: TestAgent):
+    """
+    Verify Mungbak threshold boundary from rule.yaml.
+    Current rule: winner_min_animal = 7 -> 6 animals no Mungbak, 7 animals yes.
+    """
+    logger.info("Running Mungbak threshold boundary verification...")
+    agent.send_user_action("start_game")
+
+    # Avoid Godori (2,4,8) to keep the setup focused on animal count threshold only.
+    animal_months = [1, 3, 5, 6, 7, 9, 10]
+
+    def check_case(winner_animals: int, expected: bool):
+        winner_cards = [{"month": m, "type": "animal"} for m in animal_months[:winner_animals]]
+        # Keep loser weak and non-zero cards; no Go => no Gobak.
+        loser_cards = [{"month": 11, "type": "junk"} for _ in range(3)]
+
+        agent.set_condition({
+            "mock_captured_cards": winner_cards,
+            "mock_opponent_captured_cards": loser_cards,
+            "player0_data": {"goCount": 1},
+            "player1_data": {"goCount": 0},
+            "mock_scenario": "game_over"
+        })
+        state = agent.get_all_information()
+        penalty = state.get("penaltyResult", {})
+        actual = penalty.get("isMungbak", False)
+        assert actual is expected, (
+            f"Mungbak boundary failed for winnerAnimals={winner_animals}: expected {expected}, got {actual}. "
+            f"penalty={penalty}"
+        )
+        logger.info(f"  winnerAnimals={winner_animals} -> isMungbak={actual}")
+
+    check_case(6, False)
+    check_case(7, True)
+    logger.info("Mungbak threshold boundary verification passed!")
+
+def main():
+    parser = argparse.ArgumentParser(description="GoStop Test Agent Scenarios")
+    
+    # Try to find a default executable
+    default_executable = "/Users/najongseong/git_repository/GoStop_antigravity/build/Build/Products/Debug/GoStopCLI"
+    
+    parser.add_argument("--executable", default=default_executable, help="Path to GoStopCLI (default: %(default)s)")
+    parser.add_argument("--mode", choices=["cli", "socket"], default="cli", help="Connection mode")
+    parser.add_argument("-k", "--filter", type=str, help="Filter scenarios by name")
+    parser.add_argument("--indices", type=int, nargs="+", help="Indices of scenarios to run")
+    parser.add_argument("pos_indices", type=int, nargs="*", help="Positional indices (legacy support)")
+    
+    args = parser.parse_args()
+    
+    # Merge indices
+    final_indices = []
+    if args.indices:
+        final_indices.extend(args.indices)
+    if args.pos_indices:
+        final_indices.extend(args.pos_indices)
+
+    agent = TestAgent(app_executable_path=args.executable, connection_mode=args.mode)
+
+    # 1. Register all scenarios
     all_scenarios = [
         scenario_basic_launch_and_read,
         scenario_setup_condition_and_act,
@@ -2592,10 +3061,17 @@ if __name__ == "__main__":
         scenario_verify_chrysanthemum_via_draw,
         scenario_verify_chrysanthemum_choice_persistence,
         scenario_verify_chrysanthemum_score_at_round_end,
+        scenario_verify_chrysanthemum_role_selection_and_state,
+        scenario_repro_chrysanthemum_score_bug,
         scenario_verify_table_4_card_nagari,
+        scenario_verify_nagari_end_flow,
         scenario_verify_ttadak_correct_detection,
         scenario_verify_no_ttadak_on_different_months,
-        scenario_verify_ttadak_with_initial_double_on_table
+        scenario_verify_ttadak_with_initial_double_on_table,
+        scenario_repro_pi_unit_mismatch,
+        scenario_verify_pibak_threshold_boundary,
+        scenario_verify_gwangbak_threshold_boundary,
+        scenario_verify_mungbak_threshold_boundary
     ]
     
     # 2. Print available scenarios
@@ -2608,9 +3084,9 @@ if __name__ == "__main__":
     scenarios_to_run = all_scenarios
     
     # 3. Filter by index if provided
-    if args.indices:
+    if final_indices:
         selected = []
-        for idx in args.indices:
+        for idx in final_indices:
             if 0 <= idx < len(all_scenarios):
                 selected.append(all_scenarios[idx])
             else:
@@ -2630,3 +3106,6 @@ if __name__ == "__main__":
         agent.run_tests(scenarios=scenarios_to_run, repeat_count=1)
     except KeyboardInterrupt:
         logger.info("Testing interrupted by user.")
+
+if __name__ == "__main__":
+    main()

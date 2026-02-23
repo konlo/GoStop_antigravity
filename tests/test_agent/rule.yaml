@@ -71,7 +71,7 @@ penalties:
     enabled: true
     resolution_type: "multiplier"
     pi_to_transfer: 5
-    opponent_min_pi_safe: 6 # If opponent has < 6 pi, they are pibak
+    opponent_min_pi_safe: 8 # If opponent has < 8 pi (1-7), they are pibak
     multiplier: 2
   mungbak: # Animal-bak
     enabled: true

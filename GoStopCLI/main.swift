@@ -259,7 +259,19 @@ class CLIEngine {
             guard let m = dict["month"] as? Int,
                   let tStr = dict["type"] as? String else { return nil }
             let type = parseType(tStr)
-            return Card(month: Month(rawValue: m) ?? .jan, type: type, imageIndex: 0)
+            var card = Card(month: Month(rawValue: m) ?? .jan, type: type, imageIndex: 0)
+            if let rStr = dict["selectedRole"] as? String {
+                card.selectedRole = parseRole(rStr)
+            }
+            return card
+        }
+    }
+    
+    private func parseRole(_ rStr: String) -> CardRole {
+        switch rStr {
+        case "doublePi": return .doublePi
+        case "animal": return .animal
+        default: return .animal
         }
     }
     
@@ -312,6 +324,11 @@ class CLIEngine {
            let dictVal = try? JSONSerialization.jsonObject(with: cardData) {
             dict["pendingCapturePlayedCard"] = dictVal
         }
+        if let drawnCard = gameManager.pendingCaptureDrawnCard,
+           let cardData = try? JSONEncoder().encode(drawnCard),
+           let dictVal = try? JSONSerialization.jsonObject(with: cardData) {
+            dict["pendingCaptureDrawnCard"] = dictVal
+        }
         
         if gameManager.gameState == .choosingCapture {
             if let optionsData = try? JSONEncoder().encode(gameManager.pendingCaptureOptions),
@@ -333,23 +350,35 @@ class CLIEngine {
         }
         
         // Inject penalty result if game ended
-        if gameManager.gameState == .ended, 
-           let rules = RuleLoader.shared.config {
-            // Assume player 0 is the winner for penalty testing purposes if score > 0
-            let winner = gameManager.players[0].score >= gameManager.players[1].score ? gameManager.players[0] : gameManager.players[1]
-            let loser = winner === gameManager.players[0] ? gameManager.players[1] : gameManager.players[0]
-            
-            let penalty = PenaltySystem.calculatePenalties(winner: winner, loser: loser, rules: rules)
-            dict["penaltyResult"] = [
-                "finalScore": penalty.finalScore,
-                "isGwangbak": penalty.isGwangbak,
-                "isPibak": penalty.isPibak,
-                "isGobak": penalty.isGobak,
-                "isMungbak": penalty.isMungbak,
-                "isJabak": penalty.isJabak,
-                "isYeokbak": penalty.isYeokbak,
-                "scoreFormula": penalty.scoreFormula
-            ]
+        if gameManager.gameState == .ended {
+            if let lastResult = gameManager.lastPenaltyResult {
+                dict["penaltyResult"] = [
+                    "finalScore": lastResult.finalScore,
+                    "isGwangbak": lastResult.isGwangbak,
+                    "isPibak": lastResult.isPibak,
+                    "isGobak": lastResult.isGobak,
+                    "isMungbak": lastResult.isMungbak,
+                    "isJabak": lastResult.isJabak,
+                    "isYeokbak": lastResult.isYeokbak,
+                    "scoreFormula": lastResult.scoreFormula
+                ]
+            } else if let rules = RuleLoader.shared.config {
+                // Fallback for cases where lastPenaltyResult might not be set (legacy or specific edge cases)
+                let winner = gameManager.players[0].score >= gameManager.players[1].score ? gameManager.players[0] : gameManager.players[1]
+                let loser = winner === gameManager.players[0] ? gameManager.players[1] : gameManager.players[0]
+                
+                let penalty = PenaltySystem.calculatePenalties(winner: winner, loser: loser, rules: rules)
+                dict["penaltyResult"] = [
+                    "finalScore": penalty.finalScore,
+                    "isGwangbak": penalty.isGwangbak,
+                    "isPibak": penalty.isPibak,
+                    "isGobak": penalty.isGobak,
+                    "isMungbak": penalty.isMungbak,
+                    "isJabak": penalty.isJabak,
+                    "isYeokbak": penalty.isYeokbak,
+                    "scoreFormula": penalty.scoreFormula
+                ]
+            }
 
             if let reason = gameManager.gameEndReason {
                 dict["gameEndReason"] = reason.rawValue

@@ -288,6 +288,11 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					A82194C81A40D4649BC7B765 = {
+						ProvisioningStyle = Automatic;
+					};
+				};
 			};
 			buildConfigurationList = 27FBD34375465329B77CA194 /* Build configuration list for PBXProject "GoStop" */;
 			compatibilityVersion = "Xcode 14.0";
@@ -427,6 +432,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = CX4GUZT9FS;
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = GoStop/Info.plist;
@@ -446,6 +452,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = CX4GUZT9FS;
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = GoStop/Info.plist;
