@@ -12,6 +12,9 @@ class ConfigManager: ObservableObject {
     
     @Published var gameSize: CGSize = CGSize(width: 393, height: 852) // Default to iPhone 15 size
     
+    // Rules System
+    @Published var ruleConfig: RuleConfig?
+    
     // Helper to calculate constant card size based on current layout and game size
     func cardSize(scale: CGFloat = 1.0) -> CGSize {
         // V2 Adapter: Use Context if available
@@ -64,6 +67,9 @@ class ConfigManager: ObservableObject {
         
         // Initial Context
         self.updateLayoutContext()
+        
+        // Load Rules
+        self.ruleConfig = RuleLoader.shared.config
     }
     
     static func loadLayoutV2() -> LayoutConfigV2? {

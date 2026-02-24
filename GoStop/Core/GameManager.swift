@@ -561,9 +561,12 @@ class GameManager: ObservableObject {
                     
                     // Capture turnPlayPhaseCaptured cards (bomb cards + table match) before pausing
                     if !turnPlayPhaseCaptured.isEmpty {
-                        player.capture(cards: turnPlayPhaseCaptured)
+                        let finalPlayCaptures = turnPlayPhaseCaptured.filter { !($0.month == .sep && $0.type == .animal) }
+                        if !finalPlayCaptures.isEmpty {
+                            player.capture(cards: finalPlayCaptures)
+                        }
                         player.score = ScoringSystem.calculateScore(for: player)
-                        gLog("\(player.name) captured \(turnPlayPhaseCaptured.count) (bomb play phase) before pausing for bomb draw choice.")
+                        gLog("\(player.name) captured \(finalPlayCaptures.count) (bomb play phase) before pausing for bomb draw choice.")
                     }
                     return // Pause
                 }
@@ -683,9 +686,12 @@ class GameManager: ObservableObject {
                     
                     // We must capture the turnPlayPhaseCaptured cards now before pausing
                     if !turnPlayPhaseCaptured.isEmpty {
-                        player.capture(cards: turnPlayPhaseCaptured)
+                        let finalPlayCaptures = turnPlayPhaseCaptured.filter { !($0.month == .sep && $0.type == .animal) }
+                        if !finalPlayCaptures.isEmpty {
+                            player.capture(cards: finalPlayCaptures)
+                        }
                         player.score = ScoringSystem.calculateScore(for: player)
-                        gLog("\(player.name) captured \(turnPlayPhaseCaptured.count) (play phase) before pausing for draw choice.")
+                        gLog("\(player.name) captured \(finalPlayCaptures.count) (play phase) before pausing for draw choice.")
                     }
                     return // Pause - will resume via respondToCapture()
                 }
@@ -868,6 +874,16 @@ class GameManager: ObservableObject {
             let noPlayableHands = players.allSatisfy { $0.hand.isEmpty }
             if noPlayableHands {
                 self.gameEndReason = .nagari
+                self.lastPenaltyResult = PenaltySystem.PenaltyResult(
+                    finalScore: 0,
+                    isGwangbak: false,
+                    isPibak: false,
+                    isGobak: false,
+                    isMungbak: false,
+                    isJabak: false,
+                    isYeokbak: false,
+                    scoreFormula: "Nagari (Draw) - No playable hands"
+                )
                 settleResidualCardsIfHandsEmpty()
                 gameState = .ended
                 gLog("Game Ended in Nagari! (no playable hands)")

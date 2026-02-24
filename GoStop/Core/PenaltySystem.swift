@@ -101,18 +101,24 @@ struct PenaltySystem {
         if rules.penalties.jabak.enabled {
             // If loser has enough points, nullify ALL Bak multipliers applied to them
             if loser.score >= rules.penalties.jabak.min_score_threshold {
-                if isGwangbak || isPibak || isMungbak {
+                let winnerKwangs = winnerCards.filter { $0.type == .bright }.count
+                let shouldNullifyGwangbak = isGwangbak && winnerKwangs < 5
+                
+                if shouldNullifyGwangbak || isPibak || isMungbak {
                     isJabak = true
                     // Reset multipliers for these specific penalties
-                    // Note: This is an approximation. Ideally we'd only subtract the multipliers they added.
-                    // But in GoStopBak multipliers are usually independent 2x.
-                    if isGwangbak { multiplier /= rules.penalties.gwangbak.multiplier }
-                    if isPibak { multiplier /= rules.penalties.pibak.multiplier }
-                    if isMungbak { multiplier /= rules.penalties.mungbak.multiplier }
-                    
-                    isGwangbak = false
-                    isPibak = false
-                    isMungbak = false
+                    if shouldNullifyGwangbak { 
+                        multiplier /= rules.penalties.gwangbak.multiplier
+                        isGwangbak = false
+                    }
+                    if isPibak { 
+                        multiplier /= rules.penalties.pibak.multiplier
+                        isPibak = false
+                    }
+                    if isMungbak { 
+                        multiplier /= rules.penalties.mungbak.multiplier
+                        isMungbak = false
+                    }
                 }
             }
         }
@@ -133,21 +139,20 @@ struct PenaltySystem {
             }
         }
         
-        // 5. Shake Multiplier (흔들기) - Additive per user request
-        // 6. Shake & Bomb Multiplier (폭탄 & 흔듦)
-        // Rule: Both bombs and shakes count towards the same additive multiplier.
-        // Formula: (1 + totalShakeBombCount)
+        // 5. Shake & Bomb Multiplier (폭탄 & 흔듦)
+        // Rule: Both bombs and shakes count towards the same exponential multiplier.
+        // Formula: 2^totalShakeBombCount
         let totalShakeBomb = winner.shakeCount + winner.bombCount
         if totalShakeBomb > 0 {
-            multiplier *= (1 + totalShakeBomb)
+            multiplier *= Int(pow(2.0, Double(totalShakeBomb)))
         }
         
-        // 7. Sweep Multiplier (싹쓸이) - Removed as per user request (not a standard rule)
-        /*
+        // 6. Sweep Multiplier (싹쓸이)
+        // Rule: Each sweep doubles the score exponentially.
+        // Formula: 2^sweepCount
         if winner.sweepCount > 0 {
-            multiplier *= (1 + winner.sweepCount)
+            multiplier *= Int(pow(2.0, Double(winner.sweepCount)))
         }
-        */
         
         // 8+9. Mung-dda and Bomb Mung-dda Multipliers - Removed as per user request
         /*
@@ -200,7 +205,8 @@ struct PenaltySystem {
             if isMungbak { multParts.append("Mungbak(x\(rules.penalties.mungbak.multiplier))") }
             if isGobak { multParts.append("Gobak(x\(rules.penalties.gobak.multiplier))") }
             let totalShakeBomb = winner.shakeCount + winner.bombCount
-            if totalShakeBomb > 0 { multParts.append("Shake/Bomb(x\(1 + totalShakeBomb))") }
+            if totalShakeBomb > 0 { multParts.append("Shake/Bomb(x\(Int(pow(2.0, Double(totalShakeBomb)))))") }
+            if winner.sweepCount > 0 { multParts.append("Sweep(x\(Int(pow(2.0, Double(winner.sweepCount)))))") }
             // Bomb multiplier removed as per user request (integrated into Shake)
             // Sweep multiplier removed as per user request
             if winner.mungddaCount > 0 { multParts.append("Mungdda - REMOVED") }

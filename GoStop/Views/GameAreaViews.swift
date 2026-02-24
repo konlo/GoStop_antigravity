@@ -8,6 +8,8 @@ struct SettingAreaV2: View {
     let ctx: LayoutContext
     let config: SettingSectionConfigV2?
     let onExitTapped: () -> Void
+    let onSettingsTapped: () -> Void
+    let onLogTapped: () -> Void
     
     var body: some View {
         if let settingConfig = config {
@@ -35,14 +37,31 @@ struct SettingAreaV2: View {
                                 .shadow(radius: 2)
                         }
 
-                        // Future Settings Button
-                        Button(action: {
-                            // TODO: Add settings functionality
-                            print("Settings icon tapped")
-                        }) {
+                        // Settings Menu
+                        Menu {
+                            Button(action: { print("화투 소개 tapped") }) {
+                                Label("1. 화투 소개", systemImage: "book")
+                            }
+                            Button(action: onSettingsTapped) {
+                                Label("2. 현재 설정 상태", systemImage: "gearshape")
+                            }
+                            Button(action: { print("최고 기록 tapped") }) {
+                                Label("3. 최고 기록", systemImage: "trophy")
+                            }
+                            Button(action: onLogTapped) {
+                                Label("4. 화투 Log", systemImage: "list.bullet.rectangle")
+                            }
+                            Button(action: { print("개발자 정보 tapped") }) {
+                                Label("5. 개발자 정보", systemImage: "person.info")
+                            }
+                        } label: {
                             Image(systemName: "gearshape.fill")
                                 .font(.title3)
-                                .foregroundColor(.gray)
+                                .foregroundColor(.white) // Changed to white for better visibility
+                                .padding(8)
+                                .background(Color.gray.opacity(0.8))
+                                .cornerRadius(8)
+                                .shadow(radius: 2)
                         }
                     }
                     .padding(.trailing, 10)

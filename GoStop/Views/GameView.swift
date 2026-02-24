@@ -7,6 +7,8 @@ struct GameView: View {
     @State private var playerHandSlotManager: PlayerHandSlotManager?
     @State private var tableSlotManager: TableSlotManager?
     @State private var showingRestartAlert = false
+    @State private var showingEventLog = false
+    @State private var showingSettings = false
     
     var body: some View {
         GeometryReader { geometry in
@@ -16,115 +18,127 @@ struct GameView: View {
                 height: geometry.size.height - safeArea.top - safeArea.bottom
             )
             
-            // Sync Game Size to Config (Use SAFE size for layout calculation)
+            // Sync Game Size to Config
             let _ = config.updateGameSize(safeSize)
             
-            let layoutContext = config.layoutContext
-            
-            ZStack {
-                // Global Background (Full Screen)
-                RadialGradient(gradient: Gradient(colors: [Color(red: 0.15, green: 0.55, blue: 0.25), Color(red: 0.05, green: 0.35, blue: 0.15)]), center: .center, startRadius: 50, endRadius: 600)
-                    .ignoresSafeArea()
-                
-                if let ctx = layoutContext {
-                    // 0. Setting Area
-                    if let settingFrame = ctx.areaFrames[.setting], settingFrame.height > 0 {
-                        SettingAreaV2(ctx: ctx, config: ctx.config.areas.setting, onExitTapped: {
-                            showingRestartAlert = true
-                        })
-                            .frame(width: settingFrame.width, height: settingFrame.height)
-                            .position(x: safeArea.leading + settingFrame.midX,
-                                      y: safeArea.top + settingFrame.midY)
-                            .zIndex(0)
-                    }
-                    
-                    // 1. Opponent Area
-                    let opponentFrame = ctx.frame(for: .opponent)
-                    OpponentAreaV2(ctx: ctx, gameManager: gameManager)
-                        .frame(width: opponentFrame.width, height: opponentFrame.height)
-                        .position(x: safeArea.leading + opponentFrame.midX,
-                                  y: safeArea.top + opponentFrame.midY)
-                        .zIndex(1)
-                    
-                    // 2. Center Area
-                    let centerFrame = ctx.frame(for: .center)
-                    CenterAreaV2(ctx: ctx, gameManager: gameManager, tableSlotManager: tableSlotManager)
-                        .frame(width: centerFrame.width, height: centerFrame.height)
-                        .position(x: safeArea.leading + centerFrame.midX,
-                                  y: safeArea.top + centerFrame.midY)
-                        .zIndex(2)
-                    
-                    // 3. Player Area
-                    let playerFrame = ctx.frame(for: .player)
-                    PlayerAreaV2(ctx: ctx, gameManager: gameManager, slotManager: playerHandSlotManager)
-                        .frame(width: playerFrame.width, height: playerFrame.height)
-                        .position(x: safeArea.leading + playerFrame.midX,
-                                  y: safeArea.top + playerFrame.midY)
-                        .zIndex(3)
-                    
-                    // Debug Overlay
-                    if config.layoutV2?.debug.showSafeArea == true || config.layoutV2?.debug.showGrid == true {
-                        DebugLayoutOverlayV2(ctx: ctx)
-                            .position(x: safeArea.leading + safeSize.width/2, y: safeArea.top + safeSize.height/2) // Centered in Safe Area
-                            .allowsHitTesting(false)
-                            .zIndex(100)
-                    }
-                    
-                } else {
-                    ProgressView("Loading Layout V2...")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(Color.black.opacity(0.5))
-                }
-                
-                // Overlays (Global)
-                overlayArea
-                    .zIndex(200)
-            }
-            .coordinateSpace(name: "GameSpace")
-            .alert("재시작 확인", isPresented: $showingRestartAlert) {
-                Button("취소", role: .cancel) {
-                    // Do nothing, resume game
-                }
-                Button("확인", role: .destructive) {
-                    // Restart logic
-                    gameManager.setupGame()
-                    gameManager.startGame()
-                }
-            } message: {
-                Text("게임을 다시 시작하시겠습니까?")
-            }
+            mainGameContent(safeArea: safeArea, safeSize: safeSize)
         }
         .ignoresSafeArea()
-        .onAppear {
-            if let configV2 = config.layoutV2 {
-                self.playerHandSlotManager = PlayerHandSlotManager(config: configV2)
-                if let hand = gameManager.players.first?.hand {
-                    self.playerHandSlotManager?.sync(with: hand)
-                }
+        .onAppear { onAppearAction() }
+        .onChange(of: config.layoutV2) { onChangeLayout($0) }
+        .onChange(of: gameManager.players.first?.hand) { onChangeHand($0) }
+        .onChange(of: gameManager.tableCards) { onChangeTable($0) }
+    }
+
+    @ViewBuilder
+    private func mainGameContent(safeArea: EdgeInsets, safeSize: CGSize) -> some View {
+        let layoutContext = config.layoutContext
+        
+        ZStack {
+            // Global Background
+            RadialGradient(gradient: Gradient(colors: [Color(red: 0.15, green: 0.55, blue: 0.25), Color(red: 0.05, green: 0.35, blue: 0.15)]), center: .center, startRadius: 50, endRadius: 600)
+                .ignoresSafeArea()
+            
+            if let ctx = layoutContext {
+                gameAreas(ctx: ctx, safeArea: safeArea)
                 
-                self.tableSlotManager = TableSlotManager(config: configV2)
-                self.tableSlotManager?.sync(with: gameManager.tableCards)
+                // Debug Overlay
+                if config.layoutV2?.debug.showSafeArea == true || config.layoutV2?.debug.showGrid == true {
+                    DebugLayoutOverlayV2(ctx: ctx)
+                        .position(x: safeArea.leading + safeSize.width/2, y: safeArea.top + safeSize.height/2)
+                        .allowsHitTesting(false)
+                        .zIndex(100)
+                }
+            } else {
+                ProgressView("Loading Layout V2...")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color.black.opacity(0.5))
             }
+            
+            // Overlays (Global)
+            overlayArea
+                .zIndex(200)
         }
-        .onChange(of: config.layoutV2) { newConfig in
-            if let cfg = newConfig {
-                 self.playerHandSlotManager = PlayerHandSlotManager(config: cfg)
-                 if let hand = gameManager.players.first?.hand {
-                     self.playerHandSlotManager?.sync(with: hand)
-                 }
-                 
-                 self.tableSlotManager = TableSlotManager(config: cfg)
-                 self.tableSlotManager?.sync(with: gameManager.tableCards)
+        .coordinateSpace(name: "GameSpace")
+        .alert("재시작 확인", isPresented: $showingRestartAlert) {
+            Button("취소", role: .cancel) {}
+            Button("확인", role: .destructive) {
+                gameManager.setupGame()
+                gameManager.startGame()
             }
+        } message: {
+            Text("게임을 다시 시작하시겠습니까?")
         }
-        .onChange(of: gameManager.players.first?.hand) { newHand in
-            if let hand = newHand {
-                playerHandSlotManager?.sync(with: hand)
+    }
+
+    @ViewBuilder
+    private func gameAreas(ctx: LayoutContext, safeArea: EdgeInsets) -> some View {
+        // 0. Setting Area
+        if let settingFrame = ctx.areaFrames[.setting], settingFrame.height > 0 {
+            SettingAreaV2(
+                ctx: ctx,
+                config: ctx.config.areas.setting,
+                onExitTapped: { showingRestartAlert = true },
+                onSettingsTapped: { showingSettings = true },
+                onLogTapped: { showingEventLog.toggle() }
+            )
+            .frame(width: settingFrame.width, height: settingFrame.height)
+            .position(x: safeArea.leading + settingFrame.midX, y: safeArea.top + settingFrame.midY)
+            .zIndex(0)
+        }
+        
+        // 1. Opponent Area
+        let opponentFrame = ctx.frame(for: .opponent)
+        OpponentAreaV2(ctx: ctx, gameManager: gameManager)
+            .frame(width: opponentFrame.width, height: opponentFrame.height)
+            .position(x: safeArea.leading + opponentFrame.midX, y: safeArea.top + opponentFrame.midY)
+            .zIndex(1)
+        
+        // 2. Center Area
+        let centerFrame = ctx.frame(for: .center)
+        CenterAreaV2(ctx: ctx, gameManager: gameManager, tableSlotManager: tableSlotManager)
+            .frame(width: centerFrame.width, height: centerFrame.height)
+            .position(x: safeArea.leading + centerFrame.midX, y: safeArea.top + centerFrame.midY)
+            .zIndex(2)
+        
+        // 3. Player Area
+        let playerFrame = ctx.frame(for: .player)
+        PlayerAreaV2(ctx: ctx, gameManager: gameManager, slotManager: playerHandSlotManager)
+            .frame(width: playerFrame.width, height: playerFrame.height)
+            .position(x: safeArea.leading + playerFrame.midX, y: safeArea.top + playerFrame.midY)
+            .zIndex(3)
+    }
+
+    private func onAppearAction() {
+        if let configV2 = config.layoutV2 {
+            self.playerHandSlotManager = PlayerHandSlotManager(config: configV2)
+            if let hand = gameManager.players.first?.hand {
+                self.playerHandSlotManager?.sync(with: hand)
             }
+            self.tableSlotManager = TableSlotManager(config: configV2)
+            self.tableSlotManager?.sync(with: gameManager.tableCards)
         }
-        .onChange(of: gameManager.tableCards) { newTableCards in
-            tableSlotManager?.sync(with: newTableCards)
+    }
+
+    private func onChangeLayout(_ newConfig: LayoutConfigV2?) {
+        if let cfg = newConfig {
+             self.playerHandSlotManager = PlayerHandSlotManager(config: cfg)
+             if let hand = gameManager.players.first?.hand {
+                 self.playerHandSlotManager?.sync(with: hand)
+             }
+             self.tableSlotManager = TableSlotManager(config: cfg)
+             self.tableSlotManager?.sync(with: gameManager.tableCards)
         }
+    }
+
+    private func onChangeHand(_ newHand: [Card]?) {
+        if let hand = newHand {
+            playerHandSlotManager?.sync(with: hand)
+        }
+    }
+
+    private func onChangeTable(_ newTableCards: [Card]) {
+        tableSlotManager?.sync(with: newTableCards)
     }
     
     // MARK: - Subviews
@@ -198,6 +212,14 @@ struct GameView: View {
             captureChoiceOverlay()
         } else if gameManager.gameState == .choosingChrysanthemumRole {
             chrysanthemumChoiceOverlay()
+        }
+        
+        if showingEventLog {
+            EventLogView(eventLogs: gameManager.eventLogs, isPresented: $showingEventLog)
+        }
+        
+        if showingSettings {
+            RuleSettingsView(isPresented: $showingSettings)
         }
     }
     
@@ -469,4 +491,77 @@ struct GameView: View {
 #Preview {
     GameView()
         .ignoresSafeArea()
+}
+
+struct EventLogView: View {
+    let eventLogs: [String]
+    @Binding var isPresented: Bool
+    
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.6).ignoresSafeArea()
+            
+            VStack(spacing: 0) {
+                // Header
+                HStack {
+                    Text("최근 이벤트 (화투 Log)")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                    Spacer()
+                    Button(action: { isPresented = false }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.title2)
+                            .foregroundColor(.white.opacity(0.7))
+                    }
+                }
+                .padding()
+                .background(Color.blue.opacity(0.8))
+                
+                // Content
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 10) {
+                        if eventLogs.isEmpty {
+                            Text("로그가 없습니다.")
+                                .foregroundColor(.white.opacity(0.5))
+                                .padding()
+                        } else {
+                            ForEach(eventLogs.reversed(), id: \.self) { log in
+                                Text(log)
+                                    .font(.system(.body, design: .monospaced))
+                                    .foregroundColor(.white)
+                                    .padding(.bottom, 2)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .contentShape(Rectangle()) // Make the whole frame clickable for context menu
+                                    .contextMenu {
+                                        Button(action: {
+                                            UIPasteboard.general.string = eventLogs.reversed().joined(separator: "\n")
+                                        }) {
+                                            Label("전체 Text 복사", systemImage: "doc.on.doc")
+                                        }
+                                        
+                                        Button(action: {
+                                            UIPasteboard.general.string = log
+                                        }) {
+                                            Label("이 라인 복사", systemImage: "doc.on.clipboard")
+                                        }
+                                    }
+                                Divider()
+                                    .background(Color.white.opacity(0.2))
+                            }
+                        }
+                    }
+                    .padding()
+                }
+            }
+            .frame(maxWidth: 500, maxHeight: 600)
+            .background(Color(red: 0.1, green: 0.1, blue: 0.15))
+            .cornerRadius(20)
+            .overlay(
+                RoundedRectangle(cornerRadius: 20)
+                    .stroke(Color.blue.opacity(0.5), lineWidth: 1)
+            )
+            .shadow(radius: 20)
+            .padding(40)
+        }
+    }
 }

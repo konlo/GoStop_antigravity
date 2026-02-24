@@ -2,41 +2,41 @@ import Foundation
 import Yams
 
 struct RuleConfig: Codable {
-    let cards: CardsRule
-    let scoring: ScoringRule
-    let go_stop: GoStopRule
-    let penalties: PenaltiesRule
-    let special_moves: SpecialMovesRule
-    let nagari: NagariRule
-    let endgame: EndgameRule
+    var cards: CardsRule
+    var scoring: ScoringRule
+    var go_stop: GoStopRule
+    var penalties: PenaltiesRule
+    var special_moves: SpecialMovesRule
+    var nagari: NagariRule
+    var endgame: EndgameRule
 }
 
 struct EndgameRule: Codable {
-    let max_round_score: Int
-    let score_check_timing: String
-    let max_go_count: Int
-    let instant_end_on_bak: InstantEndOnBak
+    var max_round_score: Int
+    var score_check_timing: String
+    var max_go_count: Int
+    var instant_end_on_bak: InstantEndOnBak
 }
 
 struct InstantEndOnBak: Codable {
-    let pibak: Bool
-    let gwangbak: Bool
-    let mungbak: Bool
-    let bomb_mungdda: Bool
+    var pibak: Bool
+    var gwangbak: Bool
+    var mungbak: Bool
+    var bomb_mungdda: Bool
 }
 
 struct SpecialMovesRule: Codable {
-    let bomb: BombRule
-    let shake: ShakeRule
-    let sweep: SweepRule
-    let ttadak: TtadakRule
-    let jjok: JjokRule
-    let seolsa: SeolsaRule
-    let seolsaEat: SeolsaEatRule
-    let mungbak_pi_threshold: Int
-    let mungdda: MungDdaRule
-    let bomb_mungdda: BombMungDdaRule
-    let chongtong: ChongtongRule
+    var bomb: BombRule
+    var shake: ShakeRule
+    var sweep: SweepRule
+    var ttadak: TtadakRule
+    var jjok: JjokRule
+    var seolsa: SeolsaRule
+    var seolsaEat: SeolsaEatRule
+    var mungbak_pi_threshold: Int
+    var mungdda: MungDdaRule
+    var bomb_mungdda: BombMungDdaRule
+    var chongtong: ChongtongRule
     
     enum CodingKeys: String, CodingKey {
         case bomb, shake, sweep, ttadak, jjok, seolsa
@@ -46,122 +46,122 @@ struct SpecialMovesRule: Codable {
 }
 
 struct MungDdaRule: Codable {
-    let enabled: Bool
-    let steal_pi_count: Int
-    let multiplier_addition: Int
-    let description: String?
+    var enabled: Bool
+    var steal_pi_count: Int
+    var multiplier_addition: Int
+    var description: String?
 }
 
 struct BombMungDdaRule: Codable {
-    let enabled: Bool
-    let steal_pi_count: Int
-    let multiplier_addition: Int
-    let description: String?
+    var enabled: Bool
+    var steal_pi_count: Int
+    var multiplier_addition: Int
+    var description: String?
 }
 
 struct ChongtongRule: Codable {
-    let enabled: Bool
-    let resolution_type: String
-    let distinguish_timing: Bool
-    let initial_chongtong_score: Int
-    let midgame_chongtong_score: Int
-    let description: String?
+    var enabled: Bool
+    var resolution_type: String
+    var distinguish_timing: Bool
+    var initial_chongtong_score: Int
+    var midgame_chongtong_score: Int
+    var description: String?
 }
 
 struct TtadakRule: Codable {
-    let enabled: Bool
-    let steal_pi_count: Int
-    let description: String?
+    var enabled: Bool
+    var steal_pi_count: Int
+    var description: String?
 }
 
 struct JjokRule: Codable {
-    let enabled: Bool
-    let steal_pi_count: Int
-    let description: String?
+    var enabled: Bool
+    var steal_pi_count: Int
+    var description: String?
 }
 
 struct SeolsaRule: Codable {
-    let enabled: Bool
-    let penalty_pi_count: Int
-    let description: String?
+    var enabled: Bool
+    var penalty_pi_count: Int
+    var description: String?
 }
 
 struct SeolsaEatRule: Codable {
-    let enabled: Bool
-    let steal_pi_count: Int
-    let self_eat_steal_pi_count: Int
-    let description: String?
+    var enabled: Bool
+    var steal_pi_count: Int
+    var self_eat_steal_pi_count: Int
+    var description: String?
 }
 
 struct SweepRule: Codable {
-    let enabled: Bool
-    let bonus_points: Int
-    let score_multiplier_type: String?
-    let steal_pi_count: Int
-    let description: String?
+    var enabled: Bool
+    var bonus_points: Int
+    var score_multiplier_type: String?
+    var steal_pi_count: Int
+    var description: String?
 }
 
 struct ShakeRule: Codable {
-    let enabled: Bool
-    let score_multiplier_type: String?
-    let description: String?
+    var enabled: Bool
+    var score_multiplier_type: String?
+    var description: String?
 }
 
 struct BombRule: Codable {
-    let enabled: Bool
-    let steal_pi_count: Int
-    let score_multiplier: Int
-    let dummy_card_count: Int          // How many dummy (도탄) cards the bomber receives
-    let dummy_cards_disappear_on_play: Bool  // Dummy cards vanish on play, never go to table
-    let description: String?
+    var enabled: Bool
+    var steal_pi_count: Int
+    var score_multiplier: Int
+    var dummy_card_count: Int          // How many dummy (도탄) cards the bomber receives
+    var dummy_cards_disappear_on_play: Bool  // Dummy cards vanish on play, never go to table
+    var description: String?
 }
 
 struct CardsRule: Codable {
-    let kwang: KwangRule
-    let dan: DanRule
-    let yul: YulRule
-    let pi: PiRule
-    let chrysanthemum_rule: ChrysanthemumRule
+    var kwang: KwangRule
+    var dan: DanRule
+    var yul: YulRule
+    var pi: PiRule
+    var chrysanthemum_rule: ChrysanthemumRule
 }
 
 struct ChrysanthemumRule: Codable {
-    let enabled: Bool
-    let default_role: String
-    let choice_timing: String
-    let allow_double_pi: Bool
+    var enabled: Bool
+    var default_role: String
+    var choice_timing: String
+    var allow_double_pi: Bool
 }
 
 struct KwangRule: Codable {
-    let months: [Int]
+    var months: [Int]
 }
 
 struct DanRule: Codable {
-    let hongdan: [Int]
-    let cheongdan: [Int]
-    let chodan: [Int]
+    var hongdan: [Int]
+    var cheongdan: [Int]
+    var chodan: [Int]
 }
 
 struct YulRule: Codable {
-    let godori: [Int]
+    var godori: [Int]
 }
 
 struct PiRule: Codable {
-    let double_pi_months: [Int]?
-    let conditional_double_pi: [ConditionalPiRule]?
-    let bonus_cards: Int
+    var double_pi_months: [Int]?
+    var conditional_double_pi: [ConditionalPiRule]?
+    var bonus_cards: Int
 }
 
 struct ConditionalPiRule: Codable {
-    let month: Int
-    let condition: String
-    let bonus_points: Int
+    var month: Int
+    var condition: String
+    var bonus_points: Int
 }
 
 struct ScoringRule: Codable {
-    let kwang: KwangScoring
-    let dan: CombinationScoring
-    let yul: GodoriScoring
-    let pi: PiScoring
+    var kwang: KwangScoring
+    var dan: CombinationScoring
+    var yul: GodoriScoring
+    var pi: PiScoring
     
     enum CodingKeys: String, CodingKey {
         case kwang, dan, yul, pi
@@ -169,101 +169,101 @@ struct ScoringRule: Codable {
 }
 
 struct KwangScoring: Codable {
-    let samgwang: Int
-    let bisamgwang: Int
-    let sagwang: Int
-    let ogwang: Int
+    var samgwang: Int
+    var bisamgwang: Int
+    var sagwang: Int
+    var ogwang: Int
 }
 
 struct CombinationScoring: Codable {
-    let min_count: Int
-    let min_score: Int
-    let additional_score: Int
-    let hongdan: Int
-    let cheongdan: Int
-    let chodan: Int
+    var min_count: Int
+    var min_score: Int
+    var additional_score: Int
+    var hongdan: Int
+    var cheongdan: Int
+    var chodan: Int
 }
 
 struct GodoriScoring: Codable {
-    let min_count: Int
-    let min_score: Int
-    let additional_score: Int
-    let godori: Int
+    var min_count: Int
+    var min_score: Int
+    var additional_score: Int
+    var godori: Int
 }
 
 struct PiScoring: Codable {
-    let min_count: Int
-    let min_score: Int
-    let additional_score: Int
+    var min_count: Int
+    var min_score: Int
+    var additional_score: Int
 }
 
 
 struct GoStopRule: Codable {
-    let min_score_3_players: Int
-    let min_score_2_players: Int
-    let apply_bak_on_stop: Bool
-    let bak_only_if_opponent_go: Bool
-    let go_bonuses: [String: GoBonus]
+    var min_score_3_players: Int
+    var min_score_2_players: Int
+    var apply_bak_on_stop: Bool
+    var bak_only_if_opponent_go: Bool
+    var go_bonuses: [String: GoBonus]
 }
 
 struct GoBonus: Codable {
-    let add: Int
-    let multiply: Int
+    var add: Int
+    var multiply: Int
 }
 
 struct PenaltiesRule: Codable {
-    let gobak: GobakRule
-    let gwangbak: GwangbakRule
-    let pibak: PibakRule
-    let mungbak: MungbakRule
-    let jabak: JabakRule
-    let yeokbak: YeokbakRule
+    var gobak: GobakRule
+    var gwangbak: GwangbakRule
+    var pibak: PibakRule
+    var mungbak: MungbakRule
+    var jabak: JabakRule
+    var yeokbak: YeokbakRule
 }
 
 struct JabakRule: Codable {
-    let enabled: Bool
-    let min_score_threshold: Int
-    let description: String?
+    var enabled: Bool
+    var min_score_threshold: Int
+    var description: String?
 }
 
 struct YeokbakRule: Codable {
-    let enabled: Bool
-    let description: String?
+    var enabled: Bool
+    var description: String?
 }
 
 struct GobakRule: Codable {
-    let enabled: Bool
-    let multiplier: Int
+    var enabled: Bool
+    var multiplier: Int
 }
 
 struct GwangbakRule: Codable {
-    let enabled: Bool
-    let resolution_type: String
-    let pi_to_transfer: Int
-    let opponent_max_kwang: Int
-    let multiplier: Int
+    var enabled: Bool
+    var resolution_type: String
+    var pi_to_transfer: Int
+    var opponent_max_kwang: Int
+    var multiplier: Int
 }
 
 struct PibakRule: Codable {
-    let enabled: Bool
-    let resolution_type: String
-    let pi_to_transfer: Int
-    let opponent_min_pi_safe: Int
-    let multiplier: Int
+    var enabled: Bool
+    var resolution_type: String
+    var pi_to_transfer: Int
+    var opponent_min_pi_safe: Int
+    var multiplier: Int
 }
 
 struct MungbakRule: Codable {
-    let enabled: Bool
-    let resolution_type: String
-    let pi_to_transfer: Int
-    let winner_min_animal: Int
-    let multiplier: Int
-    let description: String?
+    var enabled: Bool
+    var resolution_type: String
+    var pi_to_transfer: Int
+    var winner_min_animal: Int
+    var multiplier: Int
+    var description: String?
 }
 
 struct NagariRule: Codable {
-    let enabled: Bool
-    let next_game_multiplier: Int
+    var enabled: Bool
+    var next_game_multiplier: Int
 }
 
 class RuleLoader {

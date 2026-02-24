@@ -5,6 +5,9 @@ struct GoStopApp: App {
     private var bridge: SimulatorBridge?
     
     init() {
+        // Start background music
+        AudioManager.shared.startBackgroundMusic()
+        
         #if targetEnvironment(simulator)
         // Ensure GameManager exists by creating a temporary one if needed, 
         // but typically the first View will create it.

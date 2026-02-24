@@ -165,6 +165,7 @@ class CLIEngine {
                         if let bombCount = pData["bombCount"] as? Int { p.bombCount = bombCount }
                         if let captured = pData["capturedCards"] as? [[String: Any]] {
                             p.capturedCards = self.parseCards(captured)
+                            p.score = ScoringSystem.calculateScore(for: p)
                         }
                         if let hand = pData["hand"] as? [[String: Any]] {
                             p.hand = self.parseCards(hand)
@@ -253,13 +254,13 @@ class CLIEngine {
             return ["status": "action executed", "action": request.action]
         }
     }
-    
     private func parseCards(_ array: [[String: Any]]) -> [Card] {
         return array.compactMap { dict -> Card? in
             guard let m = dict["month"] as? Int,
                   let tStr = dict["type"] as? String else { return nil }
             let type = parseType(tStr)
-            var card = Card(month: Month(rawValue: m) ?? .jan, type: type, imageIndex: 0)
+            let id = dict["id"] as? String ?? UUID().uuidString
+            var card = Card(id: id, month: Month(rawValue: m) ?? .jan, type: type, imageIndex: 0)
             if let rStr = dict["selectedRole"] as? String {
                 card.selectedRole = parseRole(rStr)
             }
@@ -361,6 +362,17 @@ class CLIEngine {
                     "isJabak": lastResult.isJabak,
                     "isYeokbak": lastResult.isYeokbak,
                     "scoreFormula": lastResult.scoreFormula
+                ]
+            } else if gameManager.gameEndReason == .nagari {
+                dict["penaltyResult"] = [
+                    "finalScore": 0,
+                    "isGwangbak": false,
+                    "isPibak": false,
+                    "isGobak": false,
+                    "isMungbak": false,
+                    "isJabak": false,
+                    "isYeokbak": false,
+                    "scoreFormula": "Nagari (Draw)"
                 ]
             } else if let rules = RuleLoader.shared.config {
                 // Fallback for cases where lastPenaltyResult might not be set (legacy or specific edge cases)
