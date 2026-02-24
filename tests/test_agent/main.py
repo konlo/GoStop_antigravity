@@ -82,6 +82,16 @@ class TestAgent:
         if self.connection_mode == "cli":
             if not self.app_executable_path:
                 raise ValueError("app_executable_path is required for CLI connection mode.")
+            executable_path = self.app_executable_path
+            if not os.path.isabs(executable_path):
+                # Support both caller-cwd-relative and repo-root-relative paths.
+                cwd_candidate = os.path.abspath(executable_path)
+                repo_candidate = os.path.abspath(os.path.join(repo_root, executable_path))
+                if os.path.exists(cwd_candidate):
+                    executable_path = cwd_candidate
+                elif os.path.exists(repo_candidate):
+                    executable_path = repo_candidate
+            self.app_executable_path = executable_path
             logger.info(f"Starting app at {self.app_executable_path}")
             self.process = subprocess.Popen(
                 [self.app_executable_path],

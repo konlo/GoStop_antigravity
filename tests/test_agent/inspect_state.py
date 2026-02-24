@@ -2,21 +2,23 @@ import json
 import os
 from main import TestAgent
 
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "../../"))
+
 def print_card(card):
     suffix = "(2P)" if card['type'] == 'doubleJunk' else ""
     return f"[M:{card['month']:>2} | {card['type']:<10}{suffix}]"
 
 def inspect_state(mode="cli"):
-    # Try common build directories
+    # Resolve common build outputs to absolute paths so TestAgent subprocess cwd does not break them.
     possible_paths = [
-        "build_v26/Build/Products/Debug/GoStopCLI",
-        "build_v25/Build/Products/Debug/GoStopCLI",
-        "../../build_v4/Build/Products/Debug/GoStopCLI",
-        "../../build_v3/Build/Products/Debug/GoStopCLI",
-        "../../build/Build/Products/Debug/GoStopCLI",
-        "../../build_v2/Build/Products/Debug/GoStopCLI"
+        os.path.join(REPO_ROOT, "build/Build/Products/Debug/GoStopCLI"),
+        os.path.join(REPO_ROOT, "build_v29/Build/Products/Debug/GoStopCLI"),
+        os.path.join(REPO_ROOT, "build/Debug/GoStopCLI"),
+        os.path.join(REPO_ROOT, "build_v26/Build/Products/Debug/GoStopCLI"),
+        os.path.join(REPO_ROOT, "build_v25/Build/Products/Debug/GoStopCLI"),
     ]
-    
+
     app_executable = next((p for p in possible_paths if os.path.exists(p)), possible_paths[0])
     agent = TestAgent(app_executable_path=app_executable, connection_mode=mode)
     
