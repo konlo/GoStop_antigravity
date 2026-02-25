@@ -392,11 +392,29 @@ def scenario_verify_special_moves_suite(agent: TestAgent):
         "mock_opponent_captured_cards": [{"month": 1, "type": "junk"}]
     })
     handle_potential_shake(agent)
+    pre_state = agent.get_all_information()
+    pre_player = pre_state["players"][0]
+    pre_opponent = pre_state["players"][1]
+    pre_jjok = pre_player.get("jjokCount", 0)
+    pre_ttadak = pre_player.get("ttadakCount", 0)
+    pre_player_captured = len(pre_player.get("capturedCards", []))
+    pre_opponent_junkish = len([c for c in pre_opponent.get("capturedCards", []) if c.get("type") in ("junk", "doubleJunk")])
     agent.send_user_action("play_card", {"month": 3, "type": "junk"})
     
     state = agent.get_all_information()
     player = state["players"][0]
-    assert player["jjokCount"] == 1, f"Expected jjokCount 1, got {player['jjokCount']}"
+    opponent = state["players"][1]
+    assert player["jjokCount"] == pre_jjok + 1, f"Expected jjokCount to increment by 1, {pre_jjok} -> {player['jjokCount']}"
+    assert player.get("ttadakCount", 0) == pre_ttadak, f"Jjok subcase must NOT also increment ttadakCount, got {pre_ttadak} -> {player.get('ttadakCount', 0)}"
+    # Jjok should steal exactly the seeded 1 Pi (not double-steal via erroneous Ttadak overlap).
+    opponent_junkish = [c for c in opponent.get("capturedCards", []) if c.get("type") in ("junk", "doubleJunk")]
+    assert len(opponent_junkish) == max(0, pre_opponent_junkish - 1), (
+        f"Jjok subcase should steal exactly 1 junkish card, opponent junkish {pre_opponent_junkish} -> {len(opponent_junkish)}"
+    )
+    assert len(player["capturedCards"]) == pre_player_captured + 3, (
+        f"Jjok subcase should add 3 cards (2 capture + 1 steal), "
+        f"got {pre_player_captured} -> {len(player['capturedCards'])}"
+    )
     
     logger.info("Jjok verification passed!")
 
@@ -1244,15 +1262,15 @@ def scenario_verify_bomb_with_dummy_cards(agent: TestAgent):
 
 def scenario_verify_seolsa(agent: TestAgent):
     """
-    Scenario: Verifies Seolsa (설사/뻑) Creation Penalty.
+    Scenario: Verifies Seolsa (설사/뻑) creation without automatic Pi transfer.
     Rule: When a player creates a Seolsa (plays a matching card, then draws a matching card of the same month,
-    leaving all 3 on the table), they must give 1 Pi to the opponent as a penalty.
+    leaving all 3 on the table), seolsaCount increases, but no Pi is transferred automatically.
     """
     logger.info("Running Seolsa verification...")
 
     agent.send_user_action("start_game")
     
-    # We give player 0 a Pi card so they have something to give as penalty.
+    # Give player 0 Pi cards so we can verify they are NOT transferred by Seolsa.
     agent.set_condition({
         "currentTurnIndex": 0,
         "mock_hand": [{"month": 7, "type": "ribbon"}],  # Player 0 has month-7 ribbon
@@ -1278,9 +1296,9 @@ def scenario_verify_seolsa(agent: TestAgent):
 
     assert player["seolsaCount"] == 1, f"Expected seolsaCount=1, got {player['seolsaCount']}"
     
-    # Player 0 must have given 1 Pi to the opponent.
-    assert len(player["capturedCards"]) == 1, f"Expected player to lose 1 Pi (have 1 left), got {len(player['capturedCards'])}"
-    assert len(opponent["capturedCards"]) == 1, f"Expected opponent to gain 1 Pi, got {len(opponent['capturedCards'])}"
+    # Seolsa no longer auto-transfers Pi.
+    assert len(player["capturedCards"]) == 2, f"Expected no Pi transfer on Seolsa (player keeps 2 Pi), got {len(player['capturedCards'])}"
+    assert len(opponent["capturedCards"]) == 0, f"Expected no Pi transfer on Seolsa (opponent stays 0 Pi), got {len(opponent['capturedCards'])}"
 
     logger.info("Seolsa verification passed!")
 
@@ -1977,7 +1995,7 @@ def scenario_verify_bomb_as_shake_multiplier(agent: TestAgent):
 def scenario_verify_seolsa_eat(agent):
     """
     Verifies that playing a match and drawing a match for the same month creates a Seolsa (뻑),
-    leaving 3 cards on the table and making the player give 1 pi to the opponent.
+    leaving 3 cards on the table without automatic Pi transfer.
     Then verifies that another player capturing these 3 cards gets a Seolsa Eat (뻑 먹기) bonus.
     """
     logger.info("Setting up Scenario: Verify Seolsa Creation and Seolsa Eat Bonus")
@@ -2009,12 +2027,11 @@ def scenario_verify_seolsa_eat(agent):
     p1 = state["players"][0]
     comp = state["players"][1]
     
-    # Verify Seolsa creation
-    # P1 should have lost 1 pi to Computer (starting with 2, now 1)
-    if len(p1["capturedCards"]) != 1:
-        raise AssertionError(f"BUG: Player 1 should have 1 card left after Seolsa penalty. Got {len(p1['capturedCards'])}.")
-    if len(comp["capturedCards"]) != 1:
-        raise AssertionError(f"BUG: Computer should have 1 card after Seolsa penalty. Got {len(comp['capturedCards'])}.")
+    # Verify Seolsa creation (no automatic Pi transfer under current rule)
+    if len(p1["capturedCards"]) != 2:
+        raise AssertionError(f"BUG: Player 1 should keep 2 captured cards after Seolsa (no penalty). Got {len(p1['capturedCards'])}.")
+    if len(comp["capturedCards"]) != 0:
+        raise AssertionError(f"BUG: Computer should still have 0 captured cards after Seolsa (no penalty). Got {len(comp['capturedCards'])}.")
     
     # All 3 Month 1 cards should be on the table
     m1_on_table = [c for c in state["tableCards"] if c["month"] == 1]
@@ -2035,11 +2052,11 @@ def scenario_verify_seolsa_eat(agent):
     # Verify Seolsa Eat bonus
     # Computer should have captured 4 cards of Month 1 (play) + 2 cards of Month 10 (draw) = 6 cards
     # PLUS 1 bonus pi from P1 for Seolsa Eat = 7 cards total.
-    # PLUS the 1 pi Computer already had from the penalty = 8 cards total.
+    # This setup also triggers Sweep (싹쓸이), which steals 1 additional Pi = 8 total.
     if len(comp["capturedCards"]) != 8:
-        raise AssertionError(f"BUG: Expected Computer to have 8 captured cards. Got {len(comp['capturedCards'])}.")
+        raise AssertionError(f"BUG: Expected Computer to have 8 captured cards (including Seolsa Eat + Sweep steals). Got {len(comp['capturedCards'])}.")
     if len(p1["capturedCards"]) != 0:
-        raise AssertionError(f"BUG: Player 1 should have 0 captured cards after bonus steal. Got {len(p1['capturedCards'])}.")
+        raise AssertionError(f"BUG: Player 1 should have 0 captured cards after Seolsa Eat + Sweep steals. Got {len(p1['capturedCards'])}.")
 
     logger.info("ASSERTION SUCCESS: Seolsa creation and Seolsa Eat bonus verified.")
 

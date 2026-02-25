@@ -115,8 +115,8 @@ special_moves:
     description: "Match a card you just put down with deck draw"
   seolsa:
     enabled: true
-    penalty_pi_count: 1
-    description: "Play and draw matching cards but making it a triple, leaving them on table"
+    penalty_pi_count: 0
+    description: "Play and draw matching cards but making it a triple, leaving them on table (no automatic Pi transfer penalty)"
   seolsa_eat:
     enabled: true
     steal_pi_count: 1

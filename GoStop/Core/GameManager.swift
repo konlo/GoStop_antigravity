@@ -299,7 +299,10 @@ class GameManager: ObservableObject {
         if turnIsSeolsa && rules.special_moves.seolsa.enabled && turnPlayPhaseCaptured.isEmpty {
              let month = turnPlayedCard?.month.rawValue ?? 0
              player.seolsaCount += 1
-             stealPi(from: player, to: opponent, count: rules.special_moves.seolsa.penalty_pi_count, reason: "뻑(Seolsa) 패널티")
+             let seolsaPenaltyPi = rules.special_moves.seolsa.penalty_pi_count
+             if seolsaPenaltyPi > 0 {
+                 stealPi(from: player, to: opponent, count: seolsaPenaltyPi, reason: "뻑(Seolsa) 패널티")
+             }
              seolsaMonths[month] = player
         }
         if isSeolsaEatFlag && rules.special_moves.seolsaEat.enabled {
@@ -418,13 +421,15 @@ class GameManager: ObservableObject {
                             if !finalDCaptures.isEmpty {
                                 player.capture(cards: finalDCaptures)
                             }
-                            // Ttadak check: play phase also captured AND draw phase captured SAME month
-                            if let pCard = turnPlayedCard, turnDrawPhaseCaptured.contains(where: { $0.month == pCard.month }) {
-                                turnIsTtadak = true
-                            }
-                            // Jjok check
-                            if turnPlayPhaseCaptured.isEmpty && turnDrawPhaseCaptured.contains(where: { $0.month == pCard.month }) {
-                                turnIsJjok = true
+                            if turnDrawPhaseCaptured.contains(where: { $0.month == pCard.month }) {
+                                // Ttadak and Jjok are mutually exclusive:
+                                // - Ttadak: play phase captured same-month card(s), then draw phase captures same month again
+                                // - Jjok: play phase captured nothing, then draw phase captures the played card back
+                                if !turnPlayPhaseCaptured.isEmpty {
+                                    turnIsTtadak = true
+                                } else {
+                                    turnIsJjok = true
+                                }
                             }
                             for c in turnDrawPhaseCaptured {
                                 monthOwners.removeValue(forKey: c.month.rawValue)
@@ -659,14 +664,14 @@ class GameManager: ObservableObject {
                 if let captured = performTableCapture(for: drawnCard, on: &tableCards, player: player) {
                     turnDrawPhaseCaptured = captured
                     if !turnDrawPhaseCaptured.isEmpty {
-                        // Ttadak (따닥): play phase also captured AND draw phase captured SAME month
-                        if let pCard = turnPlayedCard, turnDrawPhaseCaptured.contains(where: { $0.month == pCard.month }) {
-                            turnIsTtadak = true
-                        }
-                        // Jjok (쪽): play phase had NO capture, but draw phase DID capture the played card back
-                        if turnPlayPhaseCaptured.isEmpty, let pCard = turnPlayedCard,
+                        if let pCard = turnPlayedCard,
                            turnDrawPhaseCaptured.contains(where: { $0.month == pCard.month }) {
-                            turnIsJjok = true
+                            // Ttadak and Jjok are mutually exclusive.
+                            if !turnPlayPhaseCaptured.isEmpty {
+                                turnIsTtadak = true
+                            } else {
+                                turnIsJjok = true
+                            }
                         }
                         // Clear monthOwners/seolsaMonths for draw-phase captured months
                         for captured in turnDrawPhaseCaptured {
