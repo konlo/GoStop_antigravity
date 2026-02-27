@@ -158,8 +158,7 @@ class Player: ObservableObject, Identifiable, Codable {
             "mungddaCount": mungddaCount,
             "bombMungddaCount": bombMungddaCount,
             "isComputer": isComputer,
-            "dummyCardCount": dummyCardCount,
-            "scoreItems": ScoringSystem.calculateScoreDetail(for: self).map { $0.serialize() }
+            "dummyCardCount": dummyCardCount
         ]
     }
 }

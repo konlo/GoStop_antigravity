@@ -58,6 +58,10 @@ struct Deck {
         self.cards.append(contentsOf: pushedCards)
     }
 
+    mutating func remove(card: Card) {
+        self.cards.removeAll { $0.id == card.id }
+    }
+
     mutating func drainAll() -> [Card] {
         let drained = cards
         cards.removeAll()

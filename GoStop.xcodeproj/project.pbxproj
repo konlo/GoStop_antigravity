@@ -38,6 +38,10 @@
 		912AAFDB854A8A756615D5D9 /* DebugEndgameSummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2494B7B2463310B5E13410E /* DebugEndgameSummaryView.swift */; };
 		9EAF94310537CBCB3CE79C2A /* LayoutContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08DC9353031FD0D4F7EDF917 /* LayoutContext.swift */; };
 		A8E8EE127772993DF00F279D /* LayoutConfigV2.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3085BB433FB735CFD683B342 /* LayoutConfigV2.swift */; };
+<<<<<<< HEAD
+=======
+		AADA26BC43DE51BC8A314E35 /* AnimationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0017E840D6A35A68D6AA71CC /* AnimationManager.swift */; };
+>>>>>>> 011be49 (animation 효과 첫번쨰)
 		ABD95E004FE2778D4B2BFD78 /* AudioManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40A8AF9CA959E19695C3C65E /* AudioManager.swift */; };
 		ACBB19108BB2F7E1329AB3EA /* Card.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72B2E9B6CA4C4DB8CC0ED986 /* Card.swift */; };
 		B0DBC6BF9FCA8453CB3B0FE4 /* LayoutConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D0615E5D598D1F92B7FAF92 /* LayoutConfig.swift */; };
@@ -45,6 +49,7 @@
 		B5EED1311F05C120AF7DA6E8 /* Card.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72B2E9B6CA4C4DB8CC0ED986 /* Card.swift */; };
 		C4E5C5B23D59D1A9058F7DB5 /* TableSlotManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B21CE98829137B4CABB2EDC /* TableSlotManager.swift */; };
 		C6EA8898DE29CBD4BD1297FB /* ScoringSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C817E2BC7A6C44D1434325E /* ScoringSystem.swift */; };
+		C902BEB18B4990C113F878A3 /* AnimationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0017E840D6A35A68D6AA71CC /* AnimationManager.swift */; };
 		C9143D8EC551B67551C39E84 /* Yams in Frameworks */ = {isa = PBXBuildFile; productRef = 0C4B856C14FB1AD4611276B9 /* Yams */; };
 		CA5E4294DC9C4A786488AA0C /* ScoringSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C817E2BC7A6C44D1434325E /* ScoringSystem.swift */; };
 		CCC8CAA072A943D537B4AD09 /* SimulatorBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B4991ECE6869B1AF81B963F /* SimulatorBridge.swift */; };
@@ -70,6 +75,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		0017E840D6A35A68D6AA71CC /* AnimationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnimationManager.swift; sourceTree = "<group>"; };
 		08DC9353031FD0D4F7EDF917 /* LayoutContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutContext.swift; sourceTree = "<group>"; };
 		1159B74760341B7FD625C040 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		116C189429DB2067520A3E08 /* GameManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameManager.swift; sourceTree = "<group>"; };
@@ -160,6 +166,10 @@
 		53C4E3404BDA3921EE5B0201 /* Core */ = {
 			isa = PBXGroup;
 			children = (
+<<<<<<< HEAD
+=======
+				0017E840D6A35A68D6AA71CC /* AnimationManager.swift */,
+>>>>>>> 011be49 (animation 효과 첫번쨰)
 				40A8AF9CA959E19695C3C65E /* AudioManager.swift */,
 				2857725433426BA8E4DE2D7C /* ConfigManager.swift */,
 				116C189429DB2067520A3E08 /* GameManager.swift */,
@@ -358,6 +368,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+<<<<<<< HEAD
+=======
+				AADA26BC43DE51BC8A314E35 /* AnimationManager.swift in Sources */,
+>>>>>>> 011be49 (animation 효과 첫번쨰)
 				ABD95E004FE2778D4B2BFD78 /* AudioManager.swift in Sources */,
 				ACBB19108BB2F7E1329AB3EA /* Card.swift in Sources */,
 				541288BE1C1519BE2B7AE083 /* ConfigManager.swift in Sources */,
@@ -389,6 +403,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+<<<<<<< HEAD
+=======
+				C902BEB18B4990C113F878A3 /* AnimationManager.swift in Sources */,
+>>>>>>> 011be49 (animation 효과 첫번쨰)
 				2A99D27AFA716635BD8BC829 /* AudioManager.swift in Sources */,
 				B5EED1311F05C120AF7DA6E8 /* Card.swift in Sources */,
 				FF8FF5B2CD92C35D053EDDDB /* CardView.swift in Sources */,

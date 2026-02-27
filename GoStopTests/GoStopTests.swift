@@ -1,4 +1,5 @@
 import XCTest
+import Combine
 @testable import GoStop
 
 final class GoStopTests: XCTestCase {
@@ -95,5 +96,20 @@ final class GoStopTests: XCTestCase {
             let image = UIImage(named: cardName, in: bundle, compatibleWith: nil)
             XCTAssertNotNil(image, "Failed to load image asset: \(cardName) from bundle: \(bundle.bundlePath)")
         }
+    }
+
+    func testGameManagerForwardsNestedPlayerCapturedChanges() {
+        let game = GameManager()
+        let exp = expectation(description: "GameManager should publish when Player.capturedCards changes")
+        var cancellable: AnyCancellable?
+
+        cancellable = game.objectWillChange.sink {
+            exp.fulfill()
+        }
+
+        game.players[0].capture(cards: [Card(month: .jan, type: .bright, imageIndex: 0)])
+
+        wait(for: [exp], timeout: 0.5)
+        withExtendedLifetime(cancellable) {}
     }
 }

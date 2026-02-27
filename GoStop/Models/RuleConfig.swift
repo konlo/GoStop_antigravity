@@ -269,6 +269,8 @@ struct NagariRule: Codable {
 class RuleLoader {
     static let shared = RuleLoader()
     private(set) var config: RuleConfig?
+    private var lastLoadedPath: String?
+
     
     private init() {
         loadRules()
@@ -303,6 +305,8 @@ class RuleLoader {
         }
         
         FileHandle.standardError.write("Loading rules from: \(targetUrl.path)\n".data(using: .utf8)!)
+        self.lastLoadedPath = targetUrl.path
+
         
         do {
             let data = try Data(contentsOf: targetUrl)
@@ -315,6 +319,20 @@ class RuleLoader {
             let errMsg = "Error parsing rule.yaml: \(error)"
             FileHandle.standardError.write("\(errMsg)\n".data(using: .utf8)!)
             gLog("CRITICAL: \(errMsg)")
+        }
+    }
+    
+    /// Saves current rules back to the file it was loaded from
+    func saveRules() {
+        guard let config = self.config else { return }
+        let encoder = YAMLEncoder()
+        do {
+            let yamlString = try encoder.encode(config)
+            let path = lastLoadedPath ?? (FileManager.default.currentDirectoryPath + "/rule.yaml")
+            try yamlString.write(toFile: path, atomically: true, encoding: .utf8)
+            fputs("RuleLoader: Saved rules to \(path)\n", stderr)
+        } catch {
+            fputs("RuleLoader: Error saving rules: \(error)\n", stderr)
         }
     }
 }

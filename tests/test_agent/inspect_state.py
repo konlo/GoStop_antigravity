@@ -48,6 +48,18 @@ def inspect_state(mode="cli"):
         print("="*50)
         print(f"Game State: {state.get('gameState', 'N/A').upper()}")
         print(f"Deck Count: {state.get('deckCount', 0)}")
+        moving_ids = state.get("currentMovingCardIds", [])
+        hidden_source_ids = state.get("hiddenInSourceCardIds", [])
+        hidden_target_ids = state.get("hiddenInTargetCardIds", [])
+        print(f"UI Moving IDs: {len(moving_ids)}")
+        print(f"UI Hidden(Source): {len(hidden_source_ids)}")
+        print(f"UI Hidden(Target): {len(hidden_target_ids)}")
+        if moving_ids:
+            print(f"  moving -> {moving_ids}")
+        if hidden_source_ids:
+            print(f"  hidden(source) -> {hidden_source_ids}")
+        if hidden_target_ids:
+            print(f"  hidden(target) -> {hidden_target_ids}")
         print("-" * 50)
         
         # Table Cards

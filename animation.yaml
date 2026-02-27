@@ -1,0 +1,16 @@
+card_move_duration: 0e+0
+card_move_delay_per_item: 5e-2
+background_music_enabled: false
+animation_style: spring
+spring_response: 4e-1
+spring_damping: 7.5e-1
+spring_blend_duration: 0e+0
+deal_from_deck_duration: 5e-1
+capture_to_player_duration: 4e-1
+play_from_hand_duration: 3e-1
+show_trail: false
+card_rotation_enabled: true
+max_rotation_angle: 1.5e+1
+turn_change_delay: 3e-1
+turn_indicator_duration: 6e-1
+opponent_action_delay: 1e+0

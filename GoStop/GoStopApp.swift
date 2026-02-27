@@ -2,27 +2,13 @@ import SwiftUI
 
 @main
 struct GoStopApp: App {
-    private var bridge: SimulatorBridge?
-    
     init() {
-        // Start background music
-        AudioManager.shared.startBackgroundMusic()
-        
-        #if targetEnvironment(simulator)
-        // Ensure GameManager exists by creating a temporary one if needed, 
-        // but typically the first View will create it.
-        // For the bridge to find it, we need to wait until it's initialized.
-        // Simple hack: start bridge and it will poll or wait for shared instance.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-            if let gm = GameManager.shared {
-                SimulatorBridge.shared = SimulatorBridge(gameManager: gm)
-                SimulatorBridge.shared?.start()
-                print("SimulatorBridge: Started on port 8080")
-            } else {
-                print("SimulatorBridge: FAILED to start - GameManager.shared is nil")
-            }
+        // Start background music only when enabled in animation.yaml
+        if AnimationManager.shared.config.background_music_enabled {
+            AudioManager.shared.startBackgroundMusic()
+        } else {
+            print("AudioManager: Background music disabled by configuration")
         }
-        #endif
     }
     
     var body: some Scene {

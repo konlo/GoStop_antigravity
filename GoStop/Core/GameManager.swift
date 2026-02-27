@@ -1,4 +1,6 @@
 import Foundation
+import SwiftUI
+import Combine
 
 enum GameState: String, Codable {
     case ready
@@ -17,6 +19,13 @@ enum GameEndReason: String, Codable {
     case chongtong
 }
 
+struct UXEvent: Codable {
+    let id: String
+    let type: String // "animationStart", "animationEnd", "stateTransition"
+    let timestamp: TimeInterval
+    let data: [String: String] // cardId, source, target, etc.
+}
+
 
 func gLog(_ message: String) {
     #if DEBUG
@@ -25,8 +34,14 @@ func gLog(_ message: String) {
     print(message)
     #endif
     
-    // Also record to event logs for AI/Simulator inspection
-    GameManager.shared?.addEvent(message)
+    // Also record to event logs for AI/Simulator inspection - MUST be on main thread
+    if Thread.isMainThread {
+        GameManager.shared?.addEvent(message)
+    } else {
+        DispatchQueue.main.async {
+            GameManager.shared?.addEvent(message)
+        }
+    }
 }
 
 class GameManager: ObservableObject {
@@ -38,6 +53,16 @@ class GameManager: ObservableObject {
     @Published var currentTurnIndex: Int = 0
     @Published var tableCards: [Card] = []
     @Published var outOfPlayCards: [Card] = []
+    
+    // Unified Animation Tracking
+    @Published var currentMovingCards: [Card] = []
+    @Published var movingCardsScale: CGFloat = 1.0
+    @Published var movingCardsPiCount: Int? = nil
+    @Published var hiddenInSourceCardIds: Set<String> = []
+    @Published var hiddenInTargetCardIds: Set<String> = []
+    @Published var movingCardsShowDebug: Bool = false
+    @Published private(set) var pendingAutomationDelays: Int = 0
+    private var automationDelayGeneration: Int = 0
     
     // For shake (흔들기) handling
     @Published var pendingShakeMonths: [Int] = []
@@ -82,6 +107,23 @@ class GameManager: ObservableObject {
     
     // Event Logs for inspection
     @Published var eventLogs: [String] = []
+    @Published var uxEventLogs: [UXEvent] = []
+    private var stateHistory: [[String: AnyCodable]] = []
+    
+    private var playerChangeCancellables: [AnyCancellable] = []
+
+    
+    // Manual UI uses internal computer automation. External agents should disable it.
+    var internalComputerAutomationEnabled = false
+    var externalControlMode = false
+    private var internalComputerActionScheduled = false
+
+    var isAutomationBusy: Bool {
+        pendingAutomationDelays > 0 ||
+        !currentMovingCards.isEmpty ||
+        !hiddenInSourceCardIds.isEmpty ||
+        !hiddenInTargetCardIds.isEmpty
+    }
     
     var currentPlayer: Player? {
         guard players.indices.contains(currentTurnIndex) else { return nil }
@@ -92,6 +134,15 @@ class GameManager: ObservableObject {
         GameManager.shared = self
         setupGame()
     }
+
+    private func bindPlayerChangeForwarding() {
+        playerChangeCancellables = players.map { player in
+            player.objectWillChange
+                .sink { [weak self] _ in
+                    self?.objectWillChange.send()
+                }
+        }
+    }
     
     func addEvent(_ message: String) {
         self.eventLogs.append(message)
@@ -100,11 +151,43 @@ class GameManager: ObservableObject {
         }
     }
     
+    func addUXEvent(type: String, data: [String: String]) {
+        let event = UXEvent(id: UUID().uuidString, type: type, timestamp: Date().timeIntervalSince1970, data: data)
+        self.uxEventLogs.append(event)
+        if self.uxEventLogs.count > 200 {
+            self.uxEventLogs.removeFirst()
+        }
+    }
+    
+    func getHistoryEntry(at index: Int) -> [String: AnyCodable]? {
+        guard index >= 0 && index < stateHistory.count else { return nil }
+        return stateHistory[index]
+    }
+
+    private var lastSnapshotTime: TimeInterval = 0
+    func takeSnapshot() {
+        // Simple throttle to avoid flooding snapshots in extremely tight loops (e.g. concurrent animations)
+        let now = Date().timeIntervalSince1970
+        if now - lastSnapshotTime < 0.05 { return } 
+        lastSnapshotTime = now
+        
+        let snapshot = self.serializeState()
+        self.stateHistory.append(snapshot)
+        if self.stateHistory.count > 50 {
+            self.stateHistory.removeFirst()
+        }
+    }
+
+    
     func setupGame(seed: Int? = nil) {
+        automationDelayGeneration += 1
+        externalControlMode = false
         let player1 = Player(name: "Player 1", money: 10000)
         let computer = Player(name: "Computer", money: 10000)
         computer.isComputer = true
         self.players = [player1, computer]
+        bindPlayerChangeForwarding()
+        self.currentTurnIndex = 0
         self.outOfPlayCards = []
         self.gameEndReason = nil
         self.lastPenaltyResult = nil
@@ -113,15 +196,40 @@ class GameManager: ObservableObject {
         self.chongtongMonth = nil
         self.chongtongTiming = nil
         self.eventLogs = []
+        self.stateHistory = []
         self.deck.reset(seed: seed)
-        self.monthOwners = [:]          // ← 이전 게임 뻑 추적 초기화
-        self.seolsaMonths = [:]         // ← 뻑 상태 월 초기화
-        self.eventLogs = []             // ← 로그 초기화
+        self.monthOwners = [:]
+        self.seolsaMonths = [:]
+        self.currentMovingCards = []
+        self.movingCardsScale = 1.0
+        self.movingCardsPiCount = nil
+        self.hiddenInSourceCardIds = []
+        self.hiddenInTargetCardIds = []
+        self.movingCardsShowDebug = false
+        self.pendingAutomationDelays = 0
+        self.pendingShakeMonths = []
+        self.pendingShakeCard = nil
+        self.pendingShakeMonth = nil
         self.pendingCapturePlayedCard = nil
+        self.pendingCaptureDrawnCard = nil
         self.pendingCaptureOptions = []
-        self.gameState = .ready      // Reset state BEFORE dealing; dealCards may override to .ended if Chongtong
+        self.pendingChrysanthemumCard = nil
+        self.isSeolsaEatFlag = false
+        self.isSelfSeolsaEatFlag = false
+        self.turnIsBomb = false
+        self.turnIsTtadak = false
+        self.turnIsJjok = false
+        self.turnIsSeolsa = false
+        self.turnPlayPhaseCaptured = []
+        self.turnDrawPhaseCaptured = []
+        self.turnPlayedCard = nil
+        self.turnTableWasNotEmpty = false
+        self.internalComputerActionScheduled = false
+        self.gameState = .ready
         self.dealCards()
+        self.takeSnapshot()
     }
+
     
     func dealCards() {
         // Standard 2-player deal: 10 cards each, 8 on table
@@ -169,6 +277,7 @@ class GameManager: ObservableObject {
         gLog("Game started. Player 1 turn.")
         currentTurnIndex = 0 // Player 1 starts
         gameState = .playing
+        maybeScheduleInternalComputerAction()
     }
     
     private func getMonthsWithThreePlus(in hand: [Card]) -> [Int] {
@@ -204,7 +313,6 @@ class GameManager: ObservableObject {
             rules.special_moves.chongtong.midgame_chongtong_score
             
         player.score = score
-        // For Chongtong, we skip complex multiplier rules as it's an instant win
         self.lastPenaltyResult = PenaltySystem.PenaltyResult(
             finalScore: score,
             isGwangbak: false,
@@ -228,7 +336,6 @@ class GameManager: ObservableObject {
             player.shakenMonths.append(month)
             gLog("\(player.name) declared SHAKE for month \(month)!")
         } else {
-            // Declined shake – still mark as answered to avoid re-prompting
             if !player.shakenMonths.contains(month) {
                 player.shakenMonths.append(month)
             }
@@ -239,14 +346,16 @@ class GameManager: ObservableObject {
         if pendingShakeMonths.isEmpty {
             gameState = .playing
             gLog("Shake phase resolved. Resuming turn.")
-            // Resume the turn with the card the player originally tried to play
             if let card = pendingShakeCard {
                 pendingShakeCard = nil
                 pendingShakeMonth = nil
                 playTurn(card: card)
+            } else {
+                maybeScheduleInternalComputerAction()
             }
         } else {
             gLog("More shakes pending: \(pendingShakeMonths)")
+            maybeScheduleInternalComputerAction()
         }
     }
     
@@ -257,25 +366,21 @@ class GameManager: ObservableObject {
         
         gLog("\(player.name) chose role \(role.rawValue) for Chrysanthemum card.")
         
-        // Finalize capture of the deferred Chrysanthemum card
         player.objectWillChange.send()
         var updatedCard = card
         updatedCard.selectedRole = role
         
-        // Formally capture it now
         player.capture(cards: [updatedCard])
         gLog("Successfully captured Chrysanthemum with role \(role.rawValue).")
         
         pendingChrysanthemumCard = nil
         gameState = .playing
         
-        // Recalculate score after role change
         player.score = ScoringSystem.calculateScore(for: player)
         
         finalizeTurnAfterCapture(player: player)
     }
 
-    /// Resumes the turn logic after all captures and choices are finalized
     private func finalizeTurnAfterCapture(player: Player) {
         let opponentIndex = (currentTurnIndex + 1) % players.count
         let opponent = players[opponentIndex]
@@ -284,21 +389,24 @@ class GameManager: ObservableObject {
             return
         }
         
-        // Post-Capture Special Moves (Steal Pi)
         if turnIsBomb {
+            gLog("\(player.name) triggered 폭탄(Bomb)")
             stealPi(from: opponent, to: player, count: rules.special_moves.bomb.steal_pi_count, reason: "폭탄(Bomb)")
         }
         if turnIsTtadak && rules.special_moves.ttadak.enabled {
             player.ttadakCount += 1
+            gLog("\(player.name) triggered 따닥(Ttadak)")
             stealPi(from: opponent, to: player, count: rules.special_moves.ttadak.steal_pi_count, reason: "따닥(Ttadak)")
         }
         if turnIsJjok && rules.special_moves.jjok.enabled {
             player.jjokCount += 1
+            gLog("\(player.name) triggered 쪽(Jjok)")
             stealPi(from: opponent, to: player, count: rules.special_moves.jjok.steal_pi_count, reason: "쪽(Jjok)")
         }
         if turnIsSeolsa && rules.special_moves.seolsa.enabled && turnPlayPhaseCaptured.isEmpty {
              let month = turnPlayedCard?.month.rawValue ?? 0
              player.seolsaCount += 1
+             gLog("\(player.name) triggered 뻑(Seolsa) for month \(month)")
              let seolsaPenaltyPi = rules.special_moves.seolsa.penalty_pi_count
              if seolsaPenaltyPi > 0 {
                  stealPi(from: player, to: opponent, count: seolsaPenaltyPi, reason: "뻑(Seolsa) 패널티")
@@ -307,24 +415,21 @@ class GameManager: ObservableObject {
         }
         if isSeolsaEatFlag && rules.special_moves.seolsaEat.enabled {
             player.seolsaEatCount += 1
+            gLog("\(player.name) triggered 뻑 먹기(Seolsa Eat)")
             stealPi(from: opponent, to: player, count: rules.special_moves.seolsaEat.steal_pi_count, reason: "뻑 먹기(Seolsa Eat)")
         }
         if isSelfSeolsaEatFlag && rules.special_moves.seolsaEat.enabled {
             player.seolsaEatCount += 1
+            gLog("\(player.name) triggered 자뻑(Self Seolsa Eat)")
             stealPi(from: opponent, to: player, count: rules.special_moves.seolsaEat.self_eat_steal_pi_count, reason: "자뻑(Self Seolsa Eat)")
         }
         
-        gLog("DEBUG: Sweep Check - enabled: \(rules.special_moves.sweep.enabled), turnTableWasNotEmpty: \(turnTableWasNotEmpty), tableCount: \(tableCards.count), handCount: \(player.hand.count)")
-        if !tableCards.isEmpty {
-            gLog("DEBUG: Table is NOT empty. Cards: \(tableCards.map { "\($0.month.rawValue)\($0.type.rawValue)" })")
-        }
         if rules.special_moves.sweep.enabled, turnTableWasNotEmpty, tableCards.isEmpty, !player.hand.isEmpty {
             gLog("\(player.name) swept the table (싹쓸이)!")
             player.sweepCount += 1
             stealPi(from: opponent, to: player, count: rules.special_moves.sweep.steal_pi_count, reason: "싹쓸이(Sweep)")
         }
         
-        // 4. End Turn Logic
         if checkEndgameConditions(player: player, opponent: opponent, rules: rules, isAfterGo: false) {
             return
         }
@@ -336,12 +441,12 @@ class GameManager: ObservableObject {
                 executeStop(player: player, rules: rules)
             } else {
                 gameState = .askingGoStop
+                maybeScheduleInternalComputerAction()
             }
         } else {
             endTurn()
         }
     }
-    /// Called when the user selects which of the 2 table cards (of same month, different type) to capture.
     func respondToCapture(selectedCard: Card) {
         guard let player = currentPlayer else { return }
         
@@ -350,21 +455,21 @@ class GameManager: ObservableObject {
         
         gLog("\(player.name) chose \(selectedCard.type) for month \(selectedCard.month) capture")
         
-        // Remove the chosen card from the table
         if let idx = tableCards.firstIndex(where: { $0.id == selectedCard.id }) {
             tableCards.remove(at: idx)
         }
         
-        // Identify which phase we are resuming from
         let triggerCard = playedCard ?? drawnCard
         guard let pCard = triggerCard else {
             gLog("ERROR: respondToCapture called but no trigger card found.")
             return
         }
+
+        // In choosingCapture, the trigger card remains on the table as a visible placeholder.
+        // Remove it now that the choice is committed so it doesn't persist as a duplicate.
+        tableCards.removeAll { $0.id == pCard.id }
         
-        // Capture: trigger card + chosen table card
         let captured = [pCard, selectedCard]
-        // Exclude deferred September card from immediate formal capture
         let finalCaptures = captured.filter { !($0.month == .sep && $0.type == .animal) }
         if !finalCaptures.isEmpty {
             player.capture(cards: finalCaptures)
@@ -373,7 +478,6 @@ class GameManager: ObservableObject {
         player.score = ScoringSystem.calculateScore(for: player)
         monthOwners.removeValue(forKey: selectedCard.month.rawValue)
         
-        // Track for turn state (so Chrysanthemum role selection and other turn-end checks work)
         if playedCard != nil {
             turnPlayPhaseCaptured = captured
         } else if drawnCard != nil {
@@ -382,7 +486,6 @@ class GameManager: ObservableObject {
         
         gLog("\(player.name) captured \(captured.count) cards (choice). Total: \(player.capturedCards.count)")
         
-        // Clear pending states
         pendingCapturePlayedCard = nil
         pendingCaptureDrawnCard = nil
         pendingCaptureOptions = []
@@ -393,21 +496,16 @@ class GameManager: ObservableObject {
             return
         }
 
-        // If this was a PLAY choice, we MUST continue to the DRAW phase
         if playedCard != nil {
             if let drawn = deck.draw() {
                 gLog("Drawn after play-choice: \(drawn.month) (\(drawn.type))")
                 
-                // Seolsa (뻑) creation check:
-                // If drawn matches the capture, but ANOTHER card of same month is on table, it's Ttadak (4 cards total).
-                // If NO card of same month is on table, it's Seolsa (3 cards total).
                 let remainingOnTable = tableCards.first(where: { $0.month == drawn.month })
                 
                 if captured[0].month == drawn.month && remainingOnTable == nil {
                     turnIsSeolsa = true
                     gLog("SEOLSA (뻑) via choice! Play match followed by draw match for month \(drawn.month)")
                     
-                    // VOID the capture: put them back on table, plus the drawn card
                     tableCards.append(contentsOf: captured)
                     tableCards.append(drawn)
                     player.capturedCards.removeAll { c in finalCaptures.contains(where: { $0.id == c.id }) }
@@ -416,15 +514,11 @@ class GameManager: ObservableObject {
                     if let dCaptured = performTableCapture(for: drawn, on: &tableCards, player: player) {
                         turnDrawPhaseCaptured = dCaptured
                         if !turnDrawPhaseCaptured.isEmpty {
-                            // Defer September card capture
                             let finalDCaptures = turnDrawPhaseCaptured.filter { !($0.month == .sep && $0.type == .animal) }
                             if !finalDCaptures.isEmpty {
                                 player.capture(cards: finalDCaptures)
                             }
                             if turnDrawPhaseCaptured.contains(where: { $0.month == pCard.month }) {
-                                // Ttadak and Jjok are mutually exclusive:
-                                // - Ttadak: play phase captured same-month card(s), then draw phase captures same month again
-                                // - Jjok: play phase captured nothing, then draw phase captures the played card back
                                 if !turnPlayPhaseCaptured.isEmpty {
                                     turnIsTtadak = true
                                 } else {
@@ -439,62 +533,48 @@ class GameManager: ObservableObject {
                             monthOwners[drawn.month.rawValue] = player
                         }
                     } else {
-                        // Choice needed for Draw Phase too!
                         gLog("Secondary choice needed for Draw Phase!")
                         pendingCaptureDrawnCard = drawn
                         pendingCaptureOptions = tableCards.filter { $0.month == drawn.month }
                         gameState = .choosingCapture
                         player.score = ScoringSystem.calculateScore(for: player)
-                        return // Wait again
+                        return
                     }
                 }
             }
         }
         
-        // Final Chrysanthemum Check for the whole turn's new captures
         let allNewCaptures = turnPlayPhaseCaptured + turnDrawPhaseCaptured
         if checkAndHandleChrysanthemumRole(capturedCards: allNewCaptures, player: player, rules: rules) {
-            return // PAUSE - finalizeTurnAfterCapture will be called from respondToChrysanthemumChoice
+            return
         }
 
         finalizeTurnAfterCapture(player: player)
     }
 
-    
     func playTurn(card: Card) {
-        guard let rules = RuleLoader.shared.config else {
-            gLog("CRITICAL: playTurn aborted - RuleConfig is nil. Check rule.yaml loading.")
-            return
-        }
-        guard gameState == .playing, let player = currentPlayer else { 
-            gLog("playTurn aborted: gameState \(gameState), player \(currentPlayer?.name ?? "unknown")")
-            return 
-        }
-        gLog("--- playTurn start (v2026.02.23_2155): \(player.name) plays \(card.month) (\(card.type)). Hand: \(player.hand.count), Table: \(tableCards.count) ---")
-        
-        // Mid-game shake check: if player has 3 cards of same month and hasn't shaken for this month yet.
-        // NOTE: Bomb (폭탄) takes priority: if 3 in hand + 1 on table, skip shake and let bomb fire.
-        if card.type != .dummy {
+        guard let rules = RuleLoader.shared.config else { return }
+        guard gameState == .playing, !isAutomationBusy, let player = currentPlayer else { return }
+
+        // Mid-game shake check (bomb takes priority).
+        if card.type != .dummy, rules.special_moves.shake.enabled {
             let sameMonthCount = player.hand.filter { $0.month == card.month }.count
             let tableMatchCount = tableCards.filter { $0.month == card.month }.count
             let alreadyShaken = player.shakenMonths.contains(card.month.rawValue)
-            let isBombCondition = sameMonthCount >= 3 && tableMatchCount == 1
-            if let rules = RuleLoader.shared.config, rules.special_moves.shake.enabled,
-               sameMonthCount >= 3 && !alreadyShaken && !isBombCondition {
-                gLog("\(player.name) can SHAKE for month \(card.month)! Asking...")
+            let isBombCondition = rules.special_moves.bomb.enabled && sameMonthCount >= 3 && tableMatchCount == 1
+
+            if sameMonthCount >= 3 && !alreadyShaken && !isBombCondition {
                 pendingShakeCard = card
                 pendingShakeMonth = card.month.rawValue
                 pendingShakeMonths = [card.month.rawValue]
                 gameState = .askingShake
+                gLog("\(player.name) can SHAKE for month \(card.month)! Asking...")
+                maybeScheduleInternalComputerAction()
                 return
             }
         }
         
-        let month = card.month
-        let handMatches = player.hand.filter { $0.month == month }
-        let tableMatches = tableCards.filter { $0.month == month }
-        
-        // Reset Turn State
+        // Reset turn state
         turnIsBomb = false
         turnIsTtadak = false
         turnIsJjok = false
@@ -503,222 +583,311 @@ class GameManager: ObservableObject {
         turnDrawPhaseCaptured = []
         turnPlayedCard = nil
         turnTableWasNotEmpty = !tableCards.isEmpty
-        gLog("DEBUG: turnTableWasNotEmpty set to \(turnTableWasNotEmpty). Table count: \(tableCards.count)")
         
-        // Helper: does the play phase need player capture choice?
-        func needsCaptureChoice(for monthCard: Card, in table: [Card]) -> Bool {
-            let m = table.filter { $0.month == monthCard.month }
-            return m.count == 2 && m[0].type != m[1].type
+        // Phase 1: Hand Play
+        if card.type == .dummy {
+            gLog("\(player.name) played a DUMMY card.")
+            player.dummyCardCount -= 1
+            if let idx = player.hand.firstIndex(where: { $0.id == card.id }) {
+                player.hand.remove(at: idx)
+            }
+            // Dummy cards vanish on play and do not trigger a draw phase.
+            finalizeTurnState(player: player, rules: rules)
+        } else {
+            // Check for Bomb/Shake first
+            let month = card.month
+            let handMatches = player.hand.filter { $0.month == month }
+            let tableMatches = tableCards.filter { $0.month == month }
+            
+            if rules.special_moves.bomb.enabled, handMatches.count == 3, tableMatches.count == 1 {
+                handleBombPlay(player: player, month: month, handMatches: handMatches, tableMatches: tableMatches, rules: rules)
+            } else {
+                if let idx = player.hand.firstIndex(where: { $0.id == card.id }),
+                   let pCard = player.play(card: card) {
+                    turnPlayedCard = pCard
+                    
+                    // Phase 1 Start: Move to Table
+                    // Add to table immediately so matchedGeometryEffect has a destination target
+                    self.tableCards.append(pCard)
+                    
+                    // We also keep it in Hand virtually (hidden) so matchedGeometryEffect has a source
+                    // Important: Insert back at SAME index to avoid layout jump
+                    player.hand.insert(pCard, at: idx)
+                    self.hiddenInSourceCardIds.insert(pCard.id)
+                    self.hiddenInTargetCardIds.insert(pCard.id) // Target is Table
+                    
+                    self.addUXEvent(type: "moveStart", data: ["cardId": pCard.id, "source": "hand", "target": "table"])
+                    self.takeSnapshot()
+                    
+                    let sourceScale: CGFloat = player.isComputer ? 0.2 : 0.9
+                    self.movingCardsScale = sourceScale
+
+                    
+                    let showDebug: Bool = {
+                        guard let context = ConfigManager.shared.layoutContext else { return false }
+                        return context.config.debug.player?.sortedOrderOverlay == true
+                    }()
+                    self.movingCardsShowDebug = showDebug
+                    self.currentMovingCards = [pCard]
+                    
+                    withAnimation {
+                         self.movingCardsScale = 0.7 // Table Scale
+                    }
+                    
+                    let delay = AnimationManager.shared.config.card_move_duration
+                    self.runAfterAnimationDelay(delay) {
+                        
+                        // Check capture logically
+                        if let captured = self.performTableCaptureLogical(for: pCard, player: player) {
+                            self.addUXEvent(type: "moveEnd", data: ["cardId": pCard.id, "target": "table"])
+                            self.turnPlayPhaseCaptured = captured
+
+                            
+                            if captured.isEmpty {
+                                // Just staying on table
+                                self.currentMovingCards = [] 
+                                self.hiddenInSourceCardIds.remove(pCard.id)
+                                self.hiddenInTargetCardIds.remove(pCard.id)
+                                // Actually remove from hand now
+                                player.hand.removeAll { $0.id == pCard.id }
+                                self.monthOwners[pCard.month.rawValue] = player
+                                self.proceedToDrawPhase(player: player, rules: rules)
+                            } else {
+                                self.monthOwners.removeValue(forKey: pCard.month.rawValue)
+                                
+                                // Phase 2 Start: Move to Captured Area
+                                // Add to captured area immediately so matchedGeometryEffect has a destination target
+                                let filtered = captured.filter { !($0.month == .sep && $0.type == .animal) }
+                                player.capture(cards: filtered)
+                                player.score = ScoringSystem.calculateScore(for: player)
+                                
+                                // Keep on Table (hidden) during flight to Captured Area
+                                // (pCard and captured cards are already in tableCards)
+                                for c in captured {
+                                    self.hiddenInSourceCardIds.insert(c.id)
+                                    self.hiddenInTargetCardIds.insert(c.id) // Target is Captured
+                                }
+                                
+                                // Calculate Pi Count for the moving card badge
+                                let currentPiCount = player.piCount
+                                self.movingCardsPiCount = currentPiCount > 0 ? currentPiCount : nil
+                                
+                                let cardIds = filtered.map { $0.id }.joined(separator: ",")
+                                self.addUXEvent(type: "moveStart", data: ["cardIds": cardIds, "source": "table", "target": "captured"])
+                                self.takeSnapshot()
+                                
+                                self.movingCardsScale = 0.7 // From Table
+
+                                self.movingCardsShowDebug = false
+                                
+                                withAnimation {
+                                    let targetScale: CGFloat = player.isComputer ? 0.45 : 0.5
+                                    self.movingCardsScale = targetScale
+                                    self.currentMovingCards = filtered
+                                }
+                                
+                                self.runAfterAnimationDelay(delay) {
+                                    let cardIds = filtered.map { $0.id }.joined(separator: ",")
+                                    self.addUXEvent(type: "moveEnd", data: ["cardIds": cardIds, "target": "captured"])
+                                    self.currentMovingCards = []
+                                    self.movingCardsPiCount = nil
+                                    // Cleanup sources
+                                    for c in captured {
+                                        self.hiddenInSourceCardIds.remove(c.id)
+                                        self.hiddenInTargetCardIds.remove(c.id)
+                                        self.tableCards.removeAll { $0.id == c.id }
+                                    }
+                                    player.hand.removeAll { $0.id == pCard.id }
+                                    
+                                    self.proceedToDrawPhase(player: player, rules: rules)
+                                }
+                            }
+                        } else {
+                            // Choice needed
+                            self.currentMovingCards = []
+                            self.hiddenInSourceCardIds.remove(pCard.id)
+                            self.hiddenInTargetCardIds.remove(pCard.id)
+                            player.hand.removeAll { $0.id == pCard.id }
+                            
+                            let options = self.tableCards.filter { $0.month == pCard.month && $0.id != pCard.id }
+                            self.pendingCapturePlayedCard = pCard
+                            self.pendingCaptureOptions = options
+                            self.gameState = .choosingCapture
+                            self.maybeScheduleInternalComputerAction()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func handleBombPlay(player: Player, month: Month, handMatches: [Card], tableMatches: [Card], rules: RuleConfig) {
+        turnIsBomb = true
+        gLog("\(player.name) triggered BOMB!")
+        for mCard in handMatches {
+            if let played = player.play(card: mCard) {
+                turnPlayPhaseCaptured.append(played)
+            }
+        }
+        if let target = tableMatches.first, let index = tableCards.firstIndex(of: target) {
+            tableCards.remove(at: index)
+            turnPlayPhaseCaptured.append(target)
+        }
+        player.bombCount += 1
+        player.shakeCount += 1
+        
+        for _ in 0..<rules.special_moves.bomb.dummy_card_count {
+            let dummy = Card(month: .none, type: .dummy, imageIndex: 0)
+            player.hand.append(dummy)
+            player.dummyCardCount += 1
         }
 
-        // Reset flags
-        isSeolsaEatFlag = false
-        isSelfSeolsaEatFlag = false
-
+        // Bomb captures bypass the animated capture path, so commit them immediately.
+        let committedBombCaptures = turnPlayPhaseCaptured.filter { !($0.month == .sep && $0.type == .animal) }
+        if !committedBombCaptures.isEmpty {
+            player.capture(cards: committedBombCaptures)
+            player.score = ScoringSystem.calculateScore(for: player)
+        }
         
-        // 1. Play Card Phase
-        if let rules = RuleLoader.shared.config, rules.special_moves.bomb.enabled,
-           handMatches.count == 3 && tableMatches.count == 1 {
-            turnIsBomb = true
-            gLog("\(player.name) triggered BOMB (폭탄) for month \(month)!")
-            
-            for mCard in handMatches {
-                if let played = player.play(card: mCard) {
-                    turnPlayPhaseCaptured.append(played)
-                }
-            }
-            if let target = tableMatches.first, let index = tableCards.firstIndex(of: target) {
-                tableCards.remove(at: index)
-                turnPlayPhaseCaptured.append(target)
-            }
-            player.bombCount += 1
-            player.shakeCount += 1
-            
-            // Add dummy (도탄) cards as defined by rule:
-            // dummy_card_count from rule.yaml, dummy_cards_disappear_on_play = true (never go to table)
-            let dummyCount = rules.special_moves.bomb.dummy_card_count
-            for _ in 0..<dummyCount {
-                let dummy = Card(month: .none, type: .dummy, imageIndex: 0)
-                player.hand.append(dummy)
-                player.dummyCardCount += 1
-            }
-            gLog("\(player.name) received \(dummyCount) dummy (도탄) card(s). They vanish when played.")
-            turnPlayedCard = nil
-            
-            // Draw Phase
-            if let drawnCard = deck.draw() {
-                gLog("Bomb Draw: \(drawnCard.month) (\(drawnCard.type))")
+        proceedToDrawPhase(player: player, rules: rules)
+    }
+
+    private func proceedToDrawPhase(player: Player, rules: RuleConfig) {
+        let drawDelay = AnimationManager.shared.config.card_move_duration
+        runAfterAnimationDelay(drawDelay) {
+            if let drawnCard = self.deck.draw() {
+                gLog("Drawn: \(drawnCard.month) (\(drawnCard.type))")
                 
-                // CRITICAL FIX: If drawn card matches bomb month, it MUST be captured even if table is empty.
-                // performTableCapture would normally just put it on the table if it's empty.
-                if drawnCard.month.rawValue == month.rawValue {
-                     turnDrawPhaseCaptured = [drawnCard]
-                     gLog("Bomb Draw capture: month \(drawnCard.month.rawValue) matched bomb month \(month.rawValue). Captured.")
-                } else if let captured = performTableCapture(for: drawnCard, on: &tableCards, player: player) {
-                    turnDrawPhaseCaptured = captured
-                } else {
-                    // Human choice needed during Bomb draw
-                    let options = tableCards.filter { $0.month == drawnCard.month }
-                    gLog("Player must choose which card to capture for BOMB drawn month \(drawnCard.month). Options: \(options.map { $0.type })")
-                    pendingCaptureDrawnCard = drawnCard
-                    pendingCaptureOptions = options
-                    gameState = .choosingCapture
-                    
-                    // Capture turnPlayPhaseCaptured cards (bomb cards + table match) before pausing
-                    if !turnPlayPhaseCaptured.isEmpty {
-                        let finalPlayCaptures = turnPlayPhaseCaptured.filter { !($0.month == .sep && $0.type == .animal) }
-                        if !finalPlayCaptures.isEmpty {
-                            player.capture(cards: finalPlayCaptures)
+                self.tableCards.append(drawnCard)
+                self.deck.pushCardsOnTop([drawnCard])
+                self.hiddenInSourceCardIds.insert(drawnCard.id)
+                self.hiddenInTargetCardIds.insert(drawnCard.id)
+                
+                self.addUXEvent(type: "moveStart", data: ["cardId": drawnCard.id, "source": "deck", "target": "table"])
+                self.takeSnapshot()
+                
+                self.movingCardsScale = 0.7
+
+                self.movingCardsShowDebug = false
+                self.currentMovingCards = [drawnCard]
+                
+                withAnimation { }
+                
+                self.deck.remove(card: drawnCard)
+                
+                let remainingOnTable = self.tableCards.filter { $0.month == drawnCard.month && $0.id != drawnCard.id }.first
+                let moveDelay = AnimationManager.shared.config.card_move_duration
+                
+                self.runAfterAnimationDelay(moveDelay) {
+                    self.addUXEvent(type: "moveEnd", data: ["cardId": drawnCard.id, "target": "table"])
+                    if !self.turnPlayPhaseCaptured.isEmpty && self.turnPlayPhaseCaptured.count == 2 && 
+                       self.turnPlayPhaseCaptured[0].month == drawnCard.month && remainingOnTable == nil {
+                        self.currentMovingCards = []
+                        self.hiddenInSourceCardIds.remove(drawnCard.id)
+                        self.hiddenInTargetCardIds.remove(drawnCard.id)
+                        self.turnIsSeolsa = true
+                        gLog("SEOLSA!")
+
+                        // Revert the play-phase capture commit: Seolsa leaves all 3 cards on the table.
+                        let revertedPlayCaptures = self.turnPlayPhaseCaptured.filter { !($0.month == .sep && $0.type == .animal) }
+                        if !revertedPlayCaptures.isEmpty {
+                            player.capturedCards.removeAll { captured in
+                                revertedPlayCaptures.contains(where: { $0.id == captured.id })
+                            }
+                            player.score = ScoringSystem.calculateScore(for: player)
                         }
-                        player.score = ScoringSystem.calculateScore(for: player)
-                        gLog("\(player.name) captured \(finalPlayCaptures.count) (bomb play phase) before pausing for bomb draw choice.")
+
+                        self.tableCards.append(contentsOf: self.turnPlayPhaseCaptured)
+                        self.turnPlayPhaseCaptured = []
+                        self.turnDrawPhaseCaptured = []
+                        self.finalizeTurnState(player: player, rules: rules)
+                    } else {
+                        if let captured = self.performTableCaptureLogical(for: drawnCard, player: player) {
+                            self.turnDrawPhaseCaptured = captured
+                            self.handleDrawCaptured(drawnCard: drawnCard, player: player)
+                            
+                            if captured.isEmpty {
+                                self.currentMovingCards = []
+                                self.hiddenInSourceCardIds.remove(drawnCard.id)
+                                self.hiddenInTargetCardIds.remove(drawnCard.id)
+                                self.finalizeTurnState(player: player, rules: rules)
+                            } else {
+                                let currentPiCount = player.piCount
+                                self.movingCardsPiCount = currentPiCount > 0 ? currentPiCount : nil
+                                
+                                let filtered = captured.filter { !($0.month == .sep && $0.type == .animal) }
+                                player.capture(cards: filtered)
+                                player.score = ScoringSystem.calculateScore(for: player)
+                                
+                                for c in captured {
+                                    self.hiddenInSourceCardIds.insert(c.id)
+                                    self.hiddenInTargetCardIds.insert(c.id)
+                                }
+                                let cardIds = filtered.map { $0.id }.joined(separator: ",")
+                                self.addUXEvent(type: "moveStart", data: ["cardIds": cardIds, "source": "table", "target": "captured"])
+                                self.takeSnapshot()
+                                
+                                self.movingCardsScale = 0.7
+                                self.movingCardsShowDebug = false
+                                
+                                withAnimation {
+                                    let targetScale: CGFloat = player.isComputer ? 0.45 : 0.5
+                                    self.movingCardsScale = targetScale
+                                    self.currentMovingCards = filtered
+                                }
+                                
+                                self.runAfterAnimationDelay(moveDelay) {
+                                    let cardIds = filtered.map { $0.id }.joined(separator: ",")
+                                    self.addUXEvent(type: "moveEnd", data: ["cardIds": cardIds, "target": "captured"])
+                                    self.currentMovingCards = []
+                                    self.movingCardsPiCount = nil
+                                    for c in captured {
+                                        self.hiddenInSourceCardIds.remove(c.id)
+                                        self.hiddenInTargetCardIds.remove(c.id)
+                                        self.tableCards.removeAll { $0.id == c.id }
+                                    }
+                                    self.finalizeTurnState(player: player, rules: rules)
+                                }
+                            }
+                        } else {
+                            self.currentMovingCards = []
+                            self.hiddenInSourceCardIds.remove(drawnCard.id)
+                            self.hiddenInTargetCardIds.remove(drawnCard.id)
+                            self.pendingCaptureDrawnCard = drawnCard
+                            self.pendingCaptureOptions = self.tableCards.filter { $0.month == drawnCard.month && $0.id != drawnCard.id }
+                            self.gameState = .choosingCapture
+                            player.score = ScoringSystem.calculateScore(for: player)
+                            self.maybeScheduleInternalComputerAction()
+                        }
                     }
-                    return // Pause
                 }
+            } else {
+                self.finalizeTurnState(player: player, rules: rules)
             }
-            
-            // Finalize Bomb captures (Deferred September check)
-            let bombCaptures = turnPlayPhaseCaptured + turnDrawPhaseCaptured
-            if !bombCaptures.isEmpty {
-                let finalBCaptures = bombCaptures.filter { !($0.month == .sep && $0.type == .animal) }
-                if !finalBCaptures.isEmpty {
-                    player.capture(cards: finalBCaptures)
-                }
-                player.score = ScoringSystem.calculateScore(for: player)
-                gLog("\(player.name) captured \(finalBCaptures.count) cards via BOMB. Total: \(player.capturedCards.count)")
-                
-                if checkAndHandleChrysanthemumRole(capturedCards: bombCaptures, player: player, rules: rules) {
-                    return 
-                }
-                
-                finalizeTurnAfterCapture(player: player)
-                return
+        }
+    }
+
+    private func handleDrawCaptured(drawnCard: Card, player: Player) {
+        if !turnDrawPhaseCaptured.isEmpty {
+            if let pCard = turnPlayedCard, turnDrawPhaseCaptured.contains(where: { $0.month == pCard.month }) {
+                if !turnPlayPhaseCaptured.isEmpty { turnIsTtadak = true } 
+                else { turnIsJjok = true }
+            }
+            for captured in turnDrawPhaseCaptured {
+                monthOwners.removeValue(forKey: captured.month.rawValue)
+                seolsaMonths.removeValue(forKey: captured.month.rawValue)
             }
         } else {
-            if card.type == .dummy {
-                gLog("\(player.name) played a DUMMY card. (\(player.dummyCardCount - 1) remaining)")
-                player.dummyCardCount -= 1
-                // Per rule: dummy_cards_disappear_on_play = true
-                // Dummy (도탄) cards vanish on play — they are NOT placed on the table/floor
-                if let idx = player.hand.firstIndex(where: { $0.id == card.id }) {
-                    player.hand.remove(at: idx)
-                }
-                gLog("\(player.name) dummy play complete. Hand: \(player.hand.count)")
-                // Continue to draw phase
-                turnPlayedCard = nil 
-            } else {
-                if let pCard = player.play(card: card) {
-                    turnPlayedCard = pCard
-                    if let owner = monthOwners[pCard.month.rawValue], owner.id != player.id {
-                        // This identifies a candidate for Seolsa (following someone else's card)
-                        gLog("Seolsa candidate: \(player.name) may follow \(owner.name)'s missed card for month \(pCard.month)")
-                    }
-                    
-                    if let captured = performTableCapture(for: pCard, on: &tableCards, player: player) {
-                        turnPlayPhaseCaptured = captured
-                        if turnPlayPhaseCaptured.isEmpty {
-                            // Card went to table (no capture) – record who left it there
-                            monthOwners[pCard.month.rawValue] = player
-                        } else {
-                            // Capture happened – clear the monthOwners chain for this month
-                            monthOwners.removeValue(forKey: pCard.month.rawValue)
-                        }
-                    } else if let pCard = turnPlayedCard {
-                        // Human player must choose - pause turn
-                        let options = tableCards.filter { $0.month == pCard.month }
-                        gLog("Player must choose which card to capture for month \(pCard.month). Options: \(options.map { $0.type })")
-                        pendingCapturePlayedCard = pCard
-                        pendingCaptureOptions = options
-                        gameState = .choosingCapture
-                        return  // Pause - will resume via respondToCapture()
-                    }
-                }
-                else {
-                    gLog("ERROR: Card NOT found in hand! Card: \(card.month) \(card.type)")
-                    endTurn()
-                    return
-                }
-            }
+            monthOwners[drawnCard.month.rawValue] = player
         }
-        
-        // 2. Draw Phase (skip for bomb - it already drew; skip for dummy - no draw)
-        if !turnIsBomb, card.type != .dummy, let drawnCard = deck.draw() {
-            gLog("Drawn: \(drawnCard.month) (\(drawnCard.type))")
-            
-            // Seolsa (뻑) creation check:
-            // Condition: play phase captured 2 cards (matched 1 on floor), and drawn card is same month.
-            // Check table for 4th card (Ttadak case)
-            let remainingOnTable = tableCards.first(where: { $0.month == drawnCard.month })
+    }
 
-            if !turnPlayPhaseCaptured.isEmpty && turnPlayPhaseCaptured.count == 2 && 
-               turnPlayPhaseCaptured[0].month == drawnCard.month && remainingOnTable == nil {
-                turnIsSeolsa = true
-                gLog("SEOLSA (뻑)! Play match followed by draw match for month \(drawnCard.month)")
-                
-                // VOID the play capture: put them back on table, plus the drawn card
-                tableCards.append(contentsOf: turnPlayPhaseCaptured)
-                tableCards.append(drawnCard)
-                turnPlayPhaseCaptured = []
-                turnDrawPhaseCaptured = []
-            } else {
-                if let captured = performTableCapture(for: drawnCard, on: &tableCards, player: player) {
-                    turnDrawPhaseCaptured = captured
-                    if !turnDrawPhaseCaptured.isEmpty {
-                        if let pCard = turnPlayedCard,
-                           turnDrawPhaseCaptured.contains(where: { $0.month == pCard.month }) {
-                            // Ttadak and Jjok are mutually exclusive.
-                            if !turnPlayPhaseCaptured.isEmpty {
-                                turnIsTtadak = true
-                            } else {
-                                turnIsJjok = true
-                            }
-                        }
-                        // Clear monthOwners/seolsaMonths for draw-phase captured months
-                        for captured in turnDrawPhaseCaptured {
-                            monthOwners.removeValue(forKey: captured.month.rawValue)
-                            seolsaMonths.removeValue(forKey: captured.month.rawValue)
-                        }
-                    } else {
-                        monthOwners[drawnCard.month.rawValue] = player
-                    }
-                } else {
-                    // Human player must choose for DRAW phase - pause turn
-                    let options = tableCards.filter { $0.month == drawnCard.month }
-                    gLog("Player must choose which card to capture for drawn month \(drawnCard.month). Options: \(options.map { $0.type })")
-                    pendingCaptureDrawnCard = drawnCard
-                    pendingCaptureOptions = options
-                    gameState = .choosingCapture
-                    
-                    // We must capture the turnPlayPhaseCaptured cards now before pausing
-                    if !turnPlayPhaseCaptured.isEmpty {
-                        let finalPlayCaptures = turnPlayPhaseCaptured.filter { !($0.month == .sep && $0.type == .animal) }
-                        if !finalPlayCaptures.isEmpty {
-                            player.capture(cards: finalPlayCaptures)
-                        }
-                        player.score = ScoringSystem.calculateScore(for: player)
-                        gLog("\(player.name) captured \(finalPlayCaptures.count) (play phase) before pausing for draw choice.")
-                    }
-                    return // Pause - will resume via respondToCapture()
-                }
-            }
-        }
-        
-        // 3. Capture & Score Consolidation
+    private func finalizeTurnState(player: Player, rules: RuleConfig) {
         let finalCaptures = turnPlayPhaseCaptured + turnDrawPhaseCaptured
-        
         if !finalCaptures.isEmpty {
-            // Exclude deferred September card from immediate formal capture
-            let finalCapturesToProcess = finalCaptures.filter { !($0.month == .sep && $0.type == .animal) }
-            if !finalCapturesToProcess.isEmpty {
-                player.capture(cards: finalCapturesToProcess)
-            }
-            
-            player.score = ScoringSystem.calculateScore(for: player)
-            gLog("\(player.name) captured \(finalCapturesToProcess.count) cards. Total: \(player.capturedCards.count)")
-            
-            // September Chrysanthemum Choice Check
+            // Note: Capture and score already handled in phased animations
             if checkAndHandleChrysanthemumRole(capturedCards: finalCaptures, player: player, rules: rules) {
-                return // PAUSE - finalizeTurnAfterCapture will be called from respondToChrysanthemumChoice
+                return
             }
         }
         finalizeTurnAfterCapture(player: player)
@@ -730,52 +899,22 @@ class GameManager: ObservableObject {
             if let chrysCard = capturedCards.first(where: { $0.month == .sep && $0.type == .animal }) {
                 if player.isComputer {
                     let defaultRole = CardRole(rawValue: chrysRule.default_role) ?? .animal
-                    gLog("Computer auto-selecting default role \(defaultRole) for Chrysanthemum.")
-                    
                     var updatedCard = chrysCard
                     updatedCard.selectedRole = defaultRole
                     player.capture(cards: [updatedCard])
-                    
                     player.score = ScoringSystem.calculateScore(for: player)
                 } else {
-                    gLog("Pausing turn for Chrysanthemum role selection.")
                     pendingChrysanthemumCard = chrysCard
                     gameState = .choosingChrysanthemumRole
-                    return true // PAUSED
+                    return true
                 }
             }
         }
         return false
     }
 
-    func respondGoStop(isGo: Bool) {
-        guard let rules = RuleLoader.shared.config,
-              let player = currentPlayer else { return }
-        
-        let opponentIndex = (currentTurnIndex + 1) % players.count
-        let opponent = players[opponentIndex]
-        
-        if checkEndgameConditions(player: player, opponent: opponent, rules: rules, isAfterGo: false) {
-            return
-        }
-        
-        let minScore = players.count == 3 ? rules.go_stop.min_score_3_players : rules.go_stop.min_score_2_players
-        if player.score >= minScore && player.score > player.lastGoScore {
-            if player.hand.count == 0 {
-                gLog("\(player.name) reached \(player.score) points, but has no cards left. Forced STOP.")
-                executeStop(player: player, rules: rules)
-            } else {
-                gameState = .askingGoStop
-            }
-        } else {
-            endTurn()
-        }
-    }
-    
     func respondToGoStop(isGo: Bool) {
-        gLog("--- respondToGoStop(isGo: \(isGo)) called. State: \(gameState), Turn: \(currentTurnIndex) ---")
         guard gameState == .askingGoStop, let player = currentPlayer else { return }
-        
         guard let rules = RuleLoader.shared.config else {
             fallbackEndTurn(player: player)
             return
@@ -785,17 +924,10 @@ class GameManager: ObservableObject {
             player.goCount += 1
             player.lastGoScore = player.score
             gLog("\(player.name) calls GO! (Count: \(player.goCount))")
-            
             let opponentIndex = (currentTurnIndex + 1) % players.count
             let opponent = players[opponentIndex]
-            // isPiMungbak tracking removed as part of Mungdda rule removal
-            
             gameState = .playing
-            
-            if checkEndgameConditions(player: player, opponent: opponent, rules: rules, isAfterGo: true) {
-                return
-            }
-            
+            if checkEndgameConditions(player: player, opponent: opponent, rules: rules, isAfterGo: true) { return }
             endTurn()
         } else {
             executeStop(player: player, rules: rules)
@@ -805,30 +937,23 @@ class GameManager: ObservableObject {
     private func executeStop(player: Player, rules: RuleConfig, reason: GameEndReason = .stop) {
         let opponentIndex = (currentTurnIndex + 1) % players.count
         let opponent = players[opponentIndex]
-        
         resolveBakPiTransfers(winner: player, loser: opponent, rules: rules)
-        
         player.score = ScoringSystem.calculateScore(for: player)
         opponent.score = ScoringSystem.calculateScore(for: opponent)
-        
         let result = PenaltySystem.calculatePenalties(winner: player, loser: opponent, rules: rules)
         gLog("\(player.name) calls STOP (\(reason)) and wins! Final Score: \(result.finalScore)")
-        
         opponent.money -= result.finalScore * 100
         player.money += result.finalScore * 100
-
         self.gameEndReason = reason
         self.lastPenaltyResult = result
         self.gameWinner = player
         self.gameLoser = opponent
-        
         settleResidualCardsIfHandsEmpty()
         gameState = .ended
     }
     
     private func fallbackEndTurn(player: Player) {
         if player.score >= 7 {
-            gLog("\(player.name) Wins with score \(player.score)! (Fallback)")
             self.gameEndReason = .stop
             self.gameWinner = player
             settleResidualCardsIfHandsEmpty()
@@ -839,35 +964,21 @@ class GameManager: ObservableObject {
     }
     
     private func endTurn() {
-        for p in players {
-            gLog("DEBUG: \(p.name) hand: \(p.hand.count)")
-        }
         let allHandsEmpty = players.allSatisfy { $0.hand.isEmpty }
         if deck.cards.isEmpty || allHandsEmpty {
             self.gameEndReason = .nagari
-            // Populate lastPenaltyResult for Nagari so summary can be shown
             self.lastPenaltyResult = PenaltySystem.PenaltyResult(
-                finalScore: 0,
-                isGwangbak: false,
-                isPibak: false,
-                isGobak: false,
-                isMungbak: false,
-                isJabak: false,
-                isYeokbak: false,
-                scoreFormula: "Nagari (Draw) - No winner"
+                finalScore: 0, isGwangbak: false, isPibak: false, isGobak: false,
+                isMungbak: false, isJabak: false, isYeokbak: false, scoreFormula: "Nagari"
             )
             self.gameWinner = nil
             self.gameLoser = nil
-            
             settleResidualCardsIfHandsEmpty()
             gameState = .ended
             gLog("Game Ended in Nagari!")
             return
         }
         currentTurnIndex = (currentTurnIndex + 1) % players.count
-
-        // Dummy-card turns can leave one player with no hand while others still have cards.
-        // Skip empty-hand turns so the round can continue until Nagari/all-hands-empty.
         if gameState == .playing {
             var skips = 0
             while let player = currentPlayer, player.hand.isEmpty, skips < players.count {
@@ -875,107 +986,254 @@ class GameManager: ObservableObject {
                 currentTurnIndex = (currentTurnIndex + 1) % players.count
                 skips += 1
             }
-
-            let noPlayableHands = players.allSatisfy { $0.hand.isEmpty }
-            if noPlayableHands {
+            if players.allSatisfy({ $0.hand.isEmpty }) {
                 self.gameEndReason = .nagari
                 self.lastPenaltyResult = PenaltySystem.PenaltyResult(
-                    finalScore: 0,
-                    isGwangbak: false,
-                    isPibak: false,
-                    isGobak: false,
-                    isMungbak: false,
-                    isJabak: false,
-                    isYeokbak: false,
-                    scoreFormula: "Nagari (Draw) - No playable hands"
+                    finalScore: 0, isGwangbak: false, isPibak: false, isGobak: false,
+                    isMungbak: false, isJabak: false, isYeokbak: false, scoreFormula: "Nagari"
                 )
+                self.gameWinner = nil
+                self.gameLoser = nil
                 settleResidualCardsIfHandsEmpty()
                 gameState = .ended
-                gLog("Game Ended in Nagari! (no playable hands)")
+                gLog("Game Ended in Nagari (Hand Empty)!")
                 return
             }
         }
-        
-        if currentPlayer?.isComputer == true && gameState == .playing {
-            if let aiCard = currentPlayer?.hand.first {
-                playTurn(card: aiCard)
-                // If playTurn triggered a shake prompt, AI auto-responds: always shake (beneficial)
-                if gameState == .askingShake, let month = pendingShakeMonth {
-                    gLog("AI auto-responds to shake for month \(month): YES")
-                    respondToShake(month: month, didShake: true)
-                }
-            }
-        }
+        maybeScheduleInternalComputerAction()
     }
     
-    private func resolveBakPiTransfers(winner: Player, loser: Player, rules: RuleConfig) {
-        let stopWin = winner.goCount == 0
-        let applyBakBecauseStop = rules.go_stop.apply_bak_on_stop || !stopWin
-        let applyBakBecauseOpponentGo = !rules.go_stop.bak_only_if_opponent_go || loser.goCount > 0
-        
-        guard applyBakBecauseStop && applyBakBecauseOpponentGo else { return }
-
-        if rules.penalties.gwangbak.enabled {
-            let winnerKwangs = winner.capturedCards.filter { $0.type == .bright }.count
-            let loserKwangs = loser.capturedCards.filter { $0.type == .bright }.count
-            if winnerKwangs >= 3 && loserKwangs <= rules.penalties.gwangbak.opponent_max_kwang {
-                if rules.penalties.gwangbak.resolution_type == "pi_transfer" || rules.penalties.gwangbak.resolution_type == "both" {
-                    stealPi(from: loser, to: winner, count: rules.penalties.gwangbak.pi_to_transfer, reason: "광박(Gwangbak) 피이전")
-                }
-            }
-        }
-        
-        if rules.penalties.pibak.enabled {
-            let winnerPi = ScoringSystem.calculatePiCount(cards: winner.capturedCards, rules: rules)
-            let loserPi = ScoringSystem.calculatePiCount(cards: loser.capturedCards, rules: rules)
-            // loserPi > 0: exclude 0-Pi players (matches calculatePenalties condition)
-            if winnerPi >= 10 && loserPi > 0 && loserPi < rules.penalties.pibak.opponent_min_pi_safe {
-                if rules.penalties.pibak.resolution_type == "pi_transfer" || rules.penalties.pibak.resolution_type == "both" {
-                    stealPi(from: loser, to: winner, count: rules.penalties.pibak.pi_to_transfer, reason: "피박(Pibak) 피이전")
-                }
-            }
-        }
-        
-        if rules.penalties.mungbak.enabled {
-            let winnerAnimals = winner.capturedCards.filter { $0.type == .animal }.count
-            if winnerAnimals >= rules.penalties.mungbak.winner_min_animal {
-                if rules.penalties.mungbak.resolution_type == "pi_transfer" || rules.penalties.mungbak.resolution_type == "both" {
-                    stealPi(from: loser, to: winner, count: rules.penalties.mungbak.pi_to_transfer, reason: "멍박(Mungbak) 피이전")
-                }
-            }
-        }
-    }
-    
-    func checkEndgameConditions(player: Player, opponent: Player, rules: RuleConfig, isAfterGo: Bool = false) -> Bool {
+    func checkEndgameConditions(player: Player, opponent: Player, rules: RuleConfig, isAfterGo: Bool) -> Bool {
         let endgame = rules.endgame
-        let penalties = PenaltySystem.calculatePenalties(winner: player, loser: opponent, rules: rules)
-        
-        if (endgame.instant_end_on_bak.gwangbak && penalties.isGwangbak) ||
-           (endgame.instant_end_on_bak.pibak && penalties.isPibak) ||
-           (endgame.instant_end_on_bak.mungbak && penalties.isMungbak) {
-            // Note: bomb_mungdda removed as non-standard rule
+        let bak = PenaltySystem.calculatePenalties(winner: player, loser: opponent, rules: rules)
+
+        // 1. Instant End on Bak Check if enabled
+        let instantEnd = endgame.instant_end_on_bak
+        if (instantEnd.pibak && bak.isPibak) || 
+           (instantEnd.gwangbak && bak.isGwangbak) || 
+           (instantEnd.mungbak && bak.isMungbak) {
+            gLog("Instant End Condition met via Bak!")
+            executeStop(player: player, rules: rules)
+            return true
+        }
+
+        // 2. Max Score Check (pre/post multiplier based on rule)
+        let scoreForThreshold = (endgame.score_check_timing == "post_multiplier") ? bak.finalScore : player.score
+        if scoreForThreshold >= endgame.max_round_score {
+            gLog("\(player.name) reached Max Score (\(endgame.max_round_score))! score=\(scoreForThreshold)")
             executeStop(player: player, rules: rules, reason: .maxScore)
             return true
         }
-        
-        var currentScore = player.score
-        if endgame.score_check_timing == "post_multiplier" {
-            currentScore = penalties.finalScore
-        }
-        
-        if currentScore >= endgame.max_round_score {
-            executeStop(player: player, rules: rules, reason: .maxScore)
-            return true
-        }
-        
+
+        // 3. Max Go Count
         if player.goCount >= endgame.max_go_count {
+            gLog("\(player.name) reached Max Go Count (\(endgame.max_go_count))!")
             executeStop(player: player, rules: rules, reason: .maxScore)
             return true
         }
         
         return false
     }
+
+    private func resolveBakPiTransfers(winner: Player, loser: Player, rules: RuleConfig) {
+        let stopWin = winner.goCount == 0
+        let applyBakBecauseStop = rules.go_stop.apply_bak_on_stop || !stopWin
+        let applyBakBecauseOpponentGo = !rules.go_stop.bak_only_if_opponent_go || loser.goCount > 0
+
+        guard applyBakBecauseStop && applyBakBecauseOpponentGo else { return }
+
+        // Gwangbak Pi Transfer
+        if rules.penalties.gwangbak.enabled {
+            let winnerKwangs = winner.capturedCards.filter { $0.type == .bright }.count
+            let loserKwangs = loser.capturedCards.filter { $0.type == .bright }.count
+            if winnerKwangs >= 3 && loserKwangs <= rules.penalties.gwangbak.opponent_max_kwang {
+                if rules.penalties.gwangbak.resolution_type == "pi_transfer" || rules.penalties.gwangbak.resolution_type == "both" {
+                    let count = rules.penalties.gwangbak.pi_to_transfer
+                    stealPi(from: loser, to: winner, count: count, reason: "광박(Gwangbak) 피 이동")
+                }
+            }
+        }
+        
+        // Pibak Pi Transfer
+        if rules.penalties.pibak.enabled {
+            let winnerPi = ScoringSystem.calculatePiCount(cards: winner.capturedCards, rules: rules)
+            let loserPi = ScoringSystem.calculatePiCount(cards: loser.capturedCards, rules: rules)
+            if winnerPi >= 10 && loserPi > 0 && loserPi < rules.penalties.pibak.opponent_min_pi_safe {
+                if rules.penalties.pibak.resolution_type == "pi_transfer" || rules.penalties.pibak.resolution_type == "both" {
+                    let count = rules.penalties.pibak.pi_to_transfer
+                    stealPi(from: loser, to: winner, count: count, reason: "피박(Pibak) 피 이동")
+                }
+            }
+        }
+
+        // Mungbak Pi Transfer
+        if rules.penalties.mungbak.enabled {
+            let winnerAnimals = winner.capturedCards.filter { $0.type == .animal }.count
+            if winnerAnimals >= rules.penalties.mungbak.winner_min_animal {
+                if rules.penalties.mungbak.resolution_type == "pi_transfer" || rules.penalties.mungbak.resolution_type == "both" {
+                    let count = rules.penalties.mungbak.pi_to_transfer
+                    stealPi(from: loser, to: winner, count: count, reason: "멍박(Mungbak) 피 이동")
+                }
+            }
+        }
+    }
     
+    private func performTableCaptureLogical(for monthCard: Card, player: Player) -> [Card]? {
+        var tableCopy = self.tableCards
+        // The card is already in the table for animation targeting. 
+        // Remove it from the logic copy to let performTableCapture decide where it really goes.
+        tableCopy.removeAll { $0.id == monthCard.id }
+        
+        if let captured = performTableCapture(for: monthCard, on: &tableCopy, player: player) {
+            self.tableCards = tableCopy
+            return captured
+        }
+        return nil
+    }
+    
+    func maybeScheduleInternalComputerAction_ExternalWorkaround() {
+        self.maybeScheduleInternalComputerAction()
+    }
+    
+    func emergencyResetBusyState() {
+        self.automationDelayGeneration += 1
+        self.pendingAutomationDelays = 0
+        self.currentMovingCards = []
+        self.hiddenInSourceCardIds = []
+        self.hiddenInTargetCardIds = []
+        self.internalComputerActionScheduled = false
+        gLog("Emergency Busy State Reset triggered via SimulatorBridge.")
+    }
+    
+    private func maybeScheduleInternalComputerAction() {
+        guard internalComputerAutomationEnabled, !externalControlMode else { return }
+        guard let player = currentPlayer, player.isComputer else { return }
+        
+        switch gameState {
+        case .playing, .askingShake, .askingGoStop, .choosingCapture, .choosingChrysanthemumRole:
+            break
+        case .ready, .ended:
+            return
+        }
+        
+        guard !internalComputerActionScheduled else { return }
+        internalComputerActionScheduled = true
+        let generation = automationDelayGeneration
+        
+        let delay = AnimationManager.shared.config.opponent_action_delay
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self = self else { return }
+            self.internalComputerActionScheduled = false
+            guard self.automationDelayGeneration == generation else { return }
+            self.performInternalComputerAction()
+        }
+    }
+    
+    func performInternalComputerAction() {
+        guard internalComputerAutomationEnabled, !externalControlMode else { return }
+        guard let player = currentPlayer, player.isComputer else { return }
+        
+        // For in-app autoplay, wait until the full matched-geometry animation state is idle.
+        guard !isAutomationBusy else {
+            maybeScheduleInternalComputerAction()
+            return
+        }
+        
+        self.performInternalComputerActionLogic()
+    }
+    
+    func forceInternalComputerStep() {
+        guard !externalControlMode else { return }
+        guard let player = currentPlayer, player.isComputer else { return }
+        
+        // Skip automationBusy check? No, we still want to wait for animations to finish before starting a NEW turn step.
+        guard !isAutomationBusy else { return }
+        
+        // Call the internal logic directly without the automation flag guard.
+        self.performInternalComputerActionLogic()
+    }
+    
+    private func performInternalComputerActionLogic() {
+        guard let player = currentPlayer, player.isComputer else { return }
+        
+        switch gameState {
+        case .playing:
+            guard let card = chooseComputerPlayCard(from: player.hand) else { return }
+            gLog("Internal computer automation: \(player.name) plays \(card.month.rawValue) \(card.type.rawValue)")
+            playTurn(card: card)
+            
+        case .askingShake:
+            if let month = pendingShakeMonths.first ?? pendingShakeMonth {
+                gLog("Internal computer automation: auto-decline shake for month \(month)")
+                respondToShake(month: month, didShake: false)
+            }
+            
+        case .askingGoStop:
+            let shouldGo = player.goCount == 0 && player.hand.count > 1
+            gLog("Internal computer automation: \(shouldGo ? "GO" : "STOP")")
+            respondToGoStop(isGo: shouldGo)
+            
+        case .choosingCapture:
+            if let selected = chooseComputerCaptureOption(from: pendingCaptureOptions) {
+                gLog("Internal computer automation: selecting capture \(selected.month.rawValue) \(selected.type.rawValue)")
+                respondToCapture(selectedCard: selected)
+            }
+            
+        case .choosingChrysanthemumRole:
+            let defaultRole = RuleLoader.shared.config
+                .flatMap { CardRole(rawValue: $0.cards.chrysanthemum_rule.default_role) } ?? .animal
+            gLog("Internal computer automation: Chrysanthemum role \(defaultRole.rawValue)")
+            respondToChrysanthemumChoice(role: defaultRole)
+            
+        case .ready, .ended:
+            break
+        }
+    }
+    
+    private func chooseComputerPlayCard(from hand: [Card]) -> Card? {
+        guard !hand.isEmpty else { return nil }
+        let tableMonths = Set(tableCards.map { $0.month.rawValue })
+        
+        if let matching = hand.first(where: { $0.type != .dummy && tableMonths.contains($0.month.rawValue) }) {
+            return matching
+        }
+        if let nonDummy = hand.first(where: { $0.type != .dummy }) {
+            return nonDummy
+        }
+        return hand.first
+    }
+    
+    private func chooseComputerCaptureOption(from options: [Card]) -> Card? {
+        if let doubleJunk = options.first(where: { $0.type == .doubleJunk }) {
+            return doubleJunk
+        }
+        return options.first
+    }
+
+    private func runAfterAnimationDelay(_ delay: Double, _ block: @escaping () -> Void) {
+        if delay <= 0 {
+            block()
+        } else {
+            let generation = automationDelayGeneration
+            pendingAutomationDelays += 1
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                guard let self = self else { 
+                    block() 
+                    return 
+                }
+                
+                let generationMatches = (self.automationDelayGeneration == generation)
+                if generationMatches {
+                    self.pendingAutomationDelays = max(0, self.pendingAutomationDelays - 1)
+                    block()
+                }
+                // If generation doesn't match, we omit block() because the game has been reset.
+                // setupGame() already cleared pendingAutomationDelays, currentMovingCards, etc.
+            }
+        }
+    }
+
     private func performTableCapture(for monthCard: Card, on table: inout [Card], player: Player) -> [Card]? {
         let m = table.filter { $0.month == monthCard.month }
         if m.isEmpty {
@@ -984,9 +1242,7 @@ class GameManager: ObservableObject {
         } else if m.count == 3 {
             let allFour = [monthCard] + m
             table.removeAll { $0.month == monthCard.month }
-            gLog("CHOK! Captured all 4 of month \(monthCard.month)")
             
-            // Seolsa Eat (뻑 먹기) bonus detection
             if let puckCreator = seolsaMonths[monthCard.month.rawValue] {
                 if puckCreator.id == player.id {
                     isSelfSeolsaEatFlag = true
@@ -995,31 +1251,23 @@ class GameManager: ObservableObject {
                 }
                 seolsaMonths.removeValue(forKey: monthCard.month.rawValue)
             } else {
-                // Initial Seolsa (바닥 뻑) capture gives normal Seolsa Eat bonus (1 pi)
                 isSeolsaEatFlag = true
             }
             
             return allFour
         } else if m.count == 2 {
-            gLog("DEBUG: performTableCapture 2 matches - types: \(m[0].type) vs \(m[1].type)")
-            // 2 matches on table: if they differ in type (e.g. junk vs doubleJunk), player must choose
             let typesDistinct = m[0].type != m[1].type
             if typesDistinct {
                 if player.isComputer {
-                    // AI auto-selects: prefer doubleJunk for maximum points
                     let bestOption = m.first { $0.type == .doubleJunk } ?? m[0]
-                    gLog("AI auto-selects \(bestOption.type) for month \(monthCard.month) capture")
                     if let idx = table.firstIndex(where: { $0.id == bestOption.id }) {
                         table.remove(at: idx)
                     }
                     return [monthCard, bestOption]
                 } else {
-                    // Human player must choose - return nil to indicate "Pause for Choice"
-                    // IMPORTANT: We do NOT append monthCard to table yet; it's held in pending state
                     return nil
                 }
             } else {
-                // Same type – just take the first one
                 if let target = m.first, let idx = table.firstIndex(where: { $0.id == target.id }) {
                     table.remove(at: idx)
                     return [monthCard, target]
@@ -1028,7 +1276,6 @@ class GameManager: ObservableObject {
                 return []
             }
         } else {
-            // 1 match
             if let target = m.first, let idx = table.firstIndex(where: { $0.id == target.id }) {
                 table.remove(at: idx)
                 return [monthCard, target]
@@ -1086,9 +1333,165 @@ class GameManager: ObservableObject {
             movedCount += remainingDeckCards.count
             outOfPlayCards.append(contentsOf: remainingDeckCards)
         }
+    }
+}
 
-        if movedCount > 0 {
-            gLog("Terminal cleanup: moved \(movedCount) residual card(s) out of table/deck.")
+// Extension to GameManager to provide serializable state
+extension GameManager {
+    func serializeState() -> [String: AnyCodable] {
+        var state: [String: AnyCodable] = [:]
+        state["gameState"] = AnyCodable(gameState.rawValue)
+        state["deckCount"] = AnyCodable(deck.cards.count)
+        state["tableCards"] = AnyCodable(tableCards)
+        state["deckCards"] = AnyCodable(deck.cards)
+        state["outOfPlayCount"] = AnyCodable(outOfPlayCards.count)
+        state["outOfPlayCards"] = AnyCodable(outOfPlayCards)
+        state["currentTurnIndex"] = AnyCodable(currentTurnIndex)
+        state["isAutomationBusy"] = AnyCodable(isAutomationBusy)
+        state["pendingAutomationDelays"] = AnyCodable(pendingAutomationDelays)
+        state["currentMovingCardIds"] = AnyCodable(currentMovingCards.map { $0.id })
+        state["hiddenInSourceCardIds"] = AnyCodable(Array(hiddenInSourceCardIds).sorted())
+        state["hiddenInTargetCardIds"] = AnyCodable(Array(hiddenInTargetCardIds).sorted())
+        state["players"] = AnyCodable(players.map { player in
+            var playerDict = player.serialize()
+            playerDict["scoreItems"] = AnyCodable(ScoringSystem.calculateScoreDetail(for: player))
+            return playerDict
+        })
+        state["eventLogs"] = AnyCodable(eventLogs)
+        state["uxEventLogs"] = AnyCodable(uxEventLogs)
+        state["historyCount"] = AnyCodable(stateHistory.count)
+        
+        if let playedCard = pendingCapturePlayedCard {
+            state["pendingCapturePlayedCard"] = AnyCodable(playedCard)
+        }
+        if let drawnCard = pendingCaptureDrawnCard {
+            state["pendingCaptureDrawnCard"] = AnyCodable(drawnCard)
+        }
+        
+        if gameState == .choosingCapture {
+            state["pendingCaptureOptions"] = AnyCodable(pendingCaptureOptions)
+        }
+        
+        if gameState == .choosingChrysanthemumRole {
+            if let chrysCard = pendingChrysanthemumCard {
+                state["pendingChrysanthemumCard"] = AnyCodable(chrysCard)
+            }
+        }
+        
+        if gameState == .askingShake {
+            state["pendingShakeMonths"] = AnyCodable(pendingShakeMonths)
+        }
+        
+        if let month = chongtongMonth {
+            state["chongtongMonth"] = AnyCodable(month)
+        }
+        if let timing = chongtongTiming {
+            state["chongtongTiming"] = AnyCodable(timing)
+        }
+        
+        if gameState == .ended {
+            if let reason = gameEndReason {
+                state["gameEndReason"] = AnyCodable(reason.rawValue)
+            }
+            if let lastResult = lastPenaltyResult {
+                state["penaltyResult"] = AnyCodable([
+                    "finalScore": AnyCodable(lastResult.finalScore),
+                    "isGwangbak": AnyCodable(lastResult.isGwangbak),
+                    "isPibak": AnyCodable(lastResult.isPibak),
+                    "isGobak": AnyCodable(lastResult.isGobak),
+                    "isMungbak": AnyCodable(lastResult.isMungbak),
+                    "isJabak": AnyCodable(lastResult.isJabak),
+                    "isYeokbak": AnyCodable(lastResult.isYeokbak),
+                    "scoreFormula": AnyCodable(lastResult.scoreFormula)
+                ])
+            } else if gameEndReason == .nagari {
+                state["penaltyResult"] = AnyCodable([
+                    "finalScore": AnyCodable(0),
+                    "isGwangbak": AnyCodable(false),
+                    "isPibak": AnyCodable(false),
+                    "isGobak": AnyCodable(false),
+                    "isMungbak": AnyCodable(false),
+                    "isJabak": AnyCodable(false),
+                    "isYeokbak": AnyCodable(false),
+                    "scoreFormula": AnyCodable("Nagari (Draw)")
+                ])
+            }
+        }
+        
+        state["status"] = AnyCodable("ok")
+        return state
+    }
+    
+    func restoreState(from historyIndex: Int) {
+        guard stateHistory.indices.contains(historyIndex) else { return }
+        let snapshot = stateHistory[historyIndex]
+        restoreFromSnapshot(snapshot)
+    }
+    
+    func restoreFromSnapshot(_ snapshot: [String: AnyCodable]) {
+        // Implementation for restoring basic properties
+        if let gameStateStr = snapshot["gameState"]?.value as? String,
+           let state = GameState(rawValue: gameStateStr) {
+            self.gameState = state
+        }
+        
+        if let turnIndex = snapshot["currentTurnIndex"]?.value as? Int {
+            self.currentTurnIndex = turnIndex
+        }
+        
+        // Complex objects would need deeper restoration if we want full fidelity.
+        // For UX monitoring, we primarily need the visual state: cards on table, in hands, etc.
+        // This is a simplified restore for now.
+    }
+}
+
+// Helper for type-erased Codable
+struct AnyCodable: Codable {
+    let value: Any
+    
+    init(_ value: Any) {
+        self.value = value
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let intValue = try? container.decode(Int.self) {
+            value = intValue
+        } else if let stringValue = try? container.decode(String.self) {
+            value = stringValue
+        } else if let boolValue = try? container.decode(Bool.self) {
+            value = boolValue
+        } else if let doubleValue = try? container.decode(Double.self) {
+            value = doubleValue
+        } else if let arrayValue = try? container.decode([AnyCodable].self) {
+            value = arrayValue.map { $0.value }
+        } else if let dictValue = try? container.decode([String: AnyCodable].self) {
+            value = dictValue.mapValues { $0.value }
+        } else {
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "AnyCodable value cannot be decoded")
+        }
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        if let intValue = value as? Int {
+            try container.encode(intValue)
+        } else if let stringValue = value as? String {
+            try container.encode(stringValue)
+        } else if let boolValue = value as? Bool {
+            try container.encode(boolValue)
+        } else if let doubleValue = value as? Double {
+            try container.encode(doubleValue)
+        } else if let codableValue = value as? Encodable {
+            try codableValue.encode(to: encoder)
+        } else if let arrayValue = value as? [Any] {
+            try container.encode(arrayValue.map { AnyCodable($0) })
+        } else if let dictValue = value as? [String: Any] {
+            try container.encode(dictValue.mapValues { AnyCodable($0) })
+        } else {
+            let context = EncodingError.Context(codingPath: encoder.codingPath, debugDescription: "AnyCodable value cannot be encoded")
+            throw EncodingError.invalidValue(value, context)
         }
     }
 }
+

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RuleSettingsView: View {
     @ObservedObject var configManager = ConfigManager.shared
+    @ObservedObject var animationManager = AnimationManager.shared
     @Binding var isPresented: Bool
     
     var body: some View {
@@ -27,6 +28,7 @@ struct RuleSettingsView: View {
                 if let config = configManager.ruleConfig {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 20) {
+                            settingsSection(title: "오디오 (Audio / animation.yaml)", content: audioSettings())
                             settingsSection(title: "점수 계산 (Scoring)", content: scoringSettings(config: config))
                             settingsSection(title: "패널티 (Penalties)", content: penaltySettings(config: config))
                             settingsSection(title: "특수 동작 (Special Moves)", content: specialMoveSettings(config: config))
@@ -41,7 +43,11 @@ struct RuleSettingsView: View {
                 }
                 
                 // Save/Close Button
-                Button(action: { isPresented = false }) {
+                Button(action: { 
+                    animationManager.saveConfig()
+                    RuleLoader.shared.saveRules()
+                    isPresented = false 
+                }) {
                     Text("확인")
                         .font(.headline)
                         .foregroundColor(.white)
@@ -78,6 +84,62 @@ struct RuleSettingsView: View {
         }
     }
     
+    @ViewBuilder
+    private func audioSettings() -> some View {
+        VStack(spacing: 12) {
+            settingToggle(
+                label: "배경 음악 (BGM)",
+                isOn: Binding(
+                    get: { animationManager.config.background_music_enabled },
+                    set: { isEnabled in
+                        var nextConfig = animationManager.config
+                        nextConfig.background_music_enabled = isEnabled
+                        animationManager.config = nextConfig
+
+                        if isEnabled {
+                            AudioManager.shared.startBackgroundMusic()
+                        } else {
+                            AudioManager.shared.stopBackgroundMusic()
+                        }
+                    }
+                )
+            )
+
+            Divider().background(Color.white.opacity(0.1))
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("상대방 행동 지연 (AI Hold)")
+                        .foregroundColor(.white.opacity(0.8))
+                    Spacer()
+                    Stepper("", value: Binding(
+                        get: { animationManager.config.opponent_action_delay },
+                        set: { newValue in
+                            var nextConfig = animationManager.config
+                            nextConfig.opponent_action_delay = newValue
+                            animationManager.config = nextConfig
+                        }
+                    ), in: 0.1...3.0, step: 0.1)
+                    .labelsHidden()
+                    Text(String(format: "%.1f초", animationManager.config.opponent_action_delay))
+                        .foregroundColor(.white)
+                        .font(.system(.body, design: .monospaced))
+                        .frame(width: 50)
+                }
+                Text("상대방의 행동이 너무 빠를 때 이 시간을 늘려주세요.")
+                    .font(.caption2)
+                    .foregroundColor(.white.opacity(0.5))
+            }
+
+            HStack {
+                Text("기본값은 animation.yaml 설정 사용")
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.6))
+                Spacer()
+            }
+        }
+    }
+
     @ViewBuilder
     private func scoringSettings(config: RuleConfig) -> some View {
         VStack(spacing: 12) {

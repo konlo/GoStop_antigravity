@@ -37,11 +37,8 @@ class AIPlayer(TestAgent):
         add_cards(state.get('tableCards', []), 'Table')
         add_cards(state.get('outOfPlayCards', []), 'OutOfPlay')
         
-        if 'pendingCapturePlayedCard' in state and state['pendingCapturePlayedCard']:
-            add_cards([state['pendingCapturePlayedCard']], 'PendingPlayed')
-        
-        if 'pendingCaptureDrawnCard' in state and state['pendingCaptureDrawnCard']:
-            add_cards([state['pendingCaptureDrawnCard']], 'PendingDrawn')
+        # pendingCapture* fields are aliases for choice UI, not independent zones.
+        # The same card can legitimately also exist in tableCards while choosingCapture.
         
         # Check if full deck is exposed
         if 'deck' in state and isinstance(state['deck'], dict):
@@ -86,11 +83,8 @@ class AIPlayer(TestAgent):
         add_cards(state.get('tableCards', []))
         add_cards(state.get('outOfPlayCards', []))
         
-        if 'pendingCapturePlayedCard' in state and state['pendingCapturePlayedCard']:
-            add_cards([state['pendingCapturePlayedCard']])
-        
-        if 'pendingCaptureDrawnCard' in state and state['pendingCaptureDrawnCard']:
-            add_cards([state['pendingCaptureDrawnCard']])
+        # pendingCapture* fields are informational aliases and should not be counted
+        # as separate card ownership locations for integrity validation.
         
         if 'deck' in state and isinstance(state['deck'], dict):
             add_cards(state['deck'].get('cards', []))
@@ -357,6 +351,13 @@ class AIPlayer(TestAgent):
                     continue
 
                 self.record_state(state_resp)
+                # `isAutomationBusy` may remain true in stable states due to UI-only hidden-card markers.
+                # For automation pacing, delayed callbacks are the real source of stale reads/races.
+                pending_delays = state_resp.get("pendingAutomationDelays", 0) or 0
+                if pending_delays > 0:
+                    time.sleep(0.2)
+                    continue
+
                 self.check_duplicate_cards(state_resp)
                 
                 if self.debug_level == "high":

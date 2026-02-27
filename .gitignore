@@ -14,4 +14,7 @@ build_tmp/
 test_artifacts/
 build_error_cli*.txt
 *.swift.tmp
-
+build_ios_socket/
+# Xcode user data
+*.xcuserstate
+xcuserdata/

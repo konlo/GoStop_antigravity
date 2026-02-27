@@ -74,6 +74,7 @@ struct SettingAreaV2: View {
 // MARK: - Opponent Area V2
 struct OpponentAreaV2: View {
     let ctx: LayoutContext
+    let animationNamespace: Namespace.ID?
     @ObservedObject var gameManager: GameManager // Assuming shared state or passing environment
     
     var body: some View {
@@ -92,7 +93,7 @@ struct OpponentAreaV2: View {
             // JSON: "scale: 0.45", "grid": { ... }
             let handConfig = areaConfig.elements.hand
             if gameManager.players.count > 1 {
-                OpponentHandV2(ctx: ctx, handConfig: handConfig, hand: gameManager.players[1].hand)
+                OpponentHandV2(ctx: ctx, animationNamespace: animationNamespace, gameManager: gameManager, handConfig: handConfig, hand: gameManager.players[1].hand)
                     .position(x: frame.width * handConfig.x, y: frame.height * handConfig.y)
                     .zIndex(handConfig.zIndex)
             }
@@ -110,7 +111,7 @@ struct OpponentAreaV2: View {
                 let maxY = frame.height - halfHeight - (padding / 2)
                 let finalY = min(desiredY, maxY)
                 
-                CapturedAreaV2(ctx: ctx, layoutConfig: capConfig.layout, cards: gameManager.players[1].capturedCards, scale: capConfig.scale, alignLeading: true)
+                CapturedAreaV2(ctx: ctx, animationNamespace: animationNamespace, gameManager: gameManager, layoutConfig: capConfig.layout, cards: gameManager.players[1].capturedCards, scale: capConfig.scale, alignLeading: false)
                     .position(x: frame.width * capConfig.x, y: finalY)
                     .zIndex(capConfig.zIndex)
             }
@@ -128,6 +129,7 @@ struct OpponentAreaV2: View {
 // MARK: - Center Area V2
 struct CenterAreaV2: View {
     let ctx: LayoutContext
+    let animationNamespace: Namespace.ID?
     @ObservedObject var gameManager: GameManager
     var tableSlotManager: TableSlotManager?
     
@@ -145,13 +147,13 @@ struct CenterAreaV2: View {
             
             // Table
             let tableConfig = areaConfig.elements.table
-            TableAreaV2(ctx: ctx, config: tableConfig, cards: gameManager.tableCards, slotManager: tableSlotManager)
+            TableAreaV2(ctx: ctx, animationNamespace: animationNamespace, gameManager: gameManager, config: tableConfig, cards: gameManager.tableCards, slotManager: tableSlotManager)
                 .position(x: frame.width * tableConfig.x, y: frame.height * tableConfig.y)
                 .zIndex(tableConfig.zIndex)
             
             // Deck
             let deckConfig = areaConfig.elements.deck
-            DeckAreaV2(ctx: ctx, config: deckConfig, deckCount: gameManager.deck.cards.count)
+            DeckAreaV2(ctx: ctx, animationNamespace: animationNamespace, config: deckConfig, deckCount: gameManager.deck.cards.count, gameManager: gameManager)
                 .position(x: frame.width * deckConfig.x, y: frame.height * deckConfig.y)
                 .zIndex(deckConfig.zIndex)
         }
@@ -161,6 +163,7 @@ struct CenterAreaV2: View {
 // MARK: - Player Area V2
 struct PlayerAreaV2: View {
     let ctx: LayoutContext
+    let animationNamespace: Namespace.ID?
     @ObservedObject var gameManager: GameManager
     var slotManager: PlayerHandSlotManager?
     
@@ -179,7 +182,7 @@ struct PlayerAreaV2: View {
             // Hand (Player)
             let handConfig = areaConfig.elements.hand
             if let player = gameManager.players.first {
-                PlayerHandV2(ctx: ctx, config: handConfig, gameManager: gameManager, slotManager: slotManager, hand: player.hand)
+                PlayerHandV2(ctx: ctx, animationNamespace: animationNamespace, config: handConfig, gameManager: gameManager, slotManager: slotManager, hand: player.hand)
                     .position(x: frame.width * handConfig.x, y: frame.height * handConfig.y)
                     .zIndex(handConfig.zIndex)
             }
@@ -187,7 +190,7 @@ struct PlayerAreaV2: View {
             // Captured (Player)
             let capConfig = areaConfig.elements.captured
             if let player = gameManager.players.first {
-                CapturedAreaV2(ctx: ctx, layoutConfig: capConfig.layout, cards: player.capturedCards, scale: capConfig.scale, alignLeading: true)
+                CapturedAreaV2(ctx: ctx, animationNamespace: animationNamespace, gameManager: gameManager, layoutConfig: capConfig.layout, cards: player.capturedCards, scale: capConfig.scale, alignLeading: true)
                     .position(x: frame.width * capConfig.x, y: frame.height * capConfig.y)
                     .zIndex(capConfig.zIndex)
             }
@@ -244,6 +247,8 @@ struct ScoreViewV2: View {
 
 struct OpponentHandV2: View {
     let ctx: LayoutContext
+    let animationNamespace: Namespace.ID?
+    @ObservedObject var gameManager: GameManager
     let handConfig: ElementHandConfig
     let hand: [Card]
     
@@ -266,9 +271,12 @@ struct OpponentHandV2: View {
         
         ZStack {
             ForEach(Array(hand.enumerated()), id: \.element.id) { index, card in
-                CardView(card: card, isFaceUp: false, scale: handConfig.scale)
+                let isHidden = gameManager.currentMovingCards.contains(where: { $0.id == card.id }) || gameManager.hiddenInSourceCardIds.contains(card.id)
+                // Opponent Hand remains source
+                CardView(card: card, isFaceUp: false, scale: handConfig.scale, animationNamespace: animationNamespace, isSource: true)
                     .offset(x: CGFloat(index) * spacing)
                     .zIndex(Double(index))
+                    .opacity(isHidden ? 0 : 1)
             }
         }
         .frame(width: cardW + (CGFloat(max(0, hand.count - 1)) * spacing), height: ctx.cardSize.height * handConfig.scale)
@@ -277,6 +285,7 @@ struct OpponentHandV2: View {
 
 struct PlayerHandV2: View {
     let ctx: LayoutContext
+    let animationNamespace: Namespace.ID?
     let config: ElementHandConfig
     @ObservedObject var gameManager: GameManager
     var slotManager: PlayerHandSlotManager?
@@ -285,9 +294,9 @@ struct PlayerHandV2: View {
     var body: some View {
         Group {
             if config.mode == "fixedSlots10", let manager = slotManager {
-                PlayerHandFixedSlotsView(ctx: ctx, config: config, manager: manager, gameManager: gameManager)
+                PlayerHandFixedSlotsView(ctx: ctx, animationNamespace: animationNamespace, config: config, manager: manager, gameManager: gameManager)
             } else {
-                PlayerHandGridV1(ctx: ctx, config: config, gameManager: gameManager, hand: hand)
+                PlayerHandGridV1(ctx: ctx, animationNamespace: animationNamespace, config: config, gameManager: gameManager, hand: hand)
             }
         }
     }
@@ -295,6 +304,7 @@ struct PlayerHandV2: View {
 
 struct PlayerHandFixedSlotsView: View {
     let ctx: LayoutContext
+    let animationNamespace: Namespace.ID?
     let config: ElementHandConfig
     @ObservedObject var manager: PlayerHandSlotManager
     @ObservedObject var gameManager: GameManager
@@ -302,6 +312,7 @@ struct PlayerHandFixedSlotsView: View {
     var body: some View {
         let cardW = ctx.cardSize.width * config.scale
         let cardH = ctx.cardSize.height * config.scale
+        let currentHandIds = Set((gameManager.players.first?.hand ?? []).map { $0.id })
         
         ZStack {
              if let fixedSlots = config.fixedSlots {
@@ -330,26 +341,16 @@ struct PlayerHandFixedSlotsView: View {
                          }
                          
                          // Card
-                         if let card = manager.card(at: slot.slotIndex) {
+                         if let card = manager.card(at: slot.slotIndex), currentHandIds.contains(card.id) {
                              ZStack {
-                                 CardView(card: card, isFaceUp: true, scale: config.scale)
+                                 let isHidden = gameManager.currentMovingCards.contains(where: { $0.id == card.id }) || gameManager.hiddenInSourceCardIds.contains(card.id)
+                                 // Hand card remains source
+                                 CardView(card: card, isFaceUp: true, scale: config.scale, animationNamespace: animationNamespace, isSource: true, showDebugInfo: ctx.config.debug.player?.sortedOrderOverlay == true)
                                      .onTapGesture {
                                          gameManager.playTurn(card: card)
                                      }
                                      .shadow(color: Color.black.opacity(0.3), radius: 2, x: 0, y: 1)
-                                     
-                                 // Debug Sort Info
-                                 if ctx.config.debug.player?.sortedOrderOverlay == true {
-                                     VStack(spacing: 0) {
-                                         Text("M:\(card.month.rawValue)")
-                                         Text("T:\(card.type)")
-                                     }
-                                     .font(.system(size: 8))
-                                     .padding(2)
-                                     .background(Color.black.opacity(0.7))
-                                     .foregroundColor(.white)
-                                     .offset(y: -cardH/2 + 10)
-                                 }
+                                     .opacity(isHidden ? 0 : 1)
                              }
                          } else {
                              Color.clear.contentShape(Rectangle())
@@ -365,6 +366,7 @@ struct PlayerHandFixedSlotsView: View {
 
 struct PlayerHandGridV1: View {
     let ctx: LayoutContext
+    let animationNamespace: Namespace.ID?
     let config: ElementHandConfig
     @ObservedObject var gameManager: GameManager
     let hand: [Card]
@@ -391,10 +393,12 @@ struct PlayerHandGridV1: View {
                 ForEach(0..<chunks.count, id: \.self) { rowIndex in
                     HStack(spacing: hSpacing) {
                          ForEach(chunks[rowIndex]) { card in
-                             CardView(card: card, isFaceUp: true, scale: scale)
+                             let isHidden = gameManager.currentMovingCards.contains(where: { $0.id == card.id }) || gameManager.hiddenInSourceCardIds.contains(card.id)
+                             CardView(card: card, isFaceUp: true, scale: scale, animationNamespace: animationNamespace, isSource: true)
                                  .onTapGesture {
                                      gameManager.playTurn(card: card)
                                  }
+                                 .opacity(isHidden ? 0 : 1)
                          }
                     }
                 }
@@ -405,6 +409,8 @@ struct PlayerHandGridV1: View {
 
 struct CapturedAreaV2: View {
     let ctx: LayoutContext
+    let animationNamespace: Namespace.ID?
+    @ObservedObject var gameManager: GameManager
     let layoutConfig: CapturedLayoutConfigV2
     let cards: [Card]
     let scale: CGFloat
@@ -412,7 +418,7 @@ struct CapturedAreaV2: View {
     
     var body: some View {
         if let groups = layoutConfig.groups {
-            CapturedGroupsAreaV2(ctx: ctx, layoutConfig: layoutConfig, groups: groups, cards: cards, scale: scale)
+            CapturedGroupsAreaV2(ctx: ctx, animationNamespace: animationNamespace, gameManager: gameManager, layoutConfig: layoutConfig, groups: groups, cards: cards, scale: scale)
         } else {
             legacyScrollView
         }
@@ -427,8 +433,11 @@ struct CapturedAreaV2: View {
         return ScrollView(.horizontal, showsIndicators: false) {
              HStack(spacing: startSpacing) {
                  ForEach(Array(cards.enumerated()), id: \.element.id) { index, card in
-                     CardView(card: card, isFaceUp: true, scale: scale)
+                     let isHidden = gameManager.currentMovingCards.contains(where: { $0.id == card.id }) || gameManager.hiddenInTargetCardIds.contains(card.id)
+                     let isTarget = gameManager.hiddenInTargetCardIds.contains(card.id)
+                     CardView(card: card, isFaceUp: true, scale: scale, animationNamespace: animationNamespace, isSource: !isTarget)
                         .zIndex(Double(index))
+                        .opacity(isHidden ? 0 : 1)
                  }
              }
              .padding(.horizontal, ctx.scaledTokens.panelPadding)
@@ -439,6 +448,8 @@ struct CapturedAreaV2: View {
 
 struct CapturedGroupsAreaV2: View {
     let ctx: LayoutContext
+    let animationNamespace: Namespace.ID?
+    @ObservedObject var gameManager: GameManager
     let layoutConfig: CapturedLayoutConfigV2
     let groups: [CapturedGroupConfigV2]
     let cards: [Card]
@@ -462,6 +473,8 @@ struct CapturedGroupsAreaV2: View {
                     
                     CapturedGroupSlotView(
                         ctx: ctx,
+                        animationNamespace: animationNamespace,
+                        gameManager: gameManager,
                         groupConfig: group,
                         layoutConfig: layoutConfig,
                         cards: groupCards,
@@ -505,6 +518,8 @@ struct CapturedGroupsAreaV2: View {
 
 struct CapturedGroupSlotView: View {
     let ctx: LayoutContext
+    let animationNamespace: Namespace.ID?
+    @ObservedObject var gameManager: GameManager
     let groupConfig: CapturedGroupConfigV2
     let layoutConfig: CapturedLayoutConfigV2
     let cards: [Card]
@@ -566,32 +581,25 @@ struct CapturedGroupSlotView: View {
                 let xOffset = CGFloat(drawCol) * spacing
                 
                 ZStack {
-                    CardView(card: card, isFaceUp: true, scale: scale)
+                    let piCount: Int? = {
+                        if groupConfig.type == "pi", index == cards.count - 1 {
+                             if let rules = RuleLoader.shared.config {
+                                 return ScoringSystem.calculatePiCount(cards: cards, rules: rules)
+                             }
+                             // Fallback
+                             return cards.reduce(0) { total, card in
+                                 if card.type == .doubleJunk { return total + 2 }
+                                 if card.month == .sep && card.selectedRole == .doublePi { return total + 2 }
+                                 return total + 1
+                             }
+                        }
+                        return nil
+                    }()
                     
-                    // Show count indicator on the very last 'pi' card.
-                    // Use the same engine scoring path as logs/penalty checks to avoid UI drift.
-                    if groupConfig.type == "pi", index == cards.count - 1 {
-                        let piCount: Int = {
-                            if let rules = RuleLoader.shared.config {
-                                return ScoringSystem.calculatePiCount(cards: cards, rules: rules)
-                            }
-                            // Fallback if rules are unavailable
-                            return cards.reduce(0) { total, card in
-                                if card.type == .doubleJunk { return total + 2 }
-                                if card.month == .sep && card.selectedRole == .doublePi { return total + 2 }
-                                return total + 1
-                            }
-                        }()
-                        Text("\(piCount)")
-                            .font(.system(size: 11 * ctx.globalScale, weight: .bold))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 4 * ctx.globalScale)
-                            .padding(.vertical, 2 * ctx.globalScale)
-                            .background(Color.red.opacity(0.85))
-                            .clipShape(Capsule())
-                            .offset(x: cardW * 0.35, y: cardH * 0.35)
-                            .shadow(radius: 1)
-                    }
+                    let isHidden = gameManager.currentMovingCards.contains(where: { $0.id == card.id }) || gameManager.hiddenInTargetCardIds.contains(card.id)
+                    let isTarget = gameManager.hiddenInTargetCardIds.contains(card.id)
+                    CardView(card: card, isFaceUp: true, scale: scale, animationNamespace: animationNamespace, isSource: !isTarget, piCount: piCount)
+                        .opacity(isHidden ? 0 : 1)
                 }
                 .position(x: cardW/2 + xOffset, y: cardH/2 + yOffset)
                 .zIndex(Double(index))
@@ -613,6 +621,8 @@ struct CapturedGroupSlotView: View {
 
 struct TableAreaV2: View {
     let ctx: LayoutContext
+    let animationNamespace: Namespace.ID?
+    @ObservedObject var gameManager: GameManager
     let config: ElementTableConfig
     let cards: [Card]
     var slotManager: TableSlotManager?
@@ -620,7 +630,7 @@ struct TableAreaV2: View {
     var body: some View {
         Group {
             if config.mode == "fixedSlots12", let manager = slotManager {
-                TableFixedSlotsView(ctx: ctx, config: config, manager: manager)
+                TableFixedSlotsView(ctx: ctx, animationNamespace: animationNamespace, gameManager: gameManager, config: config, manager: manager)
             } else {
                 legacyGrid
             }
@@ -645,7 +655,7 @@ struct TableAreaV2: View {
                 let stack = groups[index]
                 ZStack {
                     ForEach(Array(stack.enumerated()), id: \.element.id) { i, card in
-                        CardView(card: card, isFaceUp: true, scale: config.scale)
+                        CardView(card: card, isFaceUp: true, scale: config.scale, animationNamespace: animationNamespace)
                             .offset(y: CGFloat(i) * (cardH * (1.0 - config.grid.stackOverlapRatio))) 
                     }
                 }
@@ -657,12 +667,15 @@ struct TableAreaV2: View {
 
 struct TableFixedSlotsView: View {
     let ctx: LayoutContext
+    let animationNamespace: Namespace.ID?
+    @ObservedObject var gameManager: GameManager
     let config: ElementTableConfig
     @ObservedObject var manager: TableSlotManager
     
     var body: some View {
         let cardW = ctx.cardSize.width * config.scale
         let cardH = ctx.cardSize.height * config.scale
+        let currentTableIds = Set(gameManager.tableCards.map { $0.id })
         
         ZStack {
              if let fixedSlots = config.fixedSlots {
@@ -684,7 +697,7 @@ struct TableFixedSlotsView: View {
                          }
                          
                          // Cards Stack
-                         let stack = manager.cards(at: slot.slotIndex)
+                         let stack = manager.cards(at: slot.slotIndex).filter { currentTableIds.contains($0.id) }
                          if !stack.isEmpty {
                              ZStack {
                                   ForEach(Array(stack.enumerated()), id: \.element.id) { i, card in
@@ -696,10 +709,12 @@ struct TableFixedSlotsView: View {
                                       
                                       let xOff = (isHorizontal || isDiagonal) ? CGFloat(i) * (cardW * (1.0 - overlap)) : 0
                                       let yOff = (!isHorizontal) ? CGFloat(i) * (cardH * (1.0 - overlap)) : 0
-                                      
-                                      CardView(card: card, isFaceUp: true, scale: config.scale)
+                                      let isHidden = gameManager.currentMovingCards.contains(where: { $0.id == card.id }) || gameManager.hiddenInTargetCardIds.contains(card.id)
+                                      let isTarget = gameManager.hiddenInTargetCardIds.contains(card.id)
+                                      CardView(card: card, isFaceUp: true, scale: config.scale, animationNamespace: animationNamespace, isSource: !isTarget, showDebugInfo: ctx.config.debug.player?.sortedOrderOverlay == true)
                                           .offset(x: xOff, y: yOff)
                                           .zIndex(Double(i))
+                                          .opacity(isHidden ? 0 : 1)
                                   }
                              }
                          } else {
@@ -771,31 +786,41 @@ struct TableFixedSlotsView: View {
 }
 
 
-struct DeckAreaV2: View {
-    let ctx: LayoutContext
-    let config: ElementDeckConfig
-    let deckCount: Int
-    
-    var body: some View {
-        ZStack {
-            if deckCount > 0 {
-                ForEach(0..<min(5, deckCount), id: \.self) { index in
-                    // Junk card back as placeholder
-                   CardView(card: Card(month: .jan, type: .junk, imageIndex: 2), isFaceUp: false, scale: config.scale)
-                        .offset(x: CGFloat(index) * 0.5, y: CGFloat(index) * 0.5)
-                }
-            } else {
-                Color.clear
-            }
-        }
-    }
-}
 
 // Helper Extension
 extension Array {
     func chunked(into size: Int) -> [[Element]] {
         return stride(from: 0, to: count, by: size).map {
             Array(self[$0 ..< Swift.min($0 + size, count)])
+        }
+    }
+}
+
+struct DeckAreaV2: View {
+    let ctx: LayoutContext
+    let animationNamespace: Namespace.ID?
+    let config: ElementDeckConfig
+    let deckCount: Int
+    @ObservedObject var gameManager: GameManager
+    
+    var body: some View {
+        ZStack {
+            if deckCount > 0 {
+                // Background stack of cards (visual only)
+                ForEach(0..<min(5, deckCount - 1), id: \.self) { index in
+                   CardView(card: Card(id: "deck_bg_\(index)", month: .jan, type: .junk, imageIndex: 2), isFaceUp: false, scale: config.scale, animationNamespace: nil)
+                        .offset(x: CGFloat(index) * 0.5, y: CGFloat(index) * 0.5)
+                }
+                
+                // The actual top card that will be flipped/moved
+                if let topCard = gameManager.deck.cards.last {
+                    CardView(card: topCard, isFaceUp: false, scale: config.scale, animationNamespace: animationNamespace)
+                        .offset(x: CGFloat(min(5, deckCount - 1)) * 0.5, y: CGFloat(min(5, deckCount - 1)) * 0.5)
+                        .opacity((gameManager.currentMovingCards.contains(where: { $0.id == topCard.id }) || gameManager.hiddenInSourceCardIds.contains(topCard.id)) ? 0 : 1)
+                }
+            } else {
+                Color.clear
+            }
         }
     }
 }

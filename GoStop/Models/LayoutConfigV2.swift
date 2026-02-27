@@ -11,6 +11,25 @@ struct LayoutConfigV2: Codable, Equatable {
     let card: CardConfigV2
     let images: ImageConfigV2
     let areas: AreasConfigV2
+
+    /// Returns a config with all visual debug flags disabled for runtime performance.
+    func disablingDebugOverlays() -> LayoutConfigV2 {
+        LayoutConfigV2(
+            version: version,
+            debug: DebugConfigV2(
+                showGrid: false,
+                showSafeArea: false,
+                showElementBounds: false,
+                player: DebugPlayerConfig(handSlotGrid: false, sortedOrderOverlay: false)
+            ),
+            referenceCanvas: referenceCanvas,
+            scaling: scaling,
+            tokens: tokens,
+            card: card,
+            images: images,
+            areas: areas
+        )
+    }
 }
 
 // MARK: - Debug

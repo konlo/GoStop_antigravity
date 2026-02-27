@@ -283,6 +283,210 @@ def handle_potential_shake(agent: TestAgent):
         for month in months:
             agent.send_user_action("respond_to_shake", {"month": month, "didShake": False})
 
+
+def wait_for_quiescent_state(agent: TestAgent, timeout_sec: float = 8.0, poll_sec: float = 0.15):
+    """
+    Poll until animation/transition state has settled.
+    This is important for UI-related regression checks where cards can be
+    intentionally hidden while matched-geometry animation is in flight.
+    """
+    deadline = time.time() + timeout_sec
+    last_state = None
+
+    while time.time() < deadline:
+        state = agent.get_all_information()
+        last_state = state
+        if state.get("status") != "ok":
+            time.sleep(poll_sec)
+            continue
+
+        busy = state.get("isAutomationBusy", False)
+        moving_ids = state.get("currentMovingCardIds", []) or []
+        hidden_src = state.get("hiddenInSourceCardIds", []) or []
+        hidden_tgt = state.get("hiddenInTargetCardIds", []) or []
+
+        if not busy and not moving_ids and not hidden_src and not hidden_tgt:
+            return state
+
+        time.sleep(poll_sec)
+
+    raise AssertionError(
+        f"Timed out waiting for quiescent state. Last state summary: "
+        f"gameState={last_state.get('gameState') if last_state else None}, "
+        f"busy={last_state.get('isAutomationBusy') if last_state else None}, "
+        f"moving={len(last_state.get('currentMovingCardIds', [])) if last_state else None}, "
+        f"hiddenSrc={len(last_state.get('hiddenInSourceCardIds', [])) if last_state else None}, "
+        f"hiddenTgt={len(last_state.get('hiddenInTargetCardIds', [])) if last_state else None}"
+    )
+
+
+def wait_for_game_state(agent: TestAgent, expected_state: str, timeout_sec: float = 8.0, poll_sec: float = 0.15):
+    deadline = time.time() + timeout_sec
+    last_state = None
+    while time.time() < deadline:
+        state = agent.get_all_information()
+        last_state = state
+        if state.get("status") == "ok" and state.get("gameState") == expected_state:
+            return state
+        time.sleep(poll_sec)
+
+    raise AssertionError(
+        f"Timed out waiting for gameState={expected_state}. "
+        f"Last gameState={last_state.get('gameState') if last_state else None}"
+    )
+
+
+def _assert_player_captured_cards_visible(state: dict, player_index: int, expected_cards: list[tuple[int, str]]):
+    """
+    expected_cards: [(month, type), ...] that must be present in capturedCards and must not remain hidden.
+    """
+    players = state.get("players", [])
+    assert len(players) > player_index, f"Missing player index {player_index} in state"
+    player = players[player_index]
+    captured = player.get("capturedCards", [])
+    hidden_target_ids = set(state.get("hiddenInTargetCardIds", []) or [])
+
+    for month, ctype in expected_cards:
+        matches = [c for c in captured if c.get("month") == month and c.get("type") == ctype]
+        assert matches, (
+            f"Expected captured card M{month} {ctype} not found in player {player_index} capturedCards. "
+            f"Captured={captured}"
+        )
+        for card in matches:
+            assert card.get("id") not in hidden_target_ids, (
+                f"Captured card M{month} {ctype} ({card.get('id')}) is still hidden in target UI set. "
+                f"hiddenInTargetCardIds={sorted(hidden_target_ids)}"
+            )
+
+
+def scenario_verify_captured_brights_visible_after_consecutive_captures(agent: TestAgent):
+    """
+    Regression scenario for a recurring UI symptom:
+    - Captured bright card exists in model state but is not visible in the captured area UI.
+    This validates the UI-related hidden-card bookkeeping after consecutive captures.
+    """
+    logger.info("Running consecutive captured-brights visibility regression scenario...")
+
+    agent.send_user_action("start_game")
+
+    # Deterministic setup:
+    # - Player 0 can capture 1 bright, then later 8 bright.
+    # - Opponent hand is empty so turn skips back to Player 0 after the first turn.
+    # - Deck top draws are non-matching to avoid extra capture/choice branches.
+    agent.set_condition({
+        "currentTurnIndex": 0,
+        "mock_gameState": "playing",
+        "mock_hand": [
+            {"month": 1, "type": "bright"},
+            {"month": 8, "type": "bright"},
+            {"month": 5, "type": "junk"}
+        ],
+        "mock_table": [
+            {"month": 1, "type": "junk"},
+            {"month": 8, "type": "junk"},
+            {"month": 6, "type": "junk"},
+            {"month": 7, "type": "junk"},
+            {"month": 11, "type": "ribbon"}
+        ],
+        # draw() removes last -> 2월 junk first, then 4월 junk
+        "mock_deck": [
+            {"month": 4, "type": "junk"},
+            {"month": 2, "type": "junk"}
+        ],
+        "mock_captured_cards": [],
+        "mock_opponent_captured_cards": [],
+        "player0_data": {"isComputer": False},
+        "player1_data": {"isComputer": False, "hand": []}
+    })
+
+    state = wait_for_quiescent_state(agent)
+    assert state.get("currentTurnIndex") == 0, f"Expected Player 0 turn before first capture, got {state.get('currentTurnIndex')}"
+
+    agent.send_user_action("play_card", {"month": 1, "type": "bright"})
+    state = wait_for_quiescent_state(agent)
+    _assert_player_captured_cards_visible(state, 0, [(1, "bright")])
+
+    # Turn should skip the empty-handed opponent and return to Player 0.
+    assert state.get("gameState") == "playing", f"Expected playing state after first capture turn, got {state.get('gameState')}"
+    assert state.get("currentTurnIndex") == 0, (
+        f"Expected turn to skip empty opponent and return to Player 0, got currentTurnIndex={state.get('currentTurnIndex')}"
+    )
+
+    agent.send_user_action("play_card", {"month": 8, "type": "bright"})
+    state = wait_for_quiescent_state(agent)
+    _assert_player_captured_cards_visible(state, 0, [(1, "bright"), (8, "bright")])
+
+    hidden_target_ids = state.get("hiddenInTargetCardIds", []) or []
+    moving_ids = state.get("currentMovingCardIds", []) or []
+    assert not hidden_target_ids, f"No captured card should remain hidden after quiescence. hiddenInTargetCardIds={hidden_target_ids}"
+    assert not moving_ids, f"No moving cards expected after quiescence. currentMovingCardIds={moving_ids}"
+
+    logger.info("Consecutive captured-brights visibility regression scenario passed!")
+
+
+def scenario_verify_draw_choice_trigger_bright_visible_after_capture(agent: TestAgent):
+    """
+    Regression scenario for draw-phase choosingCapture path:
+    - A drawn bright card becomes the trigger card for choosingCapture (table has 2 distinct month cards).
+    - After selecting one option, the drawn bright must be visible in captured gwang group.
+    """
+    logger.info("Running draw-choice trigger bright visibility regression scenario...")
+
+    agent.send_user_action("start_game")
+    agent.set_condition({
+        "currentTurnIndex": 0,
+        "mock_gameState": "playing",
+        "mock_hand": [
+            {"month": 5, "type": "junk"},
+            {"month": 10, "type": "junk"}
+        ],
+        "mock_table": [
+            {"month": 3, "type": "ribbon"},
+            {"month": 3, "type": "junk"},
+            {"month": 8, "type": "junk"},
+            {"month": 11, "type": "junk"}
+        ],
+        # draw() removes last -> 3월 광 first
+        "mock_deck": [
+            {"month": 1, "type": "junk"},
+            {"month": 3, "type": "bright"}
+        ],
+        "mock_captured_cards": [],
+        "mock_opponent_captured_cards": [],
+        "player0_data": {"isComputer": False},
+        "player1_data": {"isComputer": False, "hand": []}
+    })
+
+    wait_for_quiescent_state(agent)
+
+    # Play a non-matching card so the draw-phase determines the capture.
+    agent.send_user_action("play_card", {"month": 5, "type": "junk"})
+
+    state = wait_for_game_state(agent, "choosingCapture")
+    pending_drawn = state.get("pendingCaptureDrawnCard") or {}
+    assert pending_drawn.get("month") == 3 and pending_drawn.get("type") == "bright", (
+        f"Expected draw-phase trigger to be M3 bright, got pendingCaptureDrawnCard={pending_drawn}"
+    )
+
+    options = state.get("pendingCaptureOptions", []) or []
+    ribbon_option = next((c for c in options if c.get("month") == 3 and c.get("type") == "ribbon"), None)
+    assert ribbon_option and ribbon_option.get("id"), (
+        f"Expected selectable M3 ribbon option in choosingCapture. options={options}"
+    )
+
+    agent.send_user_action("respond_to_capture", {"id": ribbon_option["id"]})
+
+    state = wait_for_quiescent_state(agent)
+    _assert_player_captured_cards_visible(state, 0, [(3, "bright"), (3, "ribbon")])
+
+    hidden_target_ids = state.get("hiddenInTargetCardIds", []) or []
+    assert not hidden_target_ids, (
+        "Draw-choice capture should not leave the trigger bright hidden in target UI set. "
+        f"hiddenInTargetCardIds={hidden_target_ids}"
+    )
+
+    logger.info("Draw-choice trigger bright visibility regression scenario passed!")
+
 def scenario_verify_conditional_double_pi(agent: TestAgent):
     """
     Scenario: Verifies that month 9 junk (Chrysanthemum) counts as 2 Pi only if player has Cheongdan.
@@ -1078,7 +1282,9 @@ def scenario_verify_monthly_pair_integrity(agent: TestAgent):
         game_state = state.get("gameState")
         
         # --- MONTHLY PAIR INTEGRITY AUDIT ---
-        # Combine all cards from all locations
+        # Combine all cards from all locations.
+        # In animation/choice states, a card can temporarily appear in both a visible zone
+        # and a pending field; audit by unique card ID to avoid false positives.
         all_cards = []
         for p in state.get("players", []):
             all_cards.extend([c for c in p.get("hand", []) if not is_dummy(c)])
@@ -1096,8 +1302,19 @@ def scenario_verify_monthly_pair_integrity(agent: TestAgent):
         if pending_capture_drawn and not is_dummy(pending_capture_drawn):
             all_cards.append(pending_capture_drawn)
         
-        month_counts = {}
+        unique_cards = {}
         for c in all_cards:
+            cid = c.get("id")
+            if cid is None:
+                # Fallback: keep no-id cards (should be rare) as distinct entries.
+                unique_cards[f"noid-{len(unique_cards)}"] = c
+            else:
+                unique_cards[cid] = c
+
+        deduped_cards = list(unique_cards.values())
+
+        month_counts = {}
+        for c in deduped_cards:
             m = c["month"]
             month_counts[m] = month_counts.get(m, 0) + 1
             
@@ -1105,10 +1322,10 @@ def scenario_verify_monthly_pair_integrity(agent: TestAgent):
             count = month_counts.get(m, 0)
             assert count == 4, (
                 f"Step {step_count}: Monthly integrity violation! "
-                f"Month {m} has {count} cards (Expected 4). Total cards={len(all_cards)}"
+                f"Month {m} has {count} cards (Expected 4). Total cards={len(deduped_cards)}"
             )
         
-        assert len(all_cards) == 48, f"Step {step_count}: Total cards={len(all_cards)} (Expected 48)"
+        assert len(deduped_cards) == 48, f"Step {step_count}: Total cards={len(deduped_cards)} (Expected 48)"
         # ------------------------------------
 
         if game_state == "ended":
@@ -3296,7 +3513,9 @@ def main():
         scenario_verify_gwangbak_threshold_boundary,
         scenario_verify_mungbak_threshold_boundary,
         scenario_verify_acquisition_order,
-        scenario_verify_chrysanthemum_choice
+        scenario_verify_chrysanthemum_choice,
+        scenario_verify_captured_brights_visible_after_consecutive_captures,
+        scenario_verify_draw_choice_trigger_bright_visible_after_capture
     ]
     
     # 2. Print available scenarios

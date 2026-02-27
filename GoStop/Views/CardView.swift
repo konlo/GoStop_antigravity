@@ -4,6 +4,10 @@ struct CardView: View {
     let card: Card
     var isFaceUp: Bool = true
     var scale: CGFloat = 1.0
+    var animationNamespace: Namespace.ID? = nil
+    var isSource: Bool = true
+    var piCount: Int? = nil
+    var showDebugInfo: Bool = false
     @ObservedObject var config = ConfigManager.shared
     
     var body: some View {
@@ -19,9 +23,9 @@ struct CardView: View {
         
         let shadowRadius: CGFloat = {
             if let ctx = config.layoutContext {
-                return ctx.scaledTokens.cardShadowRadius
+                return ctx.scaledTokens.cardShadowRadius * scale
             }
-            return config.layout.card.shadowRadius
+            return config.layout.card.shadowRadius * scale
         }()
         
         let shadowOpacity: Double = {
@@ -33,7 +37,7 @@ struct CardView: View {
         
         let shadowY: CGFloat = {
             if let ctx = config.layoutContext {
-                return ctx.scaledTokens.cardShadowY
+                return ctx.scaledTokens.cardShadowY * scale
             }
             return 0
         }()
@@ -44,11 +48,40 @@ struct CardView: View {
             } else {
                 backView(size: size)
             }
+            
+            // Integrated Debug Info
+            if showDebugInfo {
+                VStack(spacing: 0) {
+                    Text("M:\(card.month.rawValue)")
+                    Text("T:\(card.type)")
+                }
+                .font(.system(size: 8 * scale * (config.layoutContext?.globalScale ?? 1.0)))
+                .padding(2)
+                .background(Color.black.opacity(0.7))
+                .foregroundColor(.white)
+                .offset(y: -size.height/2 + (10 * scale))
+            }
+            
+            // Integrated Pi Count Badge
+            if let count = piCount {
+                Text("\(count)")
+                    .font(.system(size: 11 * (config.layoutContext?.globalScale ?? 1.0) * scale, weight: .bold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 4 * (config.layoutContext?.globalScale ?? 1.0) * scale)
+                    .padding(.vertical, 2 * (config.layoutContext?.globalScale ?? 1.0) * scale)
+                    .background(Color.red.opacity(0.85))
+                    .clipShape(Capsule())
+                    .offset(x: size.width * 0.35, y: size.height * 0.35)
+                    .shadow(radius: 1 * scale)
+            }
         }
         .frame(width: size.width, height: size.height)
         .background(config.layout.card.backColorSwiftUI) // Ensure background fills
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
         .shadow(color: Color.black.opacity(shadowOpacity), radius: shadowRadius, x: 0, y: shadowY)
+        .ifLet(animationNamespace) { view, ns in
+            view.matchedGeometryEffect(id: card.id, in: ns, isSource: isSource)
+        }
     }
     
     @ViewBuilder
@@ -89,6 +122,18 @@ struct CardView: View {
                     .font(.system(size: size.width * 0.4, weight: .bold, design: .rounded))
                     .foregroundColor(.white.opacity(0.7))
             }
+        }
+    }
+}
+
+// Helper extension for conditional view modifiers
+extension View {
+    @ViewBuilder
+    func ifLet<V, Transform: View>(_ value: V?, transform: (Self, V) -> Transform) -> some View {
+        if let value = value {
+            transform(self, value)
+        } else {
+            self
         }
     }
 }

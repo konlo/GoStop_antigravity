@@ -212,7 +212,7 @@ class CLIEngine {
             if let rules = RuleLoader.shared.config {
                 let winner = gameManager.players[0]
                 let opponent = gameManager.players[1]
-                _ = gameManager.checkEndgameConditions(player: winner, opponent: opponent, rules: rules)
+                _ = gameManager.checkEndgameConditions(player: winner, opponent: opponent, rules: rules, isAfterGo: false)
             }
             return ["status": "action executed", "action": "mock_endgame_check"]
             
@@ -404,6 +404,10 @@ class CLIEngine {
 func main() {
     // Explicitly load rules at startup
     RuleLoader.shared.loadRules()
+
+    // CLI is used by automated scenarios; run turn logic synchronously to avoid
+    // animation-delay race conditions during state assertions.
+    AnimationManager.shared.config.card_move_duration = 0
     
     let engine = CLIEngine()
     

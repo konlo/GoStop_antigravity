@@ -4,6 +4,7 @@ struct GameView: View {
     @StateObject var gameManager = GameManager()
     @Namespace private var cardAnimationNamespace
     @ObservedObject var config: ConfigManager = .shared
+    @StateObject private var animationManager = AnimationManager.shared
     @State private var playerHandSlotManager: PlayerHandSlotManager?
     @State private var tableSlotManager: TableSlotManager?
     @State private var showingRestartAlert = false
@@ -28,6 +29,13 @@ struct GameView: View {
         .onChange(of: config.layoutV2) { onChangeLayout($0) }
         .onChange(of: gameManager.players.first?.hand) { onChangeHand($0) }
         .onChange(of: gameManager.tableCards) { onChangeTable($0) }
+        .onReceive(gameManager.objectWillChange) { _ in
+            // Slot managers can miss nested array mutations in long animation chains.
+            // Resync from source-of-truth state on every GameManager change.
+            DispatchQueue.main.async {
+                self.resyncSlotManagers()
+            }
+        }
     }
 
     @ViewBuilder
@@ -58,13 +66,20 @@ struct GameView: View {
             // Overlays (Global)
             overlayArea
                 .zIndex(200)
+            
+            // Turn Indicator Icon (Moving)
+            turnIndicatorIcon(safeArea: safeArea)
+                .zIndex(205)
+            
+            // Unified Moving Card Overlay
+            movingCardOverlay(safeArea: safeArea)
+                .zIndex(210)
         }
         .coordinateSpace(name: "GameSpace")
         .alert("재시작 확인", isPresented: $showingRestartAlert) {
             Button("취소", role: .cancel) {}
             Button("확인", role: .destructive) {
-                gameManager.setupGame()
-                gameManager.startGame()
+                restartManualGame()
             }
         } message: {
             Text("게임을 다시 시작하시겠습니까?")
@@ -89,56 +104,75 @@ struct GameView: View {
         
         // 1. Opponent Area
         let opponentFrame = ctx.frame(for: .opponent)
-        OpponentAreaV2(ctx: ctx, gameManager: gameManager)
+        OpponentAreaV2(ctx: ctx, animationNamespace: cardAnimationNamespace, gameManager: gameManager)
             .frame(width: opponentFrame.width, height: opponentFrame.height)
+            .clipped()
             .position(x: safeArea.leading + opponentFrame.midX, y: safeArea.top + opponentFrame.midY)
-            .zIndex(1)
+            .zIndex(2)
         
         // 2. Center Area
         let centerFrame = ctx.frame(for: .center)
-        CenterAreaV2(ctx: ctx, gameManager: gameManager, tableSlotManager: tableSlotManager)
+        CenterAreaV2(ctx: ctx, animationNamespace: cardAnimationNamespace, gameManager: gameManager, tableSlotManager: tableSlotManager)
             .frame(width: centerFrame.width, height: centerFrame.height)
+            .clipped()
             .position(x: safeArea.leading + centerFrame.midX, y: safeArea.top + centerFrame.midY)
-            .zIndex(2)
+            .zIndex(1)
         
         // 3. Player Area
         let playerFrame = ctx.frame(for: .player)
-        PlayerAreaV2(ctx: ctx, gameManager: gameManager, slotManager: playerHandSlotManager)
+        PlayerAreaV2(ctx: ctx, animationNamespace: cardAnimationNamespace, gameManager: gameManager, slotManager: playerHandSlotManager)
             .frame(width: playerFrame.width, height: playerFrame.height)
+            .clipped()
             .position(x: safeArea.leading + playerFrame.midX, y: safeArea.top + playerFrame.midY)
             .zIndex(3)
     }
 
     private func onAppearAction() {
+        gameManager.internalComputerAutomationEnabled = true
+        gameManager.externalControlMode = false
+        #if targetEnvironment(simulator)
+        if SimulatorBridge.shared == nil {
+            AnimationManager.shared.config.card_move_duration = 0
+            SimulatorBridge.shared = SimulatorBridge(gameManager: gameManager)
+            SimulatorBridge.shared?.start()
+            print("SimulatorBridge: Started on port 8080 (GameView)")
+        }
+        #endif
         if let configV2 = config.layoutV2 {
             self.playerHandSlotManager = PlayerHandSlotManager(config: configV2)
-            if let hand = gameManager.players.first?.hand {
-                self.playerHandSlotManager?.sync(with: hand)
-            }
             self.tableSlotManager = TableSlotManager(config: configV2)
-            self.tableSlotManager?.sync(with: gameManager.tableCards)
+            self.resyncSlotManagers()
         }
     }
 
     private func onChangeLayout(_ newConfig: LayoutConfigV2?) {
-        if let cfg = newConfig {
-             self.playerHandSlotManager = PlayerHandSlotManager(config: cfg)
-             if let hand = gameManager.players.first?.hand {
-                 self.playerHandSlotManager?.sync(with: hand)
-             }
-             self.tableSlotManager = TableSlotManager(config: cfg)
-             self.tableSlotManager?.sync(with: gameManager.tableCards)
+        AnimationManager.shared.withGameAnimation {
+            if let cfg = newConfig {
+                 self.playerHandSlotManager = PlayerHandSlotManager(config: cfg)
+                 self.tableSlotManager = TableSlotManager(config: cfg)
+                 self.resyncSlotManagers()
+            }
         }
     }
 
     private func onChangeHand(_ newHand: [Card]?) {
-        if let hand = newHand {
+        AnimationManager.shared.withGameAnimation {
+            guard let hand = newHand else { return }
             playerHandSlotManager?.sync(with: hand)
         }
     }
 
     private func onChangeTable(_ newTableCards: [Card]) {
-        tableSlotManager?.sync(with: newTableCards)
+        AnimationManager.shared.withGameAnimation {
+            tableSlotManager?.sync(with: newTableCards)
+        }
+    }
+
+    private func resyncSlotManagers() {
+        if let hand = gameManager.players.first?.hand {
+            playerHandSlotManager?.sync(with: hand)
+        }
+        tableSlotManager?.sync(with: gameManager.tableCards)
     }
     
     // MARK: - Subviews
@@ -146,83 +180,119 @@ struct GameView: View {
     
     @ViewBuilder
     var overlayArea: some View {
-        if gameManager.gameState == .ready {
-            colorBackgroundOverlay(text: "Start Game", action: {
-                // Initial reload to ensure config is fresh
-                config.reloadConfig()
-                gameManager.startGame()
-            })
-        } else if gameManager.gameState == .ended {
-            if gameManager.gameEndReason == .chongtong {
-                ZStack {
-                    Color.black.opacity(0.6).ignoresSafeArea()
-                    VStack(spacing: 20) {
-                        Text("총통! (Chongtong)")
-                            .font(.system(size: 60, weight: .black, design: .rounded))
-                            .foregroundColor(.yellow)
-                            .shadow(color: .orange, radius: 10, x: 0, y: 5)
-                        
-                        if let month = gameManager.chongtongMonth {
-                            Text("\(month)월 총통으로 즉시 승리!")
-                                .font(.title)
-                                .foregroundColor(.white)
-                        }
-                        
-                        Button(action: {
-                            gameManager.setupGame()
-                            gameManager.startGame()
-                        }) {
-                            Text("Restart Game")
-                                .font(.headline)
-                                .padding()
-                                .background(Color.yellow)
-                                .foregroundColor(.black)
-                                .cornerRadius(15)
+        ZStack {
+            if gameManager.gameState == .ready {
+                colorBackgroundOverlay(text: "Start Game", action: {
+                    // Initial reload to ensure config is fresh
+                    config.reloadConfig()
+                    startManualGame()
+                })
+            } else if gameManager.gameState == .ended {
+                if gameManager.gameEndReason == .chongtong {
+                    ZStack {
+                        Color.black.opacity(0.6).ignoresSafeArea()
+                        VStack(spacing: 20) {
+                            Text("총통! (Chongtong)")
+                                .font(.system(size: 60, weight: .black, design: .rounded))
+                                .foregroundColor(.yellow)
+                                .shadow(color: .orange, radius: 10, x: 0, y: 5)
+                            
+                            if let month = gameManager.chongtongMonth {
+                                Text("\(month)월 총통으로 즉시 승리!")
+                                    .font(.title)
+                                    .foregroundColor(.white)
+                            }
+                            
+                            Button(action: {
+                                restartManualGame()
+                            }) {
+                                Text("Restart Game")
+                                    .font(.headline)
+                                    .padding()
+                                    .background(Color.yellow)
+                                    .foregroundColor(.black)
+                                    .cornerRadius(15)
+                            }
                         }
                     }
+                } else if config.layoutV2?.debug.showSafeArea == true,
+                   let result = gameManager.lastPenaltyResult,
+                   let reason = gameManager.gameEndReason,
+                   let winner = gameManager.gameWinner,
+                   let loser = gameManager.gameLoser {
+                    
+                    DebugEndgameSummaryView(
+                        result: result,
+                        reason: reason,
+                        winner: winner,
+                        loser: loser,
+                        onRestart: {
+                            restartManualGame()
+                        },
+                        gameManager: gameManager
+                    )
+                } else {
+                    colorBackgroundOverlay(text: "Game Over\nTap to Restart", action: {
+                        restartManualGame()
+                    })
                 }
-            } else if config.layoutV2?.debug.showSafeArea == true,
-               let result = gameManager.lastPenaltyResult,
-               let reason = gameManager.gameEndReason,
-               let winner = gameManager.gameWinner,
-               let loser = gameManager.gameLoser {
-                
-                DebugEndgameSummaryView(
-                    result: result,
-                    reason: reason,
-                    winner: winner,
-                    loser: loser,
-                    onRestart: {
-                        gameManager.setupGame()
-                        gameManager.startGame()
-                    },
-                    gameManager: gameManager
-                )
-            } else {
-                colorBackgroundOverlay(text: "Game Over\nTap to Restart", action: {
-                    gameManager.setupGame()
-                    gameManager.startGame()
-                })
+            } else if gameManager.gameState == .askingGoStop {
+                goStopOverlay()
+            } else if gameManager.gameState == .askingShake {
+                shakeOverlay()
+            } else if gameManager.gameState == .choosingCapture {
+                captureChoiceOverlay()
+            } else if gameManager.gameState == .choosingChrysanthemumRole {
+                chrysanthemumChoiceOverlay()
             }
-        } else if gameManager.gameState == .askingGoStop {
-            goStopOverlay()
-        } else if gameManager.gameState == .askingShake {
-            shakeOverlay()
-        } else if gameManager.gameState == .choosingCapture {
-            captureChoiceOverlay()
-        } else if gameManager.gameState == .choosingChrysanthemumRole {
-            chrysanthemumChoiceOverlay()
-        }
-        
-        if showingEventLog {
-            EventLogView(eventLogs: gameManager.eventLogs, isPresented: $showingEventLog)
-        }
-        
-        if showingSettings {
-            RuleSettingsView(isPresented: $showingSettings)
+            
+            if showingEventLog {
+                EventLogView(eventLogs: gameManager.eventLogs, isPresented: $showingEventLog)
+            }
+            
+            if showingSettings {
+                RuleSettingsView(isPresented: $showingSettings)
+            }
         }
     }
-    
+
+    @ViewBuilder
+    private func turnIndicatorIcon(safeArea: EdgeInsets) -> some View {
+        if let ctx = config.layoutContext, gameManager.gameState == .playing {
+            let isPlayerTurn = gameManager.currentTurnIndex == 0
+            let targetArea: LayoutContext.AreaType = isPlayerTurn ? .player : .opponent
+            let frame = ctx.frame(for: targetArea)
+            
+            let yOffset: CGFloat = isPlayerTurn ? -40 : 40
+            
+            Image(systemName: "hand.point.right.fill")
+                .font(.system(size: 24, weight: .bold))
+                .foregroundColor(.yellow)
+                .padding(8)
+                .background(Circle().fill(Color.black.opacity(0.6)))
+                .shadow(radius: 4)
+                .rotationEffect(Angle(degrees: isPlayerTurn ? 90 : -90))
+                .position(
+                    x: safeArea.leading + frame.midX,
+                    y: safeArea.top + frame.midY + yOffset
+                )
+                .animation(.spring(response: 0.4, dampingFraction: 0.7), value: gameManager.currentTurnIndex)
+        }
+    }
+
+    private func startManualGame() {
+        gameManager.internalComputerAutomationEnabled = true
+        gameManager.externalControlMode = false
+        gameManager.startGame()
+    }
+
+    private func restartManualGame() {
+        gameManager.internalComputerAutomationEnabled = true
+        gameManager.externalControlMode = false
+        gameManager.setupGame()
+        gameManager.startGame()
+    }
+
     @ViewBuilder
     func captureChoiceOverlay() -> some View {
         ZStack {
@@ -562,6 +632,26 @@ struct EventLogView: View {
             )
             .shadow(radius: 20)
             .padding(40)
+        }
+    }
+}
+
+extension GameView {
+    @ViewBuilder
+    private func movingCardOverlay(safeArea: EdgeInsets) -> some View {
+        ZStack {
+            ForEach(gameManager.currentMovingCards) { card in
+                CardView(
+                    card: card,
+                    isFaceUp: true,
+                    scale: gameManager.movingCardsScale,
+                    animationNamespace: cardAnimationNamespace,
+                    isSource: false,
+                    piCount: gameManager.movingCardsPiCount,
+                    showDebugInfo: gameManager.movingCardsShowDebug
+                )
+                .transition(.identity)
+            }
         }
     }
 }

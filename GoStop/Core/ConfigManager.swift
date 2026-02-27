@@ -2,6 +2,10 @@ import Foundation
 
 class ConfigManager: ObservableObject {
     static let shared = ConfigManager()
+    private static let layoutDebugEnvKey = "GOSTOP_LAYOUT_DEBUG"
+    private static var layoutDebugEnabled: Bool {
+        ProcessInfo.processInfo.environment[layoutDebugEnvKey] == "1"
+    }
     
     // V2 System
     @Published var layoutV2: LayoutConfigV2?
@@ -30,7 +34,9 @@ class ConfigManager: ObservableObject {
     func updateGameSize(_ size: CGSize) {
         // Prevent infinite loops by only updating if changed significantly
         if abs(size.width - gameSize.width) > 1 || abs(size.height - gameSize.height) > 1 {
-            print("Updating Game Size: \(size)")
+            if Self.layoutDebugEnabled {
+                fputs("Updating Game Size: \(size)\n", stderr)
+            }
             DispatchQueue.main.async {
                 self.gameSize = size
                 self.updateLayoutContext()
@@ -41,7 +47,9 @@ class ConfigManager: ObservableObject {
     private func updateLayoutContext() {
         guard let v2 = layoutV2 else { return }
         self.layoutContext = LayoutContext(config: v2, safeAreaSize: self.gameSize)
-        print("LayoutContext Updated [GlobalScale: \(self.layoutContext?.globalScale ?? 0)]")
+        if Self.layoutDebugEnabled {
+            fputs("LayoutContext Updated [GlobalScale: \(self.layoutContext?.globalScale ?? 0)]\n", stderr)
+        }
     }
     
     // Helper for vertical spacing ratio
@@ -74,16 +82,20 @@ class ConfigManager: ObservableObject {
     
     static func loadLayoutV2() -> LayoutConfigV2? {
         guard let url = Bundle.main.url(forResource: "layout_hwatu", withExtension: "json") else {
-            print("Layout config file not found.")
+            fputs("Layout config file not found.\n", stderr)
             return nil
         }
         
         do {
             let data = try Data(contentsOf: url)
             let decoder = JSONDecoder()
-            return try decoder.decode(LayoutConfigV2.self, from: data)
+            let decoded = try decoder.decode(LayoutConfigV2.self, from: data)
+            if layoutDebugEnabled {
+                return decoded
+            }
+            return decoded.disablingDebugOverlays()
         } catch {
-            print("Error decoding Layout V2: \(error)")
+            fputs("Error decoding Layout V2: \(error)\n", stderr)
             return nil
         }
     }
@@ -91,7 +103,7 @@ class ConfigManager: ObservableObject {
     // Legacy Loader (Removed, replaced with default generator)
     static func defaultLegacyLayout() -> LayoutConfig {
          return LayoutConfig(
-            debug: DebugConfig(showGrid: true),
+            debug: DebugConfig(showGrid: false),
             card: CardConfig(width: 0.15, aspectRatio: 1.6, cornerRadius: 0.1, shadowRadius: 2, backColor: "#CC3333", backCircleColor: "#991A1A"),
             images: ImageConfig(prefix: "Card_"),
             areas: AreasConfig(

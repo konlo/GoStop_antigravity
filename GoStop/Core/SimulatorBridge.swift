@@ -6,6 +6,7 @@ class SimulatorBridge {
     
     private let listener: NWListener
     private var connections: [NWConnection] = []
+    private var receiveBuffers: [ObjectIdentifier: Data] = [:]
     private let gameManager: GameManager
     private let queue = DispatchQueue(label: "com.antigravity.SimulatorBridge")
     
@@ -41,6 +42,7 @@ class SimulatorBridge {
     private func handleNewConnection(_ connection: NWConnection) {
         connection.start(queue: queue)
         connections.append(connection)
+        receiveBuffers[ObjectIdentifier(connection)] = Data()
         
         receive(connection: connection)
     }
@@ -54,7 +56,7 @@ class SimulatorBridge {
             }
             
             if let data = content, !data.isEmpty {
-                self?.handleRequest(data, connection: connection)
+                self?.appendAndHandleRequests(data, connection: connection)
             }
             
             if isComplete {
@@ -64,15 +66,40 @@ class SimulatorBridge {
             }
         }
     }
+
+    private func appendAndHandleRequests(_ data: Data, connection: NWConnection) {
+        let key = ObjectIdentifier(connection)
+        var buffer = receiveBuffers[key] ?? Data()
+        buffer.append(data)
+        
+        let newline = Data([0x0A]) // '\n'
+        while let lineRange = buffer.range(of: newline) {
+            let packet = buffer.subdata(in: 0..<lineRange.lowerBound)
+            buffer.removeSubrange(0...lineRange.lowerBound)
+            
+            guard !packet.isEmpty else { continue }
+            handleRequest(packet, connection: connection)
+        }
+        
+        receiveBuffers[key] = buffer
+    }
     
     private func handleRequest(_ data: Data, connection: NWConnection) {
         do {
             guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let action = json["action"] as? String else {
+                sendErrorResponse(message: "Invalid request payload", connection: connection)
                 return
             }
             
             gLog("SimulatorBridge: Received action: \(action)")
+            
+            let playActions: Set<String> = ["play_card", "respond_to_go", "respond_to_capture", "decide_shake", "decide_chrysanthemum"]
+            if playActions.contains(action) {
+                DispatchQueue.main.async {
+                    self.gameManager.externalControlMode = true
+                }
+            }
             
             switch action {
             case "get_state":
@@ -167,18 +194,103 @@ class SimulatorBridge {
             case "click_restart_button":
                 DispatchQueue.main.async {
                     self.gameManager.setupGame()
+                    self.gameManager.startGame()
                     self.sendSimpleResponse(status: "action executed", action: action, connection: connection)
                 }
+                
+            case "click_start_button":
+                DispatchQueue.main.async {
+                    self.gameManager.startGame()
+                    self.sendSimpleResponse(status: "action executed", action: action, connection: connection)
+                }
+
                 
             case "mock_endgame_check":
                 DispatchQueue.main.async {
                     if let rules = RuleLoader.shared.config {
                         let winner = self.gameManager.players[0]
                         let opponent = self.gameManager.players[1]
-                        _ = self.gameManager.checkEndgameConditions(player: winner, opponent: opponent, rules: rules)
+                        _ = self.gameManager.checkEndgameConditions(player: winner, opponent: opponent, rules: rules, isAfterGo: false)
                     }
                     self.sendState(connection: connection)
                 }
+                
+            case "restore_state":
+                guard let dataDict = json["data"] as? [String: Any],
+                      let index = dataDict["index"] as? Int else {
+                    sendErrorResponse(message: "Missing index", connection: connection)
+                    return
+                }
+                DispatchQueue.main.async {
+                    self.gameManager.restoreState(from: index)
+                    self.sendSimpleResponse(status: "state restored", action: action, connection: connection)
+                }
+                
+            case "get_history_entry":
+                guard let dataDict = json["data"] as? [String: Any],
+                      let index = dataDict["index"] as? Int else {
+                    sendErrorResponse(message: "Missing index", connection: connection)
+                    return
+                }
+                DispatchQueue.main.async {
+                    if let entry = self.gameManager.getHistoryEntry(at: index) {
+                        let json: [String: Any] = [
+                            "status": "ok",
+                            "action": action,
+                            "data": entry.mapValues { $0.value }
+                        ]
+                        if let data = try? JSONSerialization.data(withJSONObject: json) {
+                            var finalData = data
+                            finalData.append("\n".data(using: .utf8)!)
+                            connection.send(content: finalData, completion: .contentProcessed({ _ in }))
+                        }
+                    } else {
+                        self.sendErrorResponse(message: "Index out of bounds", connection: connection)
+                    }
+                }
+                
+            case "step_next_turn":
+                DispatchQueue.main.async {
+                    self.gameManager.forceInternalComputerStep()
+                    self.sendSimpleResponse(status: "step executed", action: action, connection: connection)
+                }
+
+            case "force_chongtong_check":
+                let timing = (json["data"] as? [String: Any])?["timing"] as? String ?? "initial"
+                DispatchQueue.main.async {
+                    for player in self.gameManager.players {
+                        if let month = self.gameManager.getChongtongMonth(for: player) {
+                            self.gameManager.resolveChongtong(player: player, month: month, timing: timing)
+                        }
+                    }
+                    self.sendSimpleResponse(status: "action executed", action: action, connection: connection)
+                }
+                
+            case "toggle_automation":
+                DispatchQueue.main.async {
+                    self.gameManager.internalComputerAutomationEnabled.toggle()
+                    let status = self.gameManager.internalComputerAutomationEnabled ? "enabled" : "disabled"
+                    
+                    if self.gameManager.internalComputerAutomationEnabled {
+                        self.gameManager.externalControlMode = false
+                    }
+                    
+                    if self.gameManager.internalComputerAutomationEnabled && self.gameManager.gameState == .ready {
+                        self.gameManager.startGame()
+                    } else if self.gameManager.internalComputerAutomationEnabled {
+                        // Ensure action is scheduled if already playing
+                        self.gameManager.maybeScheduleInternalComputerAction_ExternalWorkaround()
+                    }
+                    
+                    self.sendSimpleResponse(status: "automation \(status)", action: action, connection: connection)
+                }
+                
+            case "reset_busy_state":
+                DispatchQueue.main.async {
+                    self.gameManager.emergencyResetBusyState()
+                    self.sendSimpleResponse(status: "ok", action: action, connection: connection)
+                }
+
                 
             case "set_condition":
                 guard let data = json["data"] as? [String: Any] else {
@@ -225,6 +337,10 @@ class SimulatorBridge {
                     if let mockHand = data["mock_hand"] as? [[String: Any]] {
                          self.gameManager.players[0].hand = self.parseCards(mockHand)
                     }
+
+                    if let clearDeck = data["clear_deck"] as? Bool, clearDeck {
+                        _ = self.gameManager.deck.drainAll()
+                    }
                     
                     if let mockDeckArr = data["mock_deck"] as? [[String: Any]] {
                         self.gameManager.mockDeck(cards: self.parseCards(mockDeckArr))
@@ -253,6 +369,7 @@ class SimulatorBridge {
                             if let mungddaCount = pData["mungddaCount"] as? Int { p.mungddaCount = mungddaCount }
                             if let bombMungddaCount = pData["bombMungddaCount"] as? Int { p.bombMungddaCount = bombMungddaCount }
                             if let isComputer = pData["isComputer"] as? Bool { p.isComputer = isComputer }
+                            if let dummyCardCount = pData["dummyCardCount"] as? Int { p.dummyCardCount = dummyCardCount }
                             
                             if let h = pData["hand"] as? [[String: Any]] {
                                 p.hand = self.parseCards(h)
@@ -284,6 +401,7 @@ class SimulatorBridge {
             }
         } catch {
             gLog("SimulatorBridge: Failed to parse request: \(error)")
+            sendErrorResponse(message: "Failed to parse request: \(error.localizedDescription)", connection: connection)
         }
     }
     
@@ -360,127 +478,8 @@ class SimulatorBridge {
         if let index = connections.firstIndex(where: { $0 === connection }) {
             connections.remove(at: index)
         }
+        receiveBuffers.removeValue(forKey: ObjectIdentifier(connection))
     }
 }
 
-// Extension to GameManager to provide serializable state
-extension GameManager {
-    func serializeState() -> [String: AnyCodable] {
-        var state: [String: AnyCodable] = [:]
-        state["gameState"] = AnyCodable(gameState.rawValue)
-        state["deckCount"] = AnyCodable(deck.cards.count)
-        state["tableCards"] = AnyCodable(tableCards)
-        state["deckCards"] = AnyCodable(deck.cards)
-        state["outOfPlayCount"] = AnyCodable(outOfPlayCards.count)
-        state["outOfPlayCards"] = AnyCodable(outOfPlayCards)
-        state["currentTurnIndex"] = AnyCodable(currentTurnIndex)
-        state["players"] = AnyCodable(players.map { player in
-            var playerDict = player.serialize()
-            playerDict["scoreItems"] = AnyCodable(ScoringSystem.calculateScoreDetail(for: player))
-            return playerDict
-        })
-        state["eventLogs"] = AnyCodable(eventLogs)
-        
-        if let playedCard = pendingCapturePlayedCard {
-            state["pendingCapturePlayedCard"] = AnyCodable(playedCard)
-        }
-        if let drawnCard = pendingCaptureDrawnCard {
-            state["pendingCaptureDrawnCard"] = AnyCodable(drawnCard)
-        }
-        
-        if gameState == .choosingCapture {
-            state["pendingCaptureOptions"] = AnyCodable(pendingCaptureOptions)
-        }
-        
-        if gameState == .choosingChrysanthemumRole {
-            if let chrysCard = pendingChrysanthemumCard {
-                state["pendingChrysanthemumCard"] = AnyCodable(chrysCard)
-            }
-        }
-        
-        if gameState == .askingShake {
-            state["pendingShakeMonths"] = AnyCodable(pendingShakeMonths)
-        }
-        
-        if let month = chongtongMonth {
-            state["chongtongMonth"] = AnyCodable(month)
-        }
-        if let timing = chongtongTiming {
-            state["chongtongTiming"] = AnyCodable(timing)
-        }
-        
-        if gameState == .ended {
-            if let reason = gameEndReason {
-                state["gameEndReason"] = AnyCodable(reason.rawValue)
-            }
-            if let rules = RuleLoader.shared.config {
-                let winner = players[0].score >= players[1].score ? players[0] : players[1]
-                let loser = winner === players[0] ? players[1] : players[0]
-                let penalty = PenaltySystem.calculatePenalties(winner: winner, loser: loser, rules: rules)
-                state["penaltyResult"] = AnyCodable([
-                    "finalScore": penalty.finalScore,
-                    "isGwangbak": penalty.isGwangbak,
-                    "isPibak": penalty.isPibak,
-                    "isGobak": penalty.isGobak,
-                    "isMungbak": penalty.isMungbak,
-                    "isJabak": penalty.isJabak,
-                    "isYeokbak": penalty.isYeokbak,
-                    "scoreFormula": penalty.scoreFormula
-                ])
-            }
-        }
-        
-        state["status"] = AnyCodable("ok")
-        return state
-    }
-}
-
-// Helper for type-erased Codable
-struct AnyCodable: Codable {
-    let value: Any
-    
-    init(_ value: Any) {
-        self.value = value
-    }
-    
-    init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        if let intValue = try? container.decode(Int.self) {
-            value = intValue
-        } else if let stringValue = try? container.decode(String.self) {
-            value = stringValue
-        } else if let boolValue = try? container.decode(Bool.self) {
-            value = boolValue
-        } else if let doubleValue = try? container.decode(Double.self) {
-            value = doubleValue
-        } else if let arrayValue = try? container.decode([AnyCodable].self) {
-            value = arrayValue.map { $0.value }
-        } else if let dictValue = try? container.decode([String: AnyCodable].self) {
-            value = dictValue.mapValues { $0.value }
-        } else {
-            throw DecodingError.dataCorruptedError(in: container, debugDescription: "AnyCodable value cannot be decoded")
-        }
-    }
-    
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.singleValueContainer()
-        if let intValue = value as? Int {
-            try container.encode(intValue)
-        } else if let stringValue = value as? String {
-            try container.encode(stringValue)
-        } else if let boolValue = value as? Bool {
-            try container.encode(boolValue)
-        } else if let doubleValue = value as? Double {
-            try container.encode(doubleValue)
-        } else if let codableValue = value as? Encodable {
-            try codableValue.encode(to: encoder)
-        } else if let arrayValue = value as? [Any] {
-            try container.encode(arrayValue.map { AnyCodable($0) })
-        } else if let dictValue = value as? [String: Any] {
-            try container.encode(dictValue.mapValues { AnyCodable($0) })
-        } else {
-            let context = EncodingError.Context(codingPath: encoder.codingPath, debugDescription: "AnyCodable value cannot be encoded")
-            throw EncodingError.invalidValue(value, context)
-        }
-    }
-}
+// Extension to GameManager in SimulatorBridge.swift is no longer needed as it's moved to GameManager.swift

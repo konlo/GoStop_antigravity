@@ -147,12 +147,8 @@ struct PenaltySystem {
             multiplier *= Int(pow(2.0, Double(totalShakeBomb)))
         }
         
-        // 6. Sweep Multiplier (싹쓸이)
-        // Rule: Each sweep doubles the score exponentially.
-        // Formula: 2^sweepCount
-        if winner.sweepCount > 0 {
-            multiplier *= Int(pow(2.0, Double(winner.sweepCount)))
-        }
+        // 6. Sweep Multiplier (싹쓸이) - removed
+        // Sweep is handled via bonus points (if configured), not a score multiplier.
         
         // 8+9. Mung-dda and Bomb Mung-dda Multipliers - Removed as per user request
         /*
@@ -206,7 +202,6 @@ struct PenaltySystem {
             if isGobak { multParts.append("Gobak(x\(rules.penalties.gobak.multiplier))") }
             let totalShakeBomb = winner.shakeCount + winner.bombCount
             if totalShakeBomb > 0 { multParts.append("Shake/Bomb(x\(Int(pow(2.0, Double(totalShakeBomb)))))") }
-            if winner.sweepCount > 0 { multParts.append("Sweep(x\(Int(pow(2.0, Double(winner.sweepCount)))))") }
             // Bomb multiplier removed as per user request (integrated into Shake)
             // Sweep multiplier removed as per user request
             if winner.mungddaCount > 0 { multParts.append("Mungdda - REMOVED") }

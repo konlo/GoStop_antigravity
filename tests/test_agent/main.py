@@ -104,8 +104,10 @@ class TestAgent:
             time.sleep(1) # wait for startup
         else:
             logger.info(f"Connecting to app via {self.connection_mode}")
-            # Implement HTTP or Socket connection here
-            pass
+            if self.connection_mode == "socket":
+                self._wait_for_socket_bridge_ready()
+                self._reset_socket_app_state()
+            # Implement HTTP connection here if needed
 
     def stop_app(self):
         """Stops the Apple App."""
@@ -115,18 +117,55 @@ class TestAgent:
             self.process.wait()
             self.process = None
 
+    def _wait_for_socket_bridge_ready(self, timeout_sec: float = 10.0):
+        deadline = time.time() + timeout_sec
+        last_error = None
+        while time.time() < deadline:
+            try:
+                self._send_command({"action": "get_state"}, record_action=False)
+                return
+            except Exception as e:
+                last_error = e
+                time.sleep(0.25)
+        raise RuntimeError(f"Socket bridge not ready within {timeout_sec}s: {last_error}")
+
+    def _wait_for_socket_idle(self, timeout_sec: float = 8.0):
+        deadline = time.time() + timeout_sec
+        last_state = None
+        while time.time() < deadline:
+            state = self._send_command({"action": "get_state"}, record_action=False)
+            last_state = state
+            # Older bridge payloads may not expose these fields; a successful state fetch is enough then.
+            if "isAutomationBusy" not in state and "pendingAutomationDelays" not in state:
+                return
+            # `isAutomationBusy` can remain true during stable decision states because of UI visibility markers.
+            # For test synchronization, delayed automation callbacks are the part that causes stale reads/races.
+            if int(state.get("pendingAutomationDelays", 0)) == 0:
+                return
+            time.sleep(0.05)
+        raise RuntimeError(
+            f"Socket app did not become idle within {timeout_sec}s. "
+            f"Last state flags: isAutomationBusy={None if last_state is None else last_state.get('isAutomationBusy')}, "
+            f"pendingAutomationDelays={None if last_state is None else last_state.get('pendingAutomationDelays')}"
+        )
+
+    def _reset_socket_app_state(self):
+        # Socket mode reuses the simulator app process across scenarios, so explicitly reset state here.
+        self._send_command({"action": "click_restart_button"}, record_action=False)
+        self._wait_for_socket_idle()
+
     def _save_repro_steps(self):
         """Saves current action sequence for deterministic replay."""
         if self.action_log:
             with open(repro_file, 'w') as f:
                 json.dump({"seed": self.rng_seed, "sequence": self.action_log}, f, indent=2)
 
-    def _send_command(self, command: dict) -> dict:
+    def _send_command(self, command: dict, record_action: bool = True) -> dict:
         """Sends a JSON command to the app and returns the JSON response."""
         logger.debug(f"Sending command: {command}")
         
         # Keep track for replay / debugging
-        if command.get("action") != "get_state":
+        if record_action and command.get("action") != "get_state":
             self.action_log.append(command)
         
         if self.connection_mode == "cli":
@@ -235,7 +274,12 @@ class TestAgent:
         if action_data:
             cmd["data"] = action_data
         logger.info(f"Sending user action: {action_type} with data: {action_data}")
-        return self._send_command(cmd)
+        resp = self._send_command(cmd)
+        # In socket mode, the simulator app stays alive and animations may finish after the command ACK.
+        # Wait for a stable post-action state so scenarios observe the same semantics as CLI mode.
+        if self.connection_mode == "socket" and action_type != "get_state":
+            self._wait_for_socket_idle()
+        return resp
 
     def run_tests(self, scenarios: list, repeat_count: int = 1):
         """
