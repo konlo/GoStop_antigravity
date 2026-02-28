@@ -408,6 +408,7 @@ func main() {
     // CLI is used by automated scenarios; run turn logic synchronously to avoid
     // animation-delay race conditions during state assertions.
     AnimationManager.shared.config.card_move_duration = 0
+    AnimationManager.shared.config.match_pause_duration = 0
     
     let engine = CLIEngine()
     

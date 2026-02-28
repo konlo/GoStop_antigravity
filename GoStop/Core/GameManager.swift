@@ -97,6 +97,11 @@ class GameManager: ObservableObject {
     private var turnDrawPhaseCaptured: [Card] = []
     private var turnPlayedCard: Card? = nil
     private var turnTableWasNotEmpty = false
+    // Logical table after resolving play-phase capture (used for draw-phase rules).
+    // Visual table can still keep pending play captures until draw is revealed.
+    private var turnPlayPhaseResultingTable: [Card]? = nil
+    // Base logical table for draw-choice resolution when draw capture requires user selection.
+    private var turnDrawPhaseBaseTable: [Card]? = nil
     
     // Endgame state tracking
     @Published var gameEndReason: GameEndReason?
@@ -240,6 +245,8 @@ class GameManager: ObservableObject {
         self.turnDrawPhaseCaptured = []
         self.turnPlayedCard = nil
         self.turnTableWasNotEmpty = false
+        self.turnPlayPhaseResultingTable = nil
+        self.turnDrawPhaseBaseTable = nil
         self.internalComputerActionScheduled = false
         self.gameState = .ready
         self.dealCards()
@@ -465,107 +472,167 @@ class GameManager: ObservableObject {
     }
     func respondToCapture(selectedCard: Card) {
         guard let player = currentPlayer else { return }
-        
         let playedCard = pendingCapturePlayedCard
         let drawnCard = pendingCaptureDrawnCard
         
         gLog("\(player.name) chose \(selectedCard.type) for month \(selectedCard.month) capture")
-        
-        if let idx = tableCards.firstIndex(where: { $0.id == selectedCard.id }) {
-            tableCards.remove(at: idx)
-        }
-        
+
         let triggerCard = playedCard ?? drawnCard
-        guard let pCard = triggerCard else {
+        guard let trigger = triggerCard else {
             gLog("ERROR: respondToCapture called but no trigger card found.")
             return
         }
 
-        // In choosingCapture, the trigger card remains on the table as a visible placeholder.
-        // Remove it now that the choice is committed so it doesn't persist as a duplicate.
-        tableCards.removeAll { $0.id == pCard.id }
-        
-        let captured = [pCard, selectedCard]
-        let finalCaptures = captured.filter { !($0.month == .sep && $0.type == .animal) }
-        if !finalCaptures.isEmpty {
-            player.capture(cards: finalCaptures)
-        }
-        
-        player.score = ScoringSystem.calculateScore(for: player)
-        monthOwners.removeValue(forKey: selectedCard.month.rawValue)
-        
-        if playedCard != nil {
-            turnPlayPhaseCaptured = captured
-        } else if drawnCard != nil {
-            turnDrawPhaseCaptured = captured
-        }
-        
-        gLog("\(player.name) captured \(captured.count) cards (choice). Total: \(player.capturedCards.count)")
-        
-        pendingCapturePlayedCard = nil
-        pendingCaptureDrawnCard = nil
-        pendingCaptureOptions = []
-        gameState = .playing
-        
         guard let rules = RuleLoader.shared.config else {
             endTurn()
             return
         }
 
+        // Choice while resolving the play-phase capture:
+        // keep cards visually on table and defer commit until draw is revealed.
         if playedCard != nil {
-            if let drawn = deck.draw() {
-                gLog("Drawn after play-choice: \(drawn.month) (\(drawn.type))")
-                
-                let remainingOnTable = tableCards.first(where: { $0.month == drawn.month })
-                
-                if captured[0].month == drawn.month && remainingOnTable == nil {
-                    turnIsSeolsa = true
-                    gLog("SEOLSA (뻑) via choice! Play match followed by draw match for month \(drawn.month)")
-                    
-                    tableCards.append(contentsOf: captured)
-                    tableCards.append(drawn)
-                    player.capturedCards.removeAll { c in finalCaptures.contains(where: { $0.id == c.id }) }
-                    turnPlayPhaseCaptured = []
-                } else {
-                    if let dCaptured = performTableCapture(for: drawn, on: &tableCards, player: player) {
-                        turnDrawPhaseCaptured = dCaptured
-                        if !turnDrawPhaseCaptured.isEmpty {
-                            let finalDCaptures = turnDrawPhaseCaptured.filter { !($0.month == .sep && $0.type == .animal) }
-                            if !finalDCaptures.isEmpty {
-                                player.capture(cards: finalDCaptures)
-                            }
-                            if turnDrawPhaseCaptured.contains(where: { $0.month == pCard.month }) {
-                                if !turnPlayPhaseCaptured.isEmpty {
-                                    turnIsTtadak = true
-                                } else {
-                                    turnIsJjok = true
-                                }
-                            }
-                            for c in turnDrawPhaseCaptured {
-                                monthOwners.removeValue(forKey: c.month.rawValue)
-                                seolsaMonths.removeValue(forKey: c.month.rawValue)
-                            }
-                        } else {
-                            monthOwners[drawn.month.rawValue] = player
-                        }
-                    } else {
-                        gLog("Secondary choice needed for Draw Phase!")
-                        pendingCaptureDrawnCard = drawn
-                        pendingCaptureOptions = tableCards.filter { $0.month == drawn.month }
-                        gameState = .choosingCapture
-                        player.score = ScoringSystem.calculateScore(for: player)
-                        return
-                    }
+            let captured = [trigger, selectedCard]
+            let capturedIds = Set(captured.map { $0.id })
+            turnPlayPhaseCaptured = captured
+            turnPlayPhaseResultingTable = tableCards.filter { !capturedIds.contains($0.id) }
+            turnDrawPhaseBaseTable = nil
+            monthOwners.removeValue(forKey: selectedCard.month.rawValue)
+
+            pendingCapturePlayedCard = nil
+            pendingCaptureDrawnCard = nil
+            pendingCaptureOptions = []
+            gameState = .playing
+
+            gLog("\(player.name) locked play capture choice (\(captured.count) cards). Waiting for draw reveal.")
+
+            let matchPause = AnimationManager.shared.config.match_pause_duration
+            if matchPause > 0 {
+                runAfterAnimationDelay(matchPause) {
+                    self.proceedToDrawPhase(player: player, rules: rules)
                 }
+            } else {
+                proceedToDrawPhase(player: player, rules: rules)
             }
-        }
-        
-        let allNewCaptures = turnPlayPhaseCaptured + turnDrawPhaseCaptured
-        if checkAndHandleChrysanthemumRole(capturedCards: allNewCaptures, player: player, rules: rules) {
             return
         }
 
-        finalizeTurnAfterCapture(player: player)
+        // Choice while resolving the draw-phase capture.
+        let captured = [trigger, selectedCard]
+        turnDrawPhaseCaptured = captured
+
+        let baseTable = turnDrawPhaseBaseTable ?? (turnPlayPhaseResultingTable ?? tableCards.filter { $0.id != trigger.id })
+        var resultingTable = baseTable
+        if let idx = resultingTable.firstIndex(where: { $0.id == selectedCard.id }) {
+            resultingTable.remove(at: idx)
+        } else {
+            gLog("ERROR: Draw-choice selected card not found in draw base table.")
+        }
+        turnDrawPhaseBaseTable = nil
+
+        handleDrawCaptured(drawnCard: trigger, player: player)
+
+        pendingCapturePlayedCard = nil
+        pendingCaptureDrawnCard = nil
+        pendingCaptureOptions = []
+        gameState = .playing
+
+        gLog("\(player.name) finalized draw capture choice (\(captured.count) cards).")
+
+        let commit: () -> Void = {
+            self.commitResolvedCapturesAndFinalize(
+                player: player,
+                rules: rules,
+                finalTable: resultingTable,
+                drawnCard: trigger
+            )
+        }
+        let matchPause = AnimationManager.shared.config.match_pause_duration
+        if matchPause > 0 {
+            runAfterAnimationDelay(matchPause) {
+                commit()
+            }
+        } else {
+            commit()
+        }
+    }
+
+    private func animateTableToCaptured(
+        cards captured: [Card],
+        player: Player,
+        completion: @escaping () -> Void
+    ) {
+        guard !captured.isEmpty else {
+            completion()
+            return
+        }
+
+        let moveDelay = AnimationManager.shared.config.card_move_duration
+        let capturedIds = Set(captured.map { $0.id })
+        let filtered = captured.filter { !($0.month == .sep && $0.type == .animal) }
+
+        if !filtered.isEmpty {
+            player.capture(cards: filtered)
+            player.score = ScoringSystem.calculateScore(for: player)
+        }
+
+        currentMovingCards = []
+        for c in captured {
+            hiddenInSourceCardIds.remove(c.id)
+            hiddenInTargetCardIds.remove(c.id)
+        }
+
+        if filtered.isEmpty {
+            withAnimation {
+                tableCards.removeAll { capturedIds.contains($0.id) }
+            }
+            runAfterAnimationDelay(moveDelay) {
+                completion()
+            }
+            return
+        }
+
+        setMoveContext(source: "table", target: "captured")
+        let cardIds = filtered.map { $0.id }.joined(separator: ",")
+        addUXEvent(type: "moveStart", data: ["cardIds": cardIds, "source": "table", "target": "captured"])
+        takeSnapshot()
+
+        withAnimation {
+            tableCards.removeAll { capturedIds.contains($0.id) }
+        }
+
+        runAfterAnimationDelay(moveDelay) {
+            let cardIds = filtered.map { $0.id }.joined(separator: ",")
+            self.addUXEvent(type: "moveEnd", data: ["cardIds": cardIds, "target": "captured"])
+            self.movingCardsPiCount = nil
+            self.clearMoveContext()
+            completion()
+        }
+    }
+
+    private func commitResolvedCapturesAndFinalize(
+        player: Player,
+        rules: RuleConfig,
+        finalTable: [Card],
+        drawnCard: Card?
+    ) {
+        let playCaptured = turnPlayPhaseCaptured
+        let drawCaptured = turnDrawPhaseCaptured
+
+        currentMovingCards = []
+        if let drawnCard {
+            hiddenInSourceCardIds.remove(drawnCard.id)
+            hiddenInTargetCardIds.remove(drawnCard.id)
+        }
+        clearMoveContext()
+
+        animateTableToCaptured(cards: playCaptured, player: player) {
+            self.animateTableToCaptured(cards: drawCaptured, player: player) {
+                self.tableCards = finalTable
+                self.turnPlayPhaseResultingTable = nil
+                self.turnDrawPhaseBaseTable = nil
+                self.finalizeTurnState(player: player, rules: rules)
+            }
+        }
     }
 
     func playTurn(card: Card) {
@@ -599,6 +666,8 @@ class GameManager: ObservableObject {
         turnDrawPhaseCaptured = []
         turnPlayedCard = nil
         turnTableWasNotEmpty = !tableCards.isEmpty
+        turnPlayPhaseResultingTable = nil
+        turnDrawPhaseBaseTable = nil
         
         // Phase 1: Hand Play
         if card.type == .dummy {
@@ -626,7 +695,6 @@ class GameManager: ObservableObject {
                     // Important: Insert back at SAME index to avoid layout jump
                     player.hand.insert(pCard, at: idx)
                     let handToTableMotion = AnimationManager.shared.handToTableMotionPlan()
-                    let delay = AnimationManager.shared.config.card_move_duration
                     let finalizeHandToTable: () -> Void = {
                         self.runAfterAnimationDelay(handToTableMotion.delay) {
                             
@@ -645,50 +713,18 @@ class GameManager: ObservableObject {
                                     self.monthOwners[pCard.month.rawValue] = player
                                     self.proceedToDrawPhase(player: player, rules: rules)
                                 } else {
-                                    let startCapturePhase: () -> Void = {
-                                        self.monthOwners.removeValue(forKey: pCard.month.rawValue)
-                                        
-                                        // Phase 2 Start: Move to Captured Area
-                                        // Keep destination cards mounted, then animate by removing table sources.
-                                        let filtered = captured.filter { !($0.month == .sep && $0.type == .animal) }
-                                        player.capture(cards: filtered)
-                                        player.score = ScoringSystem.calculateScore(for: player)
-                                        
-                                        // Phase 2 source must be table. Remove the hand placeholder to avoid
-                                        // matchedGeometry choosing hand(bottom area) as the animation origin.
-                                        self.currentMovingCards = []
-                                        for c in captured {
-                                            self.hiddenInSourceCardIds.remove(c.id)
-                                            self.hiddenInTargetCardIds.remove(c.id)
-                                        }
-                                        self.setMoveContext(source: "table", target: "captured")
-                                        
-                                        let cardIds = filtered.map { $0.id }.joined(separator: ",")
-                                        self.addUXEvent(type: "moveStart", data: ["cardIds": cardIds, "source": "table", "target": "captured"])
-                                        self.takeSnapshot()
-                                        
-                                        withAnimation {
-                                            self.tableCards = resultingTable
-                                        }
-                                        
-                                        self.runAfterAnimationDelay(delay) {
-                                            let cardIds = filtered.map { $0.id }.joined(separator: ",")
-                                            self.addUXEvent(type: "moveEnd", data: ["cardIds": cardIds, "target": "captured"])
-                                            self.movingCardsPiCount = nil
-                                            self.clearMoveContext()
-                                            
-                                            self.proceedToDrawPhase(player: player, rules: rules)
-                                        }
-                                    }
-                                    
-                                    // Keep the matched cards on table a little longer so the hit moment feels clear.
+                                    // Unified flow: always defer capture commit until draw is revealed.
+                                    self.turnPlayPhaseResultingTable = resultingTable
+                                    self.monthOwners.removeValue(forKey: pCard.month.rawValue)
+
+                                    // Keep matched cards on table so impact is readable before draw reveal.
                                     let matchPause = AnimationManager.shared.config.match_pause_duration
                                     if matchPause > 0 {
                                         self.runAfterAnimationDelay(matchPause) {
-                                            startCapturePhase()
+                                            self.proceedToDrawPhase(player: player, rules: rules)
                                         }
                                     } else {
-                                        startCapturePhase()
+                                        self.proceedToDrawPhase(player: player, rules: rules)
                                     }
                                 }
                             } else {
@@ -780,108 +816,102 @@ class GameManager: ObservableObject {
     private func proceedToDrawPhase(player: Player, rules: RuleConfig) {
         let drawDelay = AnimationManager.shared.config.card_move_duration
         runAfterAnimationDelay(drawDelay) {
-            if let drawnCard = self.deck.draw() {
-                gLog("Drawn: \(drawnCard.month) (\(drawnCard.type))")
-                
-                self.tableCards.append(drawnCard)
-                self.deck.pushCardsOnTop([drawnCard])
-                self.hiddenInSourceCardIds.insert(drawnCard.id)
-                self.hiddenInTargetCardIds.insert(drawnCard.id)
-                self.setMoveContext(source: "deck", target: "table")
-                
-                self.addUXEvent(type: "moveStart", data: ["cardId": drawnCard.id, "source": "deck", "target": "table"])
-                self.takeSnapshot()
-                
-                self.movingCardsScale = 0.7
-
-                self.movingCardsShowDebug = false
-                self.currentMovingCards = [drawnCard]
-                
-                withAnimation { }
-                
-                self.deck.remove(card: drawnCard)
-                
-                let remainingOnTable = self.tableCards.filter { $0.month == drawnCard.month && $0.id != drawnCard.id }.first
-                let moveDelay = AnimationManager.shared.config.card_move_duration
-                
-                self.runAfterAnimationDelay(moveDelay) {
-                    self.addUXEvent(type: "moveEnd", data: ["cardId": drawnCard.id, "target": "table"])
-                    if !self.turnPlayPhaseCaptured.isEmpty && self.turnPlayPhaseCaptured.count == 2 && 
-                       self.turnPlayPhaseCaptured[0].month == drawnCard.month && remainingOnTable == nil {
-                        self.currentMovingCards = []
-                        self.hiddenInSourceCardIds.remove(drawnCard.id)
-                        self.hiddenInTargetCardIds.remove(drawnCard.id)
-                        self.clearMoveContext()
-                        self.turnIsSeolsa = true
-                        gLog("SEOLSA!")
-
-                        // Revert the play-phase capture commit: Seolsa leaves all 3 cards on the table.
-                        let revertedPlayCaptures = self.turnPlayPhaseCaptured.filter { !($0.month == .sep && $0.type == .animal) }
-                        if !revertedPlayCaptures.isEmpty {
-                            player.capturedCards.removeAll { captured in
-                                revertedPlayCaptures.contains(where: { $0.id == captured.id })
-                            }
-                            player.score = ScoringSystem.calculateScore(for: player)
-                        }
-
-                        self.tableCards.append(contentsOf: self.turnPlayPhaseCaptured)
-                        self.turnPlayPhaseCaptured = []
-                        self.turnDrawPhaseCaptured = []
-                        self.finalizeTurnState(player: player, rules: rules)
-                    } else {
-                        if let captureResolution = self.performTableCaptureLogical(for: drawnCard, player: player) {
-                            let captured = captureResolution.captured
-                            self.turnDrawPhaseCaptured = captured
-                            self.handleDrawCaptured(drawnCard: drawnCard, player: player)
-                            
-                            if captured.isEmpty {
-                                self.tableCards = captureResolution.resultingTable
-                                self.currentMovingCards = []
-                                self.hiddenInSourceCardIds.remove(drawnCard.id)
-                                self.hiddenInTargetCardIds.remove(drawnCard.id)
-                                self.clearMoveContext()
-                                self.finalizeTurnState(player: player, rules: rules)
-                            } else {
-                                let filtered = captured.filter { !($0.month == .sep && $0.type == .animal) }
-                                player.capture(cards: filtered)
-                                player.score = ScoringSystem.calculateScore(for: player)
-                                self.currentMovingCards = []
-                                for c in captured {
-                                    self.hiddenInSourceCardIds.remove(c.id)
-                                    self.hiddenInTargetCardIds.remove(c.id)
-                                }
-                                self.setMoveContext(source: "table", target: "captured")
-                                let cardIds = filtered.map { $0.id }.joined(separator: ",")
-                                self.addUXEvent(type: "moveStart", data: ["cardIds": cardIds, "source": "table", "target": "captured"])
-                                self.takeSnapshot()
-
-                                withAnimation {
-                                    self.tableCards = captureResolution.resultingTable
-                                }
-                                
-                                self.runAfterAnimationDelay(moveDelay) {
-                                    let cardIds = filtered.map { $0.id }.joined(separator: ",")
-                                    self.addUXEvent(type: "moveEnd", data: ["cardIds": cardIds, "target": "captured"])
-                                    self.movingCardsPiCount = nil
-                                    self.clearMoveContext()
-                                    self.finalizeTurnState(player: player, rules: rules)
-                                }
-                            }
-                        } else {
-                            self.currentMovingCards = []
-                            self.hiddenInSourceCardIds.remove(drawnCard.id)
-                            self.hiddenInTargetCardIds.remove(drawnCard.id)
-                            self.clearMoveContext()
-                            self.pendingCaptureDrawnCard = drawnCard
-                            self.pendingCaptureOptions = self.tableCards.filter { $0.month == drawnCard.month && $0.id != drawnCard.id }
-                            self.gameState = .choosingCapture
-                            player.score = ScoringSystem.calculateScore(for: player)
-                            self.maybeScheduleInternalComputerAction()
-                        }
-                    }
+            let logicalTableBeforeDraw = self.turnPlayPhaseResultingTable ?? self.tableCards
+            guard let drawnCard = self.deck.draw() else {
+                let finalTable = self.turnPlayPhaseResultingTable ?? self.tableCards
+                if !self.turnPlayPhaseCaptured.isEmpty {
+                    self.commitResolvedCapturesAndFinalize(
+                        player: player,
+                        rules: rules,
+                        finalTable: finalTable,
+                        drawnCard: nil
+                    )
+                } else {
+                    self.turnPlayPhaseResultingTable = nil
+                    self.turnDrawPhaseBaseTable = nil
+                    self.tableCards = finalTable
+                    self.finalizeTurnState(player: player, rules: rules)
                 }
-            } else {
-                self.finalizeTurnState(player: player, rules: rules)
+                return
+            }
+
+            gLog("Drawn: \(drawnCard.month) (\(drawnCard.type))")
+
+            self.tableCards.append(drawnCard)
+            self.deck.pushCardsOnTop([drawnCard])
+            self.hiddenInSourceCardIds.insert(drawnCard.id)
+            self.hiddenInTargetCardIds.insert(drawnCard.id)
+            self.setMoveContext(source: "deck", target: "table")
+
+            self.addUXEvent(type: "moveStart", data: ["cardId": drawnCard.id, "source": "deck", "target": "table"])
+            self.takeSnapshot()
+
+            self.movingCardsScale = 0.7
+            self.movingCardsShowDebug = false
+            self.currentMovingCards = [drawnCard]
+
+            withAnimation { }
+
+            self.deck.remove(card: drawnCard)
+
+            let moveDelay = AnimationManager.shared.config.card_move_duration
+            self.runAfterAnimationDelay(moveDelay) {
+                self.addUXEvent(type: "moveEnd", data: ["cardId": drawnCard.id, "target": "table"])
+                self.currentMovingCards = []
+                self.hiddenInSourceCardIds.remove(drawnCard.id)
+                self.hiddenInTargetCardIds.remove(drawnCard.id)
+                self.clearMoveContext()
+
+                let sameMonthInLogicalTable = logicalTableBeforeDraw.filter { $0.month == drawnCard.month }
+                let isSeolsa = self.turnPlayPhaseCaptured.count == 2 &&
+                    self.turnPlayPhaseCaptured[0].month == drawnCard.month &&
+                    sameMonthInLogicalTable.isEmpty
+
+                if isSeolsa {
+                    self.turnIsSeolsa = true
+                    gLog("SEOLSA!")
+                    self.turnPlayPhaseCaptured = []
+                    self.turnDrawPhaseCaptured = []
+                    self.turnPlayPhaseResultingTable = nil
+                    self.turnDrawPhaseBaseTable = nil
+                    self.finalizeTurnState(player: player, rules: rules)
+                    return
+                }
+
+                var drawLogicalTable = logicalTableBeforeDraw
+                if let captured = self.performTableCapture(for: drawnCard, on: &drawLogicalTable, player: player) {
+                    self.turnDrawPhaseCaptured = captured
+                    self.handleDrawCaptured(drawnCard: drawnCard, player: player)
+                    self.turnDrawPhaseBaseTable = nil
+
+                    let finalTable = drawLogicalTable
+                    let commit: () -> Void = {
+                        self.commitResolvedCapturesAndFinalize(
+                            player: player,
+                            rules: rules,
+                            finalTable: finalTable,
+                            drawnCard: drawnCard
+                        )
+                    }
+
+                    let hasAnyCapture = !self.turnPlayPhaseCaptured.isEmpty || !captured.isEmpty
+                    let matchPause = AnimationManager.shared.config.match_pause_duration
+                    if hasAnyCapture && matchPause > 0 {
+                        self.runAfterAnimationDelay(matchPause) {
+                            commit()
+                        }
+                    } else {
+                        commit()
+                    }
+                } else {
+                    // Draw capture needs user selection. Keep draw card visible and wait for choice.
+                    self.turnDrawPhaseBaseTable = drawLogicalTable
+                    self.pendingCaptureDrawnCard = drawnCard
+                    self.pendingCaptureOptions = drawLogicalTable.filter { $0.month == drawnCard.month }
+                    self.gameState = .choosingCapture
+                    player.score = ScoringSystem.calculateScore(for: player)
+                    self.maybeScheduleInternalComputerAction()
+                }
             }
         }
     }
