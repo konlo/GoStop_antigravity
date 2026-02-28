@@ -26,7 +26,7 @@ class PlayerHandSlotManager: ObservableObject {
         return config.areas.player.elements.hand.slotPlacementPolicy?.preserveEmptySlots ?? true
     }
     
-    func sync(with hand: [Card]) {
+    func sync(with hand: [Card], compactToFront: Bool = true) {
         // Sort hand based on user criteria: Month -> Type
         let sortedHand = hand.sorted { lhs, rhs in
             if lhs.month != rhs.month { return lhs.month < rhs.month }
@@ -34,22 +34,66 @@ class PlayerHandSlotManager: ObservableObject {
         }
         
         if !preserveEmptySlots {
-            // Compaction: Fill slots 1..N sequentially
-            // 1. Clear all
-            for key in slots.keys {
-                slots[key]?.card = nil
-                slots[key]?.isOccupied = false
+            if compactToFront {
+                // Fill from slot 1 whenever compaction is desired.
+                let sortedKeys = slots.keys.sorted()
+                for key in sortedKeys {
+                    if var state = slots[key] {
+                        state.card = nil
+                        state.isOccupied = false
+                        slots[key] = state
+                    }
+                }
+                
+                for (i, card) in sortedHand.enumerated() where i < sortedKeys.count {
+                    let idx = sortedKeys[i]
+                    if var state = slots[idx] {
+                        state.card = card
+                        state.isOccupied = true
+                        slots[idx] = state
+                    }
+                }
+                return
+            }
+
+            // Keep existing card-slot mapping stable and fill only deltas.
+            // Re-compacting every sync can shift source positions during movement animation.
+            var existingCards: [String: Int] = [:] // CardID -> SlotIndex
+            for (idx, state) in slots {
+                if let c = state.card {
+                    existingCards[c.id] = idx
+                }
             }
             
-            // 2. Assign Sorted Hand
-            let sortedKeys = slots.keys.sorted()
-            for (i, card) in sortedHand.enumerated() {
-                if i < sortedKeys.count {
-                    let idx = sortedKeys[i]
-                    var state = slots[idx]!
-                    state.card = card
+            let incomingById = Dictionary(uniqueKeysWithValues: sortedHand.map { ($0.id, $0) })
+            let incomingIds = Set(incomingById.keys)
+            
+            // 1) Remove cards that are no longer in hand
+            for (id, idx) in existingCards where !incomingIds.contains(id) {
+                if var state = slots[idx] {
+                    state.card = nil
+                    state.isOccupied = false
+                    slots[idx] = state
+                }
+            }
+            
+            // 2) Refresh existing cards in-place (selectedRole/type updates, etc.)
+            for (id, idx) in existingCards {
+                if let updated = incomingById[id], var state = slots[idx] {
+                    state.card = updated
                     state.isOccupied = true
                     slots[idx] = state
+                }
+            }
+            
+            // 3) Place newly added cards into the first empty slots in sorted order
+            for card in sortedHand where existingCards[card.id] == nil {
+                if let emptyIdx = findFirstEmptySlot(), var state = slots[emptyIdx] {
+                    state.card = card
+                    state.isOccupied = true
+                    slots[emptyIdx] = state
+                } else {
+                    print("Warning: Hand Full, could not add card \(card)")
                 }
             }
             return

@@ -132,7 +132,11 @@ struct GameView: View {
         gameManager.externalControlMode = false
         #if targetEnvironment(simulator)
         if SimulatorBridge.shared == nil {
-            AnimationManager.shared.config.card_move_duration = 0
+            // Keep simulator UI behavior aligned with real device by default.
+            // Enable fast animation only when explicitly requested.
+            if ProcessInfo.processInfo.environment["GOSTOP_SIM_FAST_ANIMATION"] == "1" {
+                AnimationManager.shared.config.card_move_duration = 0
+            }
             SimulatorBridge.shared = SimulatorBridge(gameManager: gameManager)
             SimulatorBridge.shared?.start()
             print("SimulatorBridge: Started on port 8080 (GameView)")
@@ -158,7 +162,7 @@ struct GameView: View {
     private func onChangeHand(_ newHand: [Card]?) {
         AnimationManager.shared.withGameAnimation {
             guard let hand = newHand else { return }
-            playerHandSlotManager?.sync(with: hand)
+            playerHandSlotManager?.sync(with: hand, compactToFront: !gameManager.isAutomationBusy)
         }
     }
 
@@ -170,7 +174,7 @@ struct GameView: View {
 
     private func resyncSlotManagers() {
         if let hand = gameManager.players.first?.hand {
-            playerHandSlotManager?.sync(with: hand)
+            playerHandSlotManager?.sync(with: hand, compactToFront: !gameManager.isAutomationBusy)
         }
         tableSlotManager?.sync(with: gameManager.tableCards)
     }

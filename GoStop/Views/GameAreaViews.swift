@@ -272,8 +272,11 @@ struct OpponentHandV2: View {
         ZStack {
             ForEach(Array(hand.enumerated()), id: \.element.id) { index, card in
                 let isHidden = gameManager.currentMovingCards.contains(where: { $0.id == card.id }) || gameManager.hiddenInSourceCardIds.contains(card.id)
+                let isPreplayReveal = gameManager.opponentPreplayRevealCardId == card.id
                 // Opponent Hand remains source
-                CardView(card: card, isFaceUp: false, scale: handConfig.scale, animationNamespace: animationNamespace, isSource: true)
+                CardView(card: card, isFaceUp: isPreplayReveal, scale: handConfig.scale, animationNamespace: animationNamespace, isSource: true)
+                    .scaleEffect(isPreplayReveal ? 1.08 : 1.0)
+                    .shadow(color: isPreplayReveal ? .yellow.opacity(0.55) : .clear, radius: isPreplayReveal ? 8 : 0)
                     .offset(x: CGFloat(index) * spacing)
                     .zIndex(Double(index))
                     .opacity(isHidden ? 0 : 1)
@@ -429,12 +432,13 @@ struct CapturedAreaV2: View {
         let overlapRatio = layoutConfig.cardOverlapRatio
         // Negative spacing for overlap
         let startSpacing = -cardW * overlapRatio
+        let capturedActsAsTarget = gameManager.currentMoveTargetZone == "captured"
         
         return ScrollView(.horizontal, showsIndicators: false) {
              HStack(spacing: startSpacing) {
                  ForEach(Array(cards.enumerated()), id: \.element.id) { index, card in
-                     let isHidden = gameManager.currentMovingCards.contains(where: { $0.id == card.id }) || gameManager.hiddenInTargetCardIds.contains(card.id)
-                     let isTarget = gameManager.hiddenInTargetCardIds.contains(card.id)
+                     let isHidden = capturedActsAsTarget && gameManager.hiddenInTargetCardIds.contains(card.id)
+                     let isTarget = capturedActsAsTarget && gameManager.hiddenInTargetCardIds.contains(card.id)
                      CardView(card: card, isFaceUp: true, scale: scale, animationNamespace: animationNamespace, isSource: !isTarget)
                         .zIndex(Double(index))
                         .opacity(isHidden ? 0 : 1)
@@ -596,8 +600,8 @@ struct CapturedGroupSlotView: View {
                         return nil
                     }()
                     
-                    let isHidden = gameManager.currentMovingCards.contains(where: { $0.id == card.id }) || gameManager.hiddenInTargetCardIds.contains(card.id)
-                    let isTarget = gameManager.hiddenInTargetCardIds.contains(card.id)
+                    let isHidden = (gameManager.currentMoveTargetZone == "captured") && gameManager.hiddenInTargetCardIds.contains(card.id)
+                    let isTarget = (gameManager.currentMoveTargetZone == "captured") && gameManager.hiddenInTargetCardIds.contains(card.id)
                     CardView(card: card, isFaceUp: true, scale: scale, animationNamespace: animationNamespace, isSource: !isTarget, piCount: piCount)
                         .opacity(isHidden ? 0 : 1)
                 }
@@ -639,6 +643,8 @@ struct TableAreaV2: View {
     
     var legacyGrid: some View {
         let groups = Dictionary(grouping: cards, by: { $0.month }).values.sorted(by: { $0.first!.month.rawValue < $1.first!.month.rawValue })
+        let tableActsAsTarget = gameManager.currentMoveTargetZone == "table"
+        let hideTableTarget = tableActsAsTarget && gameManager.currentMoveSourceZone == "deck"
         
         let cardW = ctx.cardSize.width * config.scale
         let cardH = ctx.cardSize.height * config.scale
@@ -655,8 +661,11 @@ struct TableAreaV2: View {
                 let stack = groups[index]
                 ZStack {
                     ForEach(Array(stack.enumerated()), id: \.element.id) { i, card in
-                        CardView(card: card, isFaceUp: true, scale: config.scale, animationNamespace: animationNamespace)
+                        let isHidden = hideTableTarget && gameManager.hiddenInTargetCardIds.contains(card.id)
+                        let isTarget = tableActsAsTarget && gameManager.hiddenInTargetCardIds.contains(card.id)
+                        CardView(card: card, isFaceUp: true, scale: config.scale, animationNamespace: animationNamespace, isSource: !isTarget)
                             .offset(y: CGFloat(i) * (cardH * (1.0 - config.grid.stackOverlapRatio))) 
+                            .opacity(isHidden ? 0 : 1)
                     }
                 }
                 .frame(width: cardW, height: cardH) // Fixed frame for stack base
@@ -676,6 +685,8 @@ struct TableFixedSlotsView: View {
         let cardW = ctx.cardSize.width * config.scale
         let cardH = ctx.cardSize.height * config.scale
         let currentTableIds = Set(gameManager.tableCards.map { $0.id })
+        let tableActsAsTarget = gameManager.currentMoveTargetZone == "table"
+        let hideTableTarget = tableActsAsTarget && gameManager.currentMoveSourceZone == "deck"
         
         ZStack {
              if let fixedSlots = config.fixedSlots {
@@ -709,8 +720,8 @@ struct TableFixedSlotsView: View {
                                       
                                       let xOff = (isHorizontal || isDiagonal) ? CGFloat(i) * (cardW * (1.0 - overlap)) : 0
                                       let yOff = (!isHorizontal) ? CGFloat(i) * (cardH * (1.0 - overlap)) : 0
-                                      let isHidden = gameManager.currentMovingCards.contains(where: { $0.id == card.id }) || gameManager.hiddenInTargetCardIds.contains(card.id)
-                                      let isTarget = gameManager.hiddenInTargetCardIds.contains(card.id)
+                                      let isHidden = hideTableTarget && gameManager.hiddenInTargetCardIds.contains(card.id)
+                                      let isTarget = tableActsAsTarget && gameManager.hiddenInTargetCardIds.contains(card.id)
                                       CardView(card: card, isFaceUp: true, scale: config.scale, animationNamespace: animationNamespace, isSource: !isTarget, showDebugInfo: ctx.config.debug.player?.sortedOrderOverlay == true)
                                           .offset(x: xOff, y: yOff)
                                           .zIndex(Double(i))

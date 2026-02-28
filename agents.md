@@ -115,3 +115,21 @@ swift test
 python3 tests/test_agent/main.py
 python3 tests/test_agent/test_scenarios.py
 ```
+
+## Skills
+A skill is a local instruction set in a `SKILL.md` file that can be triggered by name or by task intent.
+
+### Available skills
+- skill-creator: Guide for creating effective skills. (file: /Users/najongseong/git_repository/skills-registry/.system/skill-creator/SKILL.md)
+- skill-installer: Install Codex skills from curated lists or GitHub paths. (file: /Users/najongseong/git_repository/skills-registry/.system/skill-installer/SKILL.md)
+- apple_app_test_agent: Setup and run a Python-based test agent for Apple apps. (file: /Users/najongseong/git_repository/skills-registry/apple/apple-app-test-agent/SKILL.md)
+- apple_app_init: Guardrails for creating a runnable iOS SwiftUI app project. (file: /Users/najongseong/git_repository/skills-registry/apple/apple_app_init/SKILL.md)
+- review-issue-scenario: Add regression scenarios after issue review and fixes. (file: /Users/najongseong/git_repository/skills-registry/apple/review-issue-scenario/SKILL.md)
+- add-bug-fix-scenario: Add bug-fix regression scenarios while avoiding duplicates. (file: /Users/najongseong/git_repository/skills-registry/apple/review-issue-scenario/add-bug-fix-scenario/SKILL.md)
+- game_UI: UX-first game UI blueprint with logic/view separation and slot-based layout. (file: /Users/najongseong/git_repository/skills-registry/game_development/game_UI/SKILL.md)
+- game_UI_iteration: Controlled UI iteration while preserving architecture invariants. (file: /Users/najongseong/git_repository/skills-registry/game_development/game_UI_iteration/SKILL.md)
+- game_engine_design: Deterministic game engine design rules and boundaries. (file: /Users/najongseong/git_repository/skills-registry/game_development/game_engine_design/SKILL.md)
+- game_engine_iteration: Structured post-design engine evolution with traceability. (file: /Users/najongseong/git_repository/skills-registry/game_development/game_engine_iteration/SKILL.md)
+- game_planning: Core game planning workflow before implementation. (file: /Users/najongseong/git_repository/skills-registry/game_development/game_planning/SKILL.md)
+- test-agent-sync: Synchronize test agents when engine/rule/state contracts change. (file: /Users/najongseong/git_repository/skills-registry/game_development/test_agent_sync/SKILL.md)
+- project_logger: Record user requests and project progress in `project_progress.md`. (file: /Users/najongseong/git_repository/skills-registry/project_management/project_logger/SKILL.md)

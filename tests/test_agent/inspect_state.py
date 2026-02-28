@@ -46,6 +46,9 @@ def inspect_state(mode="cli"):
         print("\n" + "="*50)
         print("           GO-STOP GAME STATE INSPECTOR")
         print("="*50)
+        if mode == "cli":
+            print("[NOTE] CLI mode starts a fresh game snapshot, so recent events are usually only initial logs.")
+            print("[NOTE] Use --mode socket to inspect the ongoing simulator session/event history.")
         print(f"Game State: {state.get('gameState', 'N/A').upper()}")
         print(f"Deck Count: {state.get('deckCount', 0)}")
         moving_ids = state.get("currentMovingCardIds", [])

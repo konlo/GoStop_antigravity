@@ -38,10 +38,7 @@
 		912AAFDB854A8A756615D5D9 /* DebugEndgameSummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2494B7B2463310B5E13410E /* DebugEndgameSummaryView.swift */; };
 		9EAF94310537CBCB3CE79C2A /* LayoutContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08DC9353031FD0D4F7EDF917 /* LayoutContext.swift */; };
 		A8E8EE127772993DF00F279D /* LayoutConfigV2.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3085BB433FB735CFD683B342 /* LayoutConfigV2.swift */; };
-<<<<<<< HEAD
-=======
 		AADA26BC43DE51BC8A314E35 /* AnimationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0017E840D6A35A68D6AA71CC /* AnimationManager.swift */; };
->>>>>>> 011be49 (animation 효과 첫번쨰)
 		ABD95E004FE2778D4B2BFD78 /* AudioManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40A8AF9CA959E19695C3C65E /* AudioManager.swift */; };
 		ACBB19108BB2F7E1329AB3EA /* Card.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72B2E9B6CA4C4DB8CC0ED986 /* Card.swift */; };
 		B0DBC6BF9FCA8453CB3B0FE4 /* LayoutConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D0615E5D598D1F92B7FAF92 /* LayoutConfig.swift */; };
@@ -166,10 +163,7 @@
 		53C4E3404BDA3921EE5B0201 /* Core */ = {
 			isa = PBXGroup;
 			children = (
-<<<<<<< HEAD
-=======
 				0017E840D6A35A68D6AA71CC /* AnimationManager.swift */,
->>>>>>> 011be49 (animation 효과 첫번쨰)
 				40A8AF9CA959E19695C3C65E /* AudioManager.swift */,
 				2857725433426BA8E4DE2D7C /* ConfigManager.swift */,
 				116C189429DB2067520A3E08 /* GameManager.swift */,
@@ -368,10 +362,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-<<<<<<< HEAD
-=======
 				AADA26BC43DE51BC8A314E35 /* AnimationManager.swift in Sources */,
->>>>>>> 011be49 (animation 효과 첫번쨰)
 				ABD95E004FE2778D4B2BFD78 /* AudioManager.swift in Sources */,
 				ACBB19108BB2F7E1329AB3EA /* Card.swift in Sources */,
 				541288BE1C1519BE2B7AE083 /* ConfigManager.swift in Sources */,
@@ -403,10 +394,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-<<<<<<< HEAD
-=======
 				C902BEB18B4990C113F878A3 /* AnimationManager.swift in Sources */,
->>>>>>> 011be49 (animation 효과 첫번쨰)
 				2A99D27AFA716635BD8BC829 /* AudioManager.swift in Sources */,
 				B5EED1311F05C120AF7DA6E8 /* Card.swift in Sources */,
 				FF8FF5B2CD92C35D053EDDDB /* CardView.swift in Sources */,

@@ -4,7 +4,9 @@ class ConfigManager: ObservableObject {
     static let shared = ConfigManager()
     private static let layoutDebugEnvKey = "GOSTOP_LAYOUT_DEBUG"
     private static var layoutDebugEnabled: Bool {
-        ProcessInfo.processInfo.environment[layoutDebugEnvKey] == "1"
+        // Default ON for active UI debugging sessions.
+        // Set GOSTOP_LAYOUT_DEBUG=0 to force-disable.
+        ProcessInfo.processInfo.environment[layoutDebugEnvKey] != "0"
     }
     
     // V2 System
