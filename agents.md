@@ -116,6 +116,38 @@ python3 tests/test_agent/main.py
 python3 tests/test_agent/test_scenarios.py
 ```
 
+## 8. Skill Monitoring
+**"어떤 skill이 언제 쓰였는지 어떻게 남기는가?"**
+
+- **Log File**: `project_progress.md`
+- **Logging Unit**: One user request (one work turn) per entry.
+- **Timing Rule**:
+  - At work start: record `skills_planned`.
+  - At work end: record `skills_used` and result fields.
+- **Required Fields**:
+  - `timestamp`
+  - `user_request`
+  - `skills_planned`
+  - `skills_used`
+  - `trigger_reason`
+  - `files_touched`
+  - `validation`
+  - `outcome`
+- **No-Skill Case**: If no skill is used, explicitly record `skills_used: []`.
+- **Scope Rule**: Only log skills actually applied in that turn. Do not infer from repository history.
+
+### Skill Usage Entry Template
+
+```md
+### [YYYY-MM-DD HH:MM:SS KST] User Request: <request summary>
+- **Skills Planned**: ["<skill-name>"]
+- **Skills Used**: ["<skill-name>"]  # or []
+- **Trigger Reason**: "<why this skill was used>"
+- **Files Touched**: ["<path1>", "<path2>"]
+- **Validation**: "<what was checked>"
+- **Outcome**: "<final result>"
+```
+
 ## Skills
 A skill is a local instruction set in a `SKILL.md` file that can be triggered by name or by task intent.
 

@@ -139,7 +139,7 @@ class AnimationManager: ObservableObject {
             return HandToTableMotionPlan(animation: nil, delay: 0)
         }
     }
-    
+
     /// Helper to run a block with the configured animation
     func withGameAnimation(_ action: @escaping () -> Void) {
         withAnimation(moveAnimation) {

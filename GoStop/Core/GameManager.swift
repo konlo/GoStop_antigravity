@@ -62,6 +62,11 @@ class GameManager: ObservableObject {
     @Published var hiddenInTargetCardIds: Set<String> = []
     @Published var currentMoveSourceZone: String? = nil
     @Published var currentMoveTargetZone: String? = nil
+    @Published var capturedMoveSourcePlayerId: String? = nil
+    @Published var capturedMoveTargetPlayerId: String? = nil
+    @Published var penaltyMoveProgress: Double = 0
+    @Published var sourceCueCardIds: Set<String> = []
+    @Published var targetCueCardIds: Set<String> = []
     @Published var opponentPreplayRevealCardId: String? = nil
     @Published var movingCardsShowDebug: Bool = false
     @Published private(set) var pendingAutomationDelays: Int = 0
@@ -138,14 +143,23 @@ class GameManager: ObservableObject {
         return players[currentTurnIndex]
     }
 
-    private func setMoveContext(source: String, target: String) {
+    private func setMoveContext(
+        source: String,
+        target: String,
+        capturedSourcePlayerId: String? = nil,
+        capturedTargetPlayerId: String? = nil
+    ) {
         currentMoveSourceZone = source
         currentMoveTargetZone = target
+        self.capturedMoveSourcePlayerId = capturedSourcePlayerId
+        self.capturedMoveTargetPlayerId = capturedTargetPlayerId
     }
 
     private func clearMoveContext() {
         currentMoveSourceZone = nil
         currentMoveTargetZone = nil
+        capturedMoveSourcePlayerId = nil
+        capturedMoveTargetPlayerId = nil
     }
     
     init() {
@@ -219,12 +233,17 @@ class GameManager: ObservableObject {
         self.monthOwners = [:]
         self.seolsaMonths = [:]
         self.currentMovingCards = []
+        self.penaltyMoveProgress = 0
+        self.sourceCueCardIds = []
+        self.targetCueCardIds = []
         self.movingCardsScale = 1.0
         self.movingCardsPiCount = nil
         self.hiddenInSourceCardIds = []
         self.hiddenInTargetCardIds = []
         self.currentMoveSourceZone = nil
         self.currentMoveTargetZone = nil
+        self.capturedMoveSourcePlayerId = nil
+        self.capturedMoveTargetPlayerId = nil
         self.opponentPreplayRevealCardId = nil
         self.movingCardsShowDebug = false
         self.pendingAutomationDelays = 0
@@ -576,6 +595,7 @@ class GameManager: ObservableObject {
         }
 
         currentMovingCards = []
+        penaltyMoveProgress = 0
         for c in captured {
             hiddenInSourceCardIds.remove(c.id)
             hiddenInTargetCardIds.remove(c.id)
@@ -592,6 +612,7 @@ class GameManager: ObservableObject {
         }
 
         setMoveContext(source: "table", target: "captured")
+        showSourceCue(for: filtered, holdBeforeMove: false)
         let cardIds = filtered.map { $0.id }.joined(separator: ",")
         addUXEvent(type: "moveStart", data: ["cardIds": cardIds, "source": "table", "target": "captured"])
         takeSnapshot()
@@ -603,8 +624,14 @@ class GameManager: ObservableObject {
         runAfterAnimationDelay(moveDelay) {
             let cardIds = filtered.map { $0.id }.joined(separator: ",")
             self.addUXEvent(type: "moveEnd", data: ["cardIds": cardIds, "target": "captured"])
+            let captureCueHold = self.capturedTargetCueDuration
+            self.showTargetCue(for: filtered, durationOverride: captureCueHold)
             self.movingCardsPiCount = nil
-            self.clearMoveContext()
+            self.clearMoveContextAfterCue(
+                expectedSource: "table",
+                expectedTarget: "captured",
+                delayOverride: captureCueHold
+            )
             completion()
         }
     }
@@ -619,6 +646,7 @@ class GameManager: ObservableObject {
         let drawCaptured = turnDrawPhaseCaptured
 
         currentMovingCards = []
+        penaltyMoveProgress = 0
         if let drawnCard {
             hiddenInSourceCardIds.remove(drawnCard.id)
             hiddenInTargetCardIds.remove(drawnCard.id)
@@ -699,13 +727,15 @@ class GameManager: ObservableObject {
                         self.runAfterAnimationDelay(handToTableMotion.delay) {
                             
                             // Check capture logically
+                            self.addUXEvent(type: "moveEnd", data: ["cardId": pCard.id, "target": "table"])
+                            self.showTargetCue(for: [pCard])
+
                             if let captureResolution = self.performTableCaptureLogical(for: pCard, player: player) {
                                 let captured = captureResolution.captured
                                 let resultingTable = captureResolution.resultingTable
-                                self.addUXEvent(type: "moveEnd", data: ["cardId": pCard.id, "target": "table"])
                                 self.turnPlayPhaseCaptured = captured
                                 self.hiddenInTargetCardIds.remove(pCard.id)
-                                self.clearMoveContext()
+                                self.clearMoveContextAfterCue(expectedSource: "hand", expectedTarget: "table")
                                 
                                 if captured.isEmpty {
                                     self.tableCards = resultingTable
@@ -730,7 +760,7 @@ class GameManager: ObservableObject {
                             } else {
                                 // Choice needed
                                 self.hiddenInTargetCardIds.remove(pCard.id)
-                                self.clearMoveContext()
+                                self.clearMoveContextAfterCue(expectedSource: "hand", expectedTarget: "table")
                                 
                                 let options = self.tableCards.filter { $0.month == pCard.month && $0.id != pCard.id }
                                 self.pendingCapturePlayedCard = pCard
@@ -747,6 +777,7 @@ class GameManager: ObservableObject {
                             self.tableCards.append(pCard)
                             self.hiddenInTargetCardIds.insert(pCard.id) // Target is Table
                             self.setMoveContext(source: "hand", target: "table")
+                            self.showSourceCue(for: [pCard], holdBeforeMove: false)
                             
                             self.addUXEvent(type: "moveStart", data: ["cardId": pCard.id, "source": "hand", "target": "table"])
                             self.takeSnapshot()
@@ -754,15 +785,18 @@ class GameManager: ObservableObject {
                             withAnimation(moveAnimation) {
                                 player.hand.removeAll { $0.id == pCard.id }
                             }
+                            finalizeHandToTable()
                         } else {
-                            // Instant mode: remove from hand and place on table immediately (no in-between flight).
-                            player.hand.removeAll { $0.id == pCard.id }
-                            self.tableCards.append(pCard)
-                            self.addUXEvent(type: "moveStart", data: ["cardId": pCard.id, "source": "hand", "target": "table"])
-                            self.takeSnapshot()
+                            // Instant mode: briefly cue selected card before instant relocation.
+                            self.setMoveContext(source: "hand", target: "table")
+                            self.showSourceCue(for: [pCard], holdBeforeMove: true) {
+                                player.hand.removeAll { $0.id == pCard.id }
+                                self.tableCards.append(pCard)
+                                self.addUXEvent(type: "moveStart", data: ["cardId": pCard.id, "source": "hand", "target": "table"])
+                                self.takeSnapshot()
+                                finalizeHandToTable()
+                            }
                         }
-                        
-                        finalizeHandToTable()
                     }
                     
                     // Briefly reveal the opponent's selected card before throw for readability.
@@ -805,10 +839,13 @@ class GameManager: ObservableObject {
 
         // Bomb captures bypass the animated capture path, so commit them immediately.
         let committedBombCaptures = turnPlayPhaseCaptured.filter { !($0.month == .sep && $0.type == .animal) }
+        let deferredBombCaptures = turnPlayPhaseCaptured.filter { $0.month == .sep && $0.type == .animal }
         if !committedBombCaptures.isEmpty {
             player.capture(cards: committedBombCaptures)
             player.score = ScoringSystem.calculateScore(for: player)
         }
+        // Keep deferred special cards (e.g., Chrysanthemum) so finalizeTurnState can open role choice.
+        turnPlayPhaseCaptured = deferredBombCaptures
         
         proceedToDrawPhase(player: player, rules: rules)
     }
@@ -842,6 +879,7 @@ class GameManager: ObservableObject {
             self.hiddenInSourceCardIds.insert(drawnCard.id)
             self.hiddenInTargetCardIds.insert(drawnCard.id)
             self.setMoveContext(source: "deck", target: "table")
+            self.showSourceCue(for: [drawnCard], holdBeforeMove: false)
 
             self.addUXEvent(type: "moveStart", data: ["cardId": drawnCard.id, "source": "deck", "target": "table"])
             self.takeSnapshot()
@@ -858,9 +896,11 @@ class GameManager: ObservableObject {
             self.runAfterAnimationDelay(moveDelay) {
                 self.addUXEvent(type: "moveEnd", data: ["cardId": drawnCard.id, "target": "table"])
                 self.currentMovingCards = []
+                self.penaltyMoveProgress = 0
                 self.hiddenInSourceCardIds.remove(drawnCard.id)
                 self.hiddenInTargetCardIds.remove(drawnCard.id)
-                self.clearMoveContext()
+                self.showTargetCue(for: [drawnCard])
+                self.clearMoveContextAfterCue(expectedSource: "deck", expectedTarget: "table")
 
                 let sameMonthInLogicalTable = logicalTableBeforeDraw.filter { $0.month == drawnCard.month }
                 let isSeolsa = self.turnPlayPhaseCaptured.count == 2 &&
@@ -1152,12 +1192,95 @@ class GameManager: ObservableObject {
         self.automationDelayGeneration += 1
         self.pendingAutomationDelays = 0
         self.currentMovingCards = []
+        self.penaltyMoveProgress = 0
+        self.sourceCueCardIds = []
+        self.targetCueCardIds = []
         self.hiddenInSourceCardIds = []
         self.hiddenInTargetCardIds = []
         self.clearMoveContext()
         self.opponentPreplayRevealCardId = nil
         self.internalComputerActionScheduled = false
         gLog("Emergency Busy State Reset triggered via SimulatorBridge.")
+    }
+
+    private var moveCueDuration: Double {
+        let base = AnimationManager.shared.config.match_pause_duration
+        guard base > 0 else { return 0 }
+        return max(0.08, min(0.14, base * 0.4))
+    }
+
+    private var capturedTargetCueDuration: Double {
+        max(moveCueDuration, 0.20)
+    }
+
+    private func runCueDelay(_ delay: Double, generation: Int, _ block: @escaping () -> Void) {
+        if delay <= 0 {
+            block()
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self = self, self.automationDelayGeneration == generation else { return }
+            block()
+        }
+    }
+
+    private func showSourceCue(for cards: [Card], holdBeforeMove: Bool, completion: @escaping () -> Void = {}) {
+        let ids = Set(cards.map { $0.id })
+        guard !ids.isEmpty else {
+            completion()
+            return
+        }
+        let generation = automationDelayGeneration
+        sourceCueCardIds.formUnion(ids)
+
+        if holdBeforeMove {
+            runCueDelay(moveCueDuration, generation: generation) { [weak self] in
+                guard let self = self else { return }
+                self.sourceCueCardIds.subtract(ids)
+                completion()
+            }
+        } else {
+            completion()
+            runCueDelay(moveCueDuration, generation: generation) { [weak self] in
+                self?.sourceCueCardIds.subtract(ids)
+            }
+        }
+    }
+
+    private func showTargetCue(for cards: [Card], durationOverride: Double? = nil) {
+        let ids = Set(cards.map { $0.id })
+        guard !ids.isEmpty else { return }
+        let generation = automationDelayGeneration
+        let holdDuration = max(0, durationOverride ?? moveCueDuration)
+        targetCueCardIds.formUnion(ids)
+        runCueDelay(holdDuration, generation: generation) { [weak self] in
+            self?.targetCueCardIds.subtract(ids)
+        }
+    }
+
+    private func clearMoveContextAfterCue(
+        expectedSource: String,
+        expectedTarget: String,
+        expectedCapturedSourcePlayerId: String? = nil,
+        expectedCapturedTargetPlayerId: String? = nil,
+        delayOverride: Double? = nil
+    ) {
+        let generation = automationDelayGeneration
+        let holdDuration = max(0, delayOverride ?? moveCueDuration)
+        runCueDelay(holdDuration, generation: generation) { [weak self] in
+            guard let self = self else { return }
+            guard self.currentMoveSourceZone == expectedSource,
+                  self.currentMoveTargetZone == expectedTarget,
+                  self.capturedMoveSourcePlayerId == expectedCapturedSourcePlayerId,
+                  self.capturedMoveTargetPlayerId == expectedCapturedTargetPlayerId else { return }
+
+            // If another motion has started, keep the latest context.
+            guard self.currentMovingCards.isEmpty,
+                  self.hiddenInSourceCardIds.isEmpty,
+                  self.hiddenInTargetCardIds.isEmpty else { return }
+
+            self.clearMoveContext()
+        }
     }
     
     private func maybeScheduleInternalComputerAction() {
@@ -1340,33 +1463,124 @@ class GameManager: ObservableObject {
         }
     }
     
-    private func stealPi(from: Player, to: Player, count: Int, reason: String = "") {
-        guard RuleLoader.shared.config != nil else { return }
-        var stolenCount = 0
-        var stolenCards: [String] = []
-        for _ in 0..<count {
-            if let piToSteal = from.capturedCards.first(where: { $0.type == .junk }) {
-                if let index = from.capturedCards.firstIndex(of: piToSteal) {
-                    from.capturedCards.remove(at: index)
-                    to.capturedCards.append(piToSteal)
-                    stolenCards.append("\(piToSteal.month.rawValue)월 피")
-                    stolenCount += 1
+    private func animatePenaltyPiTransfer(cards: [Card], from: Player, to: Player, reason: String) {
+        guard !cards.isEmpty else { return }
+
+        let sourcePlayerId = from.id.uuidString
+        let targetPlayerId = to.id.uuidString
+        let cardIds = cards.map { $0.id }
+        let cardIdSet = Set(cardIds)
+        let cardIdsJoined = cardIds.joined(separator: ",")
+        let motion = AnimationManager.shared.handToTableMotionPlan()
+
+        // Match hand->table flow: mount hidden target first, then animate source removal.
+        for movedCard in cards {
+            if !to.capturedCards.contains(where: { $0.id == movedCard.id }) {
+                to.capturedCards.append(movedCard)
+            }
+            hiddenInTargetCardIds.insert(movedCard.id)
+            hiddenInSourceCardIds.remove(movedCard.id)
+        }
+        currentMovingCards = []
+        movingCardsScale = 0.86
+        movingCardsPiCount = nil
+        movingCardsShowDebug = false
+        penaltyMoveProgress = 0
+
+        setMoveContext(
+            source: "captured",
+            target: "captured",
+            capturedSourcePlayerId: sourcePlayerId,
+            capturedTargetPlayerId: targetPlayerId
+        )
+
+        let performTransfer: () -> Void = {
+            self.addUXEvent(
+                type: "moveStart",
+                data: [
+                    "cardIds": cardIdsJoined,
+                    "source": "captured",
+                    "target": "captured",
+                    "sourcePlayerId": sourcePlayerId,
+                    "targetPlayerId": targetPlayerId,
+                    "reason": reason
+                ]
+            )
+            self.takeSnapshot()
+
+            if let moveAnimation = motion.animation {
+                withAnimation(moveAnimation) {
+                    from.capturedCards.removeAll { cardIdSet.contains($0.id) }
                 }
-            } else if let doublePiToSteal = from.capturedCards.first(where: { $0.type == .doubleJunk }) {
-                if let index = from.capturedCards.firstIndex(of: doublePiToSteal) {
-                    from.capturedCards.remove(at: index)
-                    to.capturedCards.append(doublePiToSteal)
-                    stolenCards.append("\(doublePiToSteal.month.rawValue)월 쌍피")
-                    stolenCount += 1
+            } else {
+                from.capturedCards.removeAll { cardIdSet.contains($0.id) }
+            }
+
+            self.runAfterAnimationDelay(motion.delay) {
+                self.addUXEvent(
+                    type: "moveEnd",
+                    data: [
+                        "cardIds": cardIdsJoined,
+                        "source": "captured",
+                        "target": "captured",
+                        "sourcePlayerId": sourcePlayerId,
+                        "targetPlayerId": targetPlayerId,
+                        "reason": reason
+                    ]
+                )
+                for id in cardIds {
+                    self.hiddenInSourceCardIds.remove(id)
+                    self.hiddenInTargetCardIds.remove(id)
                 }
+                self.showTargetCue(for: cards)
+                self.currentMovingCards = []
+                self.penaltyMoveProgress = 0
+                self.clearMoveContextAfterCue(
+                    expectedSource: "captured",
+                    expectedTarget: "captured",
+                    expectedCapturedSourcePlayerId: sourcePlayerId,
+                    expectedCapturedTargetPlayerId: targetPlayerId
+                )
+                self.takeSnapshot()
             }
         }
-        if stolenCount > 0 {
+
+        if motion.animation == nil {
+            showSourceCue(for: cards, holdBeforeMove: true) {
+                performTransfer()
+            }
+        } else {
+            showSourceCue(for: cards, holdBeforeMove: false)
+            performTransfer()
+        }
+    }
+
+    private func stealPi(from: Player, to: Player, count: Int, reason: String = "") {
+        guard RuleLoader.shared.config != nil else { return }
+
+        var selectedCardIds: Set<String> = []
+        var selectedCards: [Card] = []
+
+        for _ in 0..<count {
+            if let piCard = from.capturedCards.last(where: { $0.type == .junk && !selectedCardIds.contains($0.id) }) {
+                selectedCardIds.insert(piCard.id)
+                selectedCards.append(piCard)
+            } else if let doublePiCard = from.capturedCards.last(where: { $0.type == .doubleJunk && !selectedCardIds.contains($0.id) }) {
+                selectedCardIds.insert(doublePiCard.id)
+                selectedCards.append(doublePiCard)
+            }
+        }
+
+        if !selectedCards.isEmpty {
+            animatePenaltyPiTransfer(cards: selectedCards, from: from, to: to, reason: reason)
             from.score = ScoringSystem.calculateScore(for: from)
             to.score = ScoringSystem.calculateScore(for: to)
-            let cardList = stolenCards.joined(separator: ", ")
+            let stolenCardsText = selectedCards.map { card in
+                let typeText = card.type == .doubleJunk ? "쌍피" : "피"
+                return "\(card.month.rawValue)월 \(typeText)"
+            }.joined(separator: ", ")
             let reasonStr = reason.isEmpty ? "" : " [\(reason)]"
-            gLog("피 이동\(reasonStr): \(from.name) → \(to.name) | \(cardList) (\(stolenCount)장)")
+            gLog("피 이동\(reasonStr): \(from.name) → \(to.name) | \(stolenCardsText) (\(selectedCards.count)장)")
         } else {
             let reasonStr = reason.isEmpty ? "" : " [\(reason)]"
             gLog("피 이동 실패\(reasonStr): \(from.name) 에게 피가 없음")
@@ -1407,7 +1621,14 @@ extension GameManager {
         state["currentMovingCardIds"] = AnyCodable(currentMovingCards.map { $0.id })
         state["hiddenInSourceCardIds"] = AnyCodable(Array(hiddenInSourceCardIds).sorted())
         state["hiddenInTargetCardIds"] = AnyCodable(Array(hiddenInTargetCardIds).sorted())
-        state["opponentPreplayRevealCardId"] = AnyCodable(opponentPreplayRevealCardId)
+        state["sourceCueCardIds"] = AnyCodable(Array(sourceCueCardIds).sorted())
+        state["targetCueCardIds"] = AnyCodable(Array(targetCueCardIds).sorted())
+        state["currentMoveSourceZone"] = AnyCodable(currentMoveSourceZone as Any)
+        state["currentMoveTargetZone"] = AnyCodable(currentMoveTargetZone as Any)
+        state["penaltyMoveProgress"] = AnyCodable(penaltyMoveProgress)
+        state["capturedMoveSourcePlayerId"] = AnyCodable(capturedMoveSourcePlayerId as Any)
+        state["capturedMoveTargetPlayerId"] = AnyCodable(capturedMoveTargetPlayerId as Any)
+        state["opponentPreplayRevealCardId"] = AnyCodable(opponentPreplayRevealCardId as Any)
         state["players"] = AnyCodable(players.map { player in
             var playerDict = player.serialize()
             playerDict["scoreItems"] = AnyCodable(ScoringSystem.calculateScoreDetail(for: player))

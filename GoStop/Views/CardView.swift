@@ -8,6 +8,9 @@ struct CardView: View {
     var isSource: Bool = true
     var piCount: Int? = nil
     var showDebugInfo: Bool = false
+    var isMoveSourceCue: Bool = false
+    var isMoveTargetCue: Bool = false
+    var isCapturedAreaCard: Bool = false
     @ObservedObject var config = ConfigManager.shared
     
     var body: some View {
@@ -40,6 +43,22 @@ struct CardView: View {
                 return ctx.scaledTokens.cardShadowY * scale
             }
             return 0
+        }()
+        
+        let cueActive = isMoveSourceCue || isMoveTargetCue
+        let isCapturedTargetCue = isCapturedAreaCard && isMoveTargetCue && !isMoveSourceCue
+        let cueColor: Color = isMoveSourceCue ? .yellow : (isCapturedTargetCue ? .orange : .white)
+        let cueScale: CGFloat = isMoveSourceCue ? 1.06 : (isCapturedTargetCue ? 1.07 : (isMoveTargetCue ? 1.03 : 1.0))
+        let cueLineWidth: CGFloat = {
+            guard cueActive else { return 0 }
+            if isCapturedTargetCue { return max(2.8, 4.2 * scale) }
+            return max(2, 3 * scale)
+        }()
+        let cueGlowOpacity: Double = cueActive ? (isCapturedTargetCue ? 0.95 : 0.75) : 0
+        let cueGlowRadius: CGFloat = {
+            guard cueActive else { return 0 }
+            if isCapturedTargetCue { return max(10, 16 * scale) }
+            return max(6, 10 * scale)
         }()
         
         ZStack {
@@ -79,6 +98,14 @@ struct CardView: View {
         .background(config.layout.card.backColorSwiftUI) // Ensure background fills
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
         .shadow(color: Color.black.opacity(shadowOpacity), radius: shadowRadius, x: 0, y: shadowY)
+        .overlay(
+            RoundedRectangle(cornerRadius: cornerRadius)
+                .stroke(cueColor.opacity(cueActive ? 0.98 : 0.0), lineWidth: cueLineWidth)
+        )
+        .scaleEffect(cueScale)
+        .shadow(color: cueColor.opacity(cueGlowOpacity), radius: cueGlowRadius, x: 0, y: 0)
+        .animation(.easeOut(duration: 0.09), value: isMoveSourceCue)
+        .animation(.easeOut(duration: 0.09), value: isMoveTargetCue)
         .ifLet(animationNamespace) { view, ns in
             view.matchedGeometryEffect(id: card.id, in: ns, isSource: isSource)
         }

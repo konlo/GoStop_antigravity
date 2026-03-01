@@ -88,6 +88,15 @@ struct GameView: View {
 
     @ViewBuilder
     private func gameAreas(ctx: LayoutContext, safeArea: EdgeInsets) -> some View {
+        let isCapturedTransfer =
+            gameManager.currentMoveSourceZone == "captured" &&
+            gameManager.currentMoveTargetZone == "captured"
+        let sourceOwnerId = gameManager.capturedMoveSourcePlayerId
+        let playerOwnerId = gameManager.players.first?.id.uuidString
+        let opponentOwnerId = gameManager.players.count > 1 ? gameManager.players[1].id.uuidString : nil
+        let opponentZ: Double = isCapturedTransfer && sourceOwnerId == opponentOwnerId ? 6 : 2
+        let playerZ: Double = isCapturedTransfer && sourceOwnerId == playerOwnerId ? 6 : 3
+
         // 0. Setting Area
         if let settingFrame = ctx.areaFrames[.setting], settingFrame.height > 0 {
             SettingAreaV2(
@@ -104,11 +113,19 @@ struct GameView: View {
         
         // 1. Opponent Area
         let opponentFrame = ctx.frame(for: .opponent)
-        OpponentAreaV2(ctx: ctx, animationNamespace: cardAnimationNamespace, gameManager: gameManager)
-            .frame(width: opponentFrame.width, height: opponentFrame.height)
-            .clipped()
-            .position(x: safeArea.leading + opponentFrame.midX, y: safeArea.top + opponentFrame.midY)
-            .zIndex(2)
+        if isCapturedTransfer {
+            // Allow cross-area penalty card travel to remain visible end-to-end.
+            OpponentAreaV2(ctx: ctx, animationNamespace: cardAnimationNamespace, gameManager: gameManager)
+                .frame(width: opponentFrame.width, height: opponentFrame.height)
+                .position(x: safeArea.leading + opponentFrame.midX, y: safeArea.top + opponentFrame.midY)
+                .zIndex(opponentZ)
+        } else {
+            OpponentAreaV2(ctx: ctx, animationNamespace: cardAnimationNamespace, gameManager: gameManager)
+                .frame(width: opponentFrame.width, height: opponentFrame.height)
+                .clipped()
+                .position(x: safeArea.leading + opponentFrame.midX, y: safeArea.top + opponentFrame.midY)
+                .zIndex(opponentZ)
+        }
         
         // 2. Center Area
         let centerFrame = ctx.frame(for: .center)
@@ -120,11 +137,18 @@ struct GameView: View {
         
         // 3. Player Area
         let playerFrame = ctx.frame(for: .player)
-        PlayerAreaV2(ctx: ctx, animationNamespace: cardAnimationNamespace, gameManager: gameManager, slotManager: playerHandSlotManager)
-            .frame(width: playerFrame.width, height: playerFrame.height)
-            .clipped()
-            .position(x: safeArea.leading + playerFrame.midX, y: safeArea.top + playerFrame.midY)
-            .zIndex(3)
+        if isCapturedTransfer {
+            PlayerAreaV2(ctx: ctx, animationNamespace: cardAnimationNamespace, gameManager: gameManager, slotManager: playerHandSlotManager)
+                .frame(width: playerFrame.width, height: playerFrame.height)
+                .position(x: safeArea.leading + playerFrame.midX, y: safeArea.top + playerFrame.midY)
+                .zIndex(playerZ)
+        } else {
+            PlayerAreaV2(ctx: ctx, animationNamespace: cardAnimationNamespace, gameManager: gameManager, slotManager: playerHandSlotManager)
+                .frame(width: playerFrame.width, height: playerFrame.height)
+                .clipped()
+                .position(x: safeArea.leading + playerFrame.midX, y: safeArea.top + playerFrame.midY)
+                .zIndex(playerZ)
+        }
     }
 
     private func onAppearAction() {
@@ -643,19 +667,77 @@ struct EventLogView: View {
 extension GameView {
     @ViewBuilder
     private func movingCardOverlay(safeArea: EdgeInsets) -> some View {
-        ZStack {
-            ForEach(gameManager.currentMovingCards) { card in
-                CardView(
-                    card: card,
-                    isFaceUp: true,
-                    scale: gameManager.movingCardsScale,
-                    animationNamespace: cardAnimationNamespace,
-                    isSource: false,
-                    piCount: gameManager.movingCardsPiCount,
-                    showDebugInfo: gameManager.movingCardsShowDebug
-                )
-                .transition(.identity)
+        if gameManager.currentMoveSourceZone == "captured",
+           gameManager.currentMoveTargetZone == "captured",
+           let sourceId = gameManager.capturedMoveSourcePlayerId,
+           let targetId = gameManager.capturedMoveTargetPlayerId,
+           let sourcePoint = capturedAnchorPoint(for: sourceId, safeArea: safeArea),
+           let targetPoint = capturedAnchorPoint(for: targetId, safeArea: safeArea) {
+            let p = max(0, min(1, gameManager.penaltyMoveProgress))
+            let x = sourcePoint.x + (targetPoint.x - sourcePoint.x) * p
+            let y = sourcePoint.y + (targetPoint.y - sourcePoint.y) * p
+
+            ZStack {
+                ForEach(gameManager.currentMovingCards) { card in
+                    CardView(
+                        card: card,
+                        isFaceUp: true,
+                        scale: gameManager.movingCardsScale,
+                        animationNamespace: nil,
+                        isSource: false,
+                        piCount: gameManager.movingCardsPiCount,
+                        showDebugInfo: gameManager.movingCardsShowDebug
+                    )
+                    .transition(.identity)
+                }
+            }
+            .position(x: x, y: y)
+        } else {
+            ZStack {
+                ForEach(gameManager.currentMovingCards) { card in
+                    CardView(
+                        card: card,
+                        isFaceUp: true,
+                        scale: gameManager.movingCardsScale,
+                        animationNamespace: cardAnimationNamespace,
+                        isSource: false,
+                        piCount: gameManager.movingCardsPiCount,
+                        showDebugInfo: gameManager.movingCardsShowDebug
+                    )
+                    .transition(.identity)
+                }
             }
         }
+    }
+
+    private func capturedAnchorPoint(for ownerId: String, safeArea: EdgeInsets) -> CGPoint? {
+        guard let ctx = config.layoutContext else { return nil }
+
+        if let player = gameManager.players.first, player.id.uuidString == ownerId {
+            let frame = ctx.frame(for: .player)
+            let capConfig = ctx.config.areas.player.elements.captured
+            return CGPoint(
+                x: safeArea.leading + frame.minX + frame.width * capConfig.x,
+                y: safeArea.top + frame.minY + frame.height * capConfig.y
+            )
+        }
+
+        if gameManager.players.count > 1, gameManager.players[1].id.uuidString == ownerId {
+            let frame = ctx.frame(for: .opponent)
+            let capConfig = ctx.config.areas.opponent.elements.captured
+            let cardHeight = ctx.cardSize.height * capConfig.scale
+            let desiredY = frame.height * capConfig.y
+            let halfHeight = cardHeight / 2.0
+            let padding = ctx.scaledTokens.panelPadding
+            let maxY = frame.height - halfHeight - (padding / 2)
+            let finalY = min(desiredY, maxY)
+
+            return CGPoint(
+                x: safeArea.leading + frame.minX + frame.width * capConfig.x,
+                y: safeArea.top + frame.minY + finalY
+            )
+        }
+
+        return nil
     }
 }
