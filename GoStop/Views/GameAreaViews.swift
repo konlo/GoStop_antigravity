@@ -445,9 +445,10 @@ struct CapturedAreaV2: View {
         let overlapRatio = layoutConfig.cardOverlapRatio
         // Negative spacing for overlap
         let startSpacing = -cardW * overlapRatio
-        let isCapturedToCaptured = gameManager.currentMoveSourceZone == "captured" && gameManager.currentMoveTargetZone == "captured"
-        let capturedActsAsTarget = gameManager.currentMoveTargetZone == "captured" && (!isCapturedToCaptured || gameManager.capturedMoveTargetPlayerId == ownerPlayerId)
-        let capturedActsAsSource = gameManager.currentMoveSourceZone == "captured" && (!isCapturedToCaptured || gameManager.capturedMoveSourcePlayerId == ownerPlayerId)
+        let targetOwnerId = gameManager.capturedMoveTargetPlayerId
+        let sourceOwnerId = gameManager.capturedMoveSourcePlayerId
+        let capturedActsAsTarget = gameManager.currentMoveTargetZone == "captured" && (targetOwnerId == nil || targetOwnerId == ownerPlayerId)
+        let capturedActsAsSource = gameManager.currentMoveSourceZone == "captured" && (sourceOwnerId == nil || sourceOwnerId == ownerPlayerId)
         
         return ScrollView(.horizontal, showsIndicators: false) {
              HStack(spacing: startSpacing) {
@@ -455,7 +456,8 @@ struct CapturedAreaV2: View {
                      let sourceContains = capturedActsAsSource && gameManager.hiddenInSourceCardIds.contains(card.id)
                      let targetContains = capturedActsAsTarget && gameManager.hiddenInTargetCardIds.contains(card.id)
                      let hideTargetCard = targetContains
-                     let targetHiddenOpacity: Double = isCapturedToCaptured ? 0.01 : 0.0
+                     // Keep a tiny visible target anchor so matched-geometry can preserve trajectory.
+                     let targetHiddenOpacity: Double = 0.01
                      let opacity: Double = sourceContains ? 0.0 : (hideTargetCard ? targetHiddenOpacity : 1.0)
                      let isTarget = targetContains
                      let isSourceCue = capturedActsAsSource && gameManager.sourceCueCardIds.contains(card.id)
@@ -624,13 +626,15 @@ struct CapturedGroupSlotView: View {
                         return nil
                     }()
                     
-                    let isCapturedToCaptured = gameManager.currentMoveSourceZone == "captured" && gameManager.currentMoveTargetZone == "captured"
-                    let capturedActsAsTarget = gameManager.currentMoveTargetZone == "captured" && (!isCapturedToCaptured || gameManager.capturedMoveTargetPlayerId == ownerPlayerId)
-                    let capturedActsAsSource = gameManager.currentMoveSourceZone == "captured" && (!isCapturedToCaptured || gameManager.capturedMoveSourcePlayerId == ownerPlayerId)
+                    let targetOwnerId = gameManager.capturedMoveTargetPlayerId
+                    let sourceOwnerId = gameManager.capturedMoveSourcePlayerId
+                    let capturedActsAsTarget = gameManager.currentMoveTargetZone == "captured" && (targetOwnerId == nil || targetOwnerId == ownerPlayerId)
+                    let capturedActsAsSource = gameManager.currentMoveSourceZone == "captured" && (sourceOwnerId == nil || sourceOwnerId == ownerPlayerId)
                     let sourceContains = capturedActsAsSource && gameManager.hiddenInSourceCardIds.contains(card.id)
                     let targetContains = capturedActsAsTarget && gameManager.hiddenInTargetCardIds.contains(card.id)
                     let hideTargetCard = targetContains
-                    let targetHiddenOpacity: Double = isCapturedToCaptured ? 0.01 : 0.0
+                    // Keep a tiny visible target anchor so matched-geometry can preserve trajectory.
+                    let targetHiddenOpacity: Double = 0.01
                     let opacity: Double = sourceContains ? 0.0 : (hideTargetCard ? targetHiddenOpacity : 1.0)
                     let isTarget = targetContains
                     let isSourceCue = capturedActsAsSource && gameManager.sourceCueCardIds.contains(card.id)
@@ -679,6 +683,8 @@ struct TableAreaV2: View {
         let tableActsAsSource = gameManager.currentMoveSourceZone == "table"
         let tableActsAsTarget = gameManager.currentMoveTargetZone == "table"
         let hideTableTarget = tableActsAsTarget && gameManager.currentMoveSourceZone == "deck"
+        let tableToCapturedSourceCueScale: CGFloat = (gameManager.currentMoveSourceZone == "table" && gameManager.currentMoveTargetZone == "captured") ? 1.0 : 1.06
+        let deckToTableTargetCueScale: CGFloat = (gameManager.currentMoveSourceZone == "deck" && gameManager.currentMoveTargetZone == "table") ? 1.0 : 1.03
         
         let cardW = ctx.cardSize.width * config.scale
         let cardH = ctx.cardSize.height * config.scale
@@ -699,7 +705,7 @@ struct TableAreaV2: View {
                         let isTarget = tableActsAsTarget && gameManager.hiddenInTargetCardIds.contains(card.id)
                         let isSourceCue = tableActsAsSource && gameManager.sourceCueCardIds.contains(card.id)
                         let isTargetCue = tableActsAsTarget && gameManager.targetCueCardIds.contains(card.id)
-                        CardView(card: card, isFaceUp: true, scale: config.scale, animationNamespace: animationNamespace, isSource: !isTarget, isMoveSourceCue: isSourceCue, isMoveTargetCue: isTargetCue)
+                        CardView(card: card, isFaceUp: true, scale: config.scale, animationNamespace: animationNamespace, isSource: !isTarget, isMoveSourceCue: isSourceCue, isMoveTargetCue: isTargetCue, sourceCueScaleMultiplier: tableToCapturedSourceCueScale, targetCueScaleMultiplier: deckToTableTargetCueScale)
                             .offset(y: CGFloat(i) * (cardH * (1.0 - config.grid.stackOverlapRatio))) 
                             .opacity(isHidden ? 0 : 1)
                     }
@@ -724,6 +730,8 @@ struct TableFixedSlotsView: View {
         let tableActsAsSource = gameManager.currentMoveSourceZone == "table"
         let tableActsAsTarget = gameManager.currentMoveTargetZone == "table"
         let hideTableTarget = tableActsAsTarget && gameManager.currentMoveSourceZone == "deck"
+        let tableToCapturedSourceCueScale: CGFloat = (gameManager.currentMoveSourceZone == "table" && gameManager.currentMoveTargetZone == "captured") ? 1.0 : 1.06
+        let deckToTableTargetCueScale: CGFloat = (gameManager.currentMoveSourceZone == "deck" && gameManager.currentMoveTargetZone == "table") ? 1.0 : 1.03
         
         ZStack {
              if let fixedSlots = config.fixedSlots {
@@ -761,7 +769,7 @@ struct TableFixedSlotsView: View {
                                       let isTarget = tableActsAsTarget && gameManager.hiddenInTargetCardIds.contains(card.id)
                                       let isSourceCue = tableActsAsSource && gameManager.sourceCueCardIds.contains(card.id)
                                       let isTargetCue = tableActsAsTarget && gameManager.targetCueCardIds.contains(card.id)
-                                      CardView(card: card, isFaceUp: true, scale: config.scale, animationNamespace: animationNamespace, isSource: !isTarget, showDebugInfo: ctx.config.debug.player?.sortedOrderOverlay == true, isMoveSourceCue: isSourceCue, isMoveTargetCue: isTargetCue)
+                                      CardView(card: card, isFaceUp: true, scale: config.scale, animationNamespace: animationNamespace, isSource: !isTarget, showDebugInfo: ctx.config.debug.player?.sortedOrderOverlay == true, isMoveSourceCue: isSourceCue, isMoveTargetCue: isTargetCue, sourceCueScaleMultiplier: tableToCapturedSourceCueScale, targetCueScaleMultiplier: deckToTableTargetCueScale)
                                           .offset(x: xOff, y: yOff)
                                           .zIndex(Double(i))
                                           .opacity(isHidden ? 0 : 1)
@@ -868,7 +876,8 @@ struct DeckAreaV2: View {
                     let deckActsAsTarget = gameManager.currentMoveTargetZone == "deck"
                     let isSourceCue = deckActsAsSource && gameManager.sourceCueCardIds.contains(topCard.id)
                     let isTargetCue = deckActsAsTarget && gameManager.targetCueCardIds.contains(topCard.id)
-                    CardView(card: topCard, isFaceUp: false, scale: config.scale, animationNamespace: animationNamespace, isMoveSourceCue: isSourceCue, isMoveTargetCue: isTargetCue)
+                    let deckToTableSourceCueScale: CGFloat = (gameManager.currentMoveSourceZone == "deck" && gameManager.currentMoveTargetZone == "table") ? 1.0 : 1.06
+                    CardView(card: topCard, isFaceUp: false, scale: config.scale, animationNamespace: animationNamespace, isMoveSourceCue: isSourceCue, isMoveTargetCue: isTargetCue, sourceCueScaleMultiplier: deckToTableSourceCueScale)
                         .offset(x: CGFloat(min(5, deckCount - 1)) * 0.5, y: CGFloat(min(5, deckCount - 1)) * 0.5)
                         .opacity((gameManager.currentMovingCards.contains(where: { $0.id == topCard.id }) || gameManager.hiddenInSourceCardIds.contains(topCard.id)) ? 0 : 1)
                 }

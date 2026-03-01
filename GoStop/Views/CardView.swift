@@ -11,6 +11,8 @@ struct CardView: View {
     var isMoveSourceCue: Bool = false
     var isMoveTargetCue: Bool = false
     var isCapturedAreaCard: Bool = false
+    var sourceCueScaleMultiplier: CGFloat = 1.06
+    var targetCueScaleMultiplier: CGFloat = 1.03
     @ObservedObject var config = ConfigManager.shared
     
     var body: some View {
@@ -48,7 +50,7 @@ struct CardView: View {
         let cueActive = isMoveSourceCue || isMoveTargetCue
         let isCapturedTargetCue = isCapturedAreaCard && isMoveTargetCue && !isMoveSourceCue
         let cueColor: Color = isMoveSourceCue ? .yellow : (isCapturedTargetCue ? .orange : .white)
-        let cueScale: CGFloat = isMoveSourceCue ? 1.06 : (isCapturedTargetCue ? 1.07 : (isMoveTargetCue ? 1.03 : 1.0))
+        let cueScale: CGFloat = isMoveSourceCue ? sourceCueScaleMultiplier : (isCapturedTargetCue ? 1.07 : (isMoveTargetCue ? targetCueScaleMultiplier : 1.0))
         let cueLineWidth: CGFloat = {
             guard cueActive else { return 0 }
             if isCapturedTargetCue { return max(2.8, 4.2 * scale) }

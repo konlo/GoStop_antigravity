@@ -588,17 +588,17 @@ class GameManager: ObservableObject {
         let moveDelay = AnimationManager.shared.config.card_move_duration
         let capturedIds = Set(captured.map { $0.id })
         let filtered = captured.filter { !($0.month == .sep && $0.type == .animal) }
-
-        if !filtered.isEmpty {
-            player.capture(cards: filtered)
-            player.score = ScoringSystem.calculateScore(for: player)
-        }
+        let filteredIds = Set(filtered.map { $0.id })
 
         currentMovingCards = []
         penaltyMoveProgress = 0
         for c in captured {
             hiddenInSourceCardIds.remove(c.id)
             hiddenInTargetCardIds.remove(c.id)
+        }
+        // Keep captured target cards hidden until the table->captured move reaches arrival.
+        for c in filtered {
+            hiddenInTargetCardIds.insert(c.id)
         }
 
         if filtered.isEmpty {
@@ -611,7 +611,17 @@ class GameManager: ObservableObject {
             return
         }
 
-        setMoveContext(source: "table", target: "captured")
+        let targetPlayerId = player.id.uuidString
+        setMoveContext(
+            source: "table",
+            target: "captured",
+            capturedTargetPlayerId: targetPlayerId
+        )
+        if !filtered.isEmpty {
+            // Mount target hidden under the correct move context so it never flashes visible.
+            player.capture(cards: filtered)
+            player.score = ScoringSystem.calculateScore(for: player)
+        }
         showSourceCue(for: filtered, holdBeforeMove: false)
         let cardIds = filtered.map { $0.id }.joined(separator: ",")
         addUXEvent(type: "moveStart", data: ["cardIds": cardIds, "source": "table", "target": "captured"])
@@ -624,12 +634,14 @@ class GameManager: ObservableObject {
         runAfterAnimationDelay(moveDelay) {
             let cardIds = filtered.map { $0.id }.joined(separator: ",")
             self.addUXEvent(type: "moveEnd", data: ["cardIds": cardIds, "target": "captured"])
+            self.hiddenInTargetCardIds.subtract(filteredIds)
             let captureCueHold = self.capturedTargetCueDuration
             self.showTargetCue(for: filtered, durationOverride: captureCueHold)
             self.movingCardsPiCount = nil
             self.clearMoveContextAfterCue(
                 expectedSource: "table",
                 expectedTarget: "captured",
+                expectedCapturedTargetPlayerId: targetPlayerId,
                 delayOverride: captureCueHold
             )
             completion()

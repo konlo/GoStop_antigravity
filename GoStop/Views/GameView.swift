@@ -91,6 +91,9 @@ struct GameView: View {
         let isCapturedTransfer =
             gameManager.currentMoveSourceZone == "captured" &&
             gameManager.currentMoveTargetZone == "captured"
+        let isTableToCaptured =
+            gameManager.currentMoveSourceZone == "table" &&
+            gameManager.currentMoveTargetZone == "captured"
         let sourceOwnerId = gameManager.capturedMoveSourcePlayerId
         let playerOwnerId = gameManager.players.first?.id.uuidString
         let opponentOwnerId = gameManager.players.count > 1 ? gameManager.players[1].id.uuidString : nil
@@ -113,7 +116,7 @@ struct GameView: View {
         
         // 1. Opponent Area
         let opponentFrame = ctx.frame(for: .opponent)
-        if isCapturedTransfer {
+        if isCapturedTransfer || isTableToCaptured {
             // Allow cross-area penalty card travel to remain visible end-to-end.
             OpponentAreaV2(ctx: ctx, animationNamespace: cardAnimationNamespace, gameManager: gameManager)
                 .frame(width: opponentFrame.width, height: opponentFrame.height)
@@ -129,15 +132,22 @@ struct GameView: View {
         
         // 2. Center Area
         let centerFrame = ctx.frame(for: .center)
-        CenterAreaV2(ctx: ctx, animationNamespace: cardAnimationNamespace, gameManager: gameManager, tableSlotManager: tableSlotManager)
-            .frame(width: centerFrame.width, height: centerFrame.height)
-            .clipped()
-            .position(x: safeArea.leading + centerFrame.midX, y: safeArea.top + centerFrame.midY)
-            .zIndex(1)
+        if isTableToCaptured {
+            CenterAreaV2(ctx: ctx, animationNamespace: cardAnimationNamespace, gameManager: gameManager, tableSlotManager: tableSlotManager)
+                .frame(width: centerFrame.width, height: centerFrame.height)
+                .position(x: safeArea.leading + centerFrame.midX, y: safeArea.top + centerFrame.midY)
+                .zIndex(1)
+        } else {
+            CenterAreaV2(ctx: ctx, animationNamespace: cardAnimationNamespace, gameManager: gameManager, tableSlotManager: tableSlotManager)
+                .frame(width: centerFrame.width, height: centerFrame.height)
+                .clipped()
+                .position(x: safeArea.leading + centerFrame.midX, y: safeArea.top + centerFrame.midY)
+                .zIndex(1)
+        }
         
         // 3. Player Area
         let playerFrame = ctx.frame(for: .player)
-        if isCapturedTransfer {
+        if isCapturedTransfer || isTableToCaptured {
             PlayerAreaV2(ctx: ctx, animationNamespace: cardAnimationNamespace, gameManager: gameManager, slotManager: playerHandSlotManager)
                 .frame(width: playerFrame.width, height: playerFrame.height)
                 .position(x: safeArea.leading + playerFrame.midX, y: safeArea.top + playerFrame.midY)
