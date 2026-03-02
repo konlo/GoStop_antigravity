@@ -1624,9 +1624,13 @@ class GameManager: ObservableObject {
             }
         }
 
-        // Delay pi transfer start to prevent visual illusion where it overlaps
-        // with the preceding table->captured animation.
-        let delayBeforeTransfer = max(0.2, AnimationManager.shared.config.match_pause_duration * 1.5)
+        // Delay pi transfer start to prevent visual overlap with the preceding
+        // table->captured animation in animated UI mode.
+        // In CLI validation mode (all move/match delays are forced to 0),
+        // keep this at 0 so busy flags do not remain pending on async timers.
+        let matchPause = AnimationManager.shared.config.match_pause_duration
+        let isInstantPipeline = motion.delay <= 0 && matchPause <= 0
+        let delayBeforeTransfer = isInstantPipeline ? 0 : max(0.2, matchPause * 1.5)
         
         self.runAfterAnimationDelay(delayBeforeTransfer) {
             performTransfer()
@@ -1769,6 +1773,22 @@ extension GameManager {
                     "isJabak": AnyCodable(false),
                     "isYeokbak": AnyCodable(false),
                     "scoreFormula": AnyCodable("Nagari (Draw)")
+                ])
+            } else if let rules = RuleLoader.shared.config {
+                // Keep socket/state serialization behavior aligned with CLI dumpState fallback.
+                // Some test scenarios force ended state without setting lastPenaltyResult.
+                let winner = players[0].score >= players[1].score ? players[0] : players[1]
+                let loser = winner === players[0] ? players[1] : players[0]
+                let penalty = PenaltySystem.calculatePenalties(winner: winner, loser: loser, rules: rules)
+                state["penaltyResult"] = AnyCodable([
+                    "finalScore": AnyCodable(penalty.finalScore),
+                    "isGwangbak": AnyCodable(penalty.isGwangbak),
+                    "isPibak": AnyCodable(penalty.isPibak),
+                    "isGobak": AnyCodable(penalty.isGobak),
+                    "isMungbak": AnyCodable(penalty.isMungbak),
+                    "isJabak": AnyCodable(penalty.isJabak),
+                    "isYeokbak": AnyCodable(penalty.isYeokbak),
+                    "scoreFormula": AnyCodable(penalty.scoreFormula)
                 ])
             }
         }

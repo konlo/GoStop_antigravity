@@ -209,7 +209,6 @@ class SimulatorBridge {
             case "click_restart_button":
                 DispatchQueue.main.async {
                     self.gameManager.setupGame()
-                    self.gameManager.startGame()
                     self.sendSimpleResponse(status: "action executed", action: action, connection: connection)
                 }
                 

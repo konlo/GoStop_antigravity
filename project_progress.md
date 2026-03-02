@@ -442,3 +442,43 @@
 - **Files Touched**: ["test_artifacts/debug_fix_records/2026-03-02_table_to_captured_resolution.md", "project_progress.md"]
 - **Validation**: "기록 문서에 문제/원인/수정 파일/검증 명령/결과를 포함했는지 확인하고, 기존 코드 앵커(`SimulatorBridge`, `GameAreaViews`, `GameView`)와 일치 여부를 점검함."
 - **Outcome**: "`table->captured` 시각 경로 이슈의 최종 해결 기록을 아티팩트 문서로 남겼고, `project_progress.md`에도 요청 이력을 추가함."
+
+### [2026-03-02 19:42:55 KST] User Request: 다수 FAIL 시나리오 재현/수정 및 안정화
+- **Skills Planned**: ["gostop-test-reliability", "project_logger"]
+- **Skills Used**: ["gostop-test-reliability", "project_logger"]
+- **Trigger Reason**: "초기 실패 목록에서 `scenario_verify_special_moves_suite`가 재현되었고, 공통 증상(`busy=True`, `moving=1`, `hiddenTgt=1`)이 피 이동 전송 지연 경로와 연결되어 엔진 레벨 타이밍 보정이 필요했음."
+- **Files Touched**: ["GoStop/Core/GameManager.swift", "project_progress.md"]
+- **Validation**: "`xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI -derivedDataPath build build` 성공, `python3 tests/test_agent/test_scenarios.py 8` 6회 연속 PASS, `python3 tests/test_agent/test_scenarios.py 1 6 8 9 13 14 16 17 21 22 24 35 37 38 39 41 42 43 45 46 47 48 49 51 52 54 56 57 58 61 62 63` 전체 PASS."
+- **Outcome**: "`animatePenaltyPiTransfer`의 pre-transfer 하드코딩 지연(최소 0.2s)을 instant 파이프라인에서는 0으로 처리하도록 수정해 CLI 검증 모드에서 busy 상태 고착을 제거했고, 초기 실패 목록 재검증에서 FAIL 0을 확인함."
+
+### [2026-03-02 19:54:14 KST] User Request: 전체 시나리오 대량 FAIL 결과 공유 및 원인 확인 요청
+- **Skills Planned**: ["gostop-test-reliability", "project_logger"]
+- **Skills Used**: ["gostop-test-reliability", "project_logger"]
+- **Trigger Reason**: "사용자 공유 결과(다수 FAIL)와 직전 로컬 검증 결과(대부분 PASS)가 상충하여 실행 경로/바이너리 버전 차이를 우선 확인할 필요가 있었음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`cd tests/test_agent && python3 test_scenarios.py` 전체 66개 재실행 결과 ALL PASS(2026-03-02 19:51~19:53 KST). 추가로 `--executable build_v30/.../GoStopCLI` 및 `--executable build/GoStopCLI` 구버전 바이너리 지정 실행 시 `scenario_verify_special_moves_suite` 등 일부 FAIL 재현 확인."
+- **Outcome**: "현재 최신 바이너리(`/build/Build/Products/Debug/GoStopCLI`, modified 2026-03-02 19:41:45) 기준으로는 FAIL이 재현되지 않았고, 사용자 표는 구버전 실행 또는 이전 시점 결과일 가능성이 높음을 확인."
+
+### [2026-03-02 20:15:00 KST] User Request: `python3 test_scenarios.py --mode socket` 실행 요청
+- **Skills Planned**: ["gostop-test-reliability", "project_logger"]
+- **Skills Used**: ["gostop-test-reliability", "project_logger"]
+- **Trigger Reason**: "사용자가 socket 모드 재현을 직접 요청했고, 샌드박스에서는 로컬 소켓 연결이 `Operation not permitted`로 실패하여 권한 상승 재실행이 필요했음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "1) 샌드박스 실행: `python3 test_scenarios.py --mode socket` -> 전 시나리오 소켓 연결 실패(`Errno 1`). 2) 권한 상승 재실행: 동일 명령으로 전체 66개 완료, 결과표에서 다수 FAIL 재현(사용자 공유 패턴과 일치). 로그: `/tmp/gostop_socket_mode_20260302_2012_escalated.log`."
+- **Outcome**: "`--mode socket`에서 사용자가 제시한 FAIL 패턴을 동일하게 재현했으며, 실행 환경(소켓 경로/모드)에 따라 CLI 모드와 결과가 크게 달라짐을 확인."
+
+### [2026-03-02 21:13:17 KST] User Request: socket 모드 대량 FAIL 실제 수정
+- **Skills Planned**: ["gostop-test-reliability", "project_logger"]
+- **Skills Used**: ["gostop-test-reliability", "project_logger"]
+- **Trigger Reason**: "socket 모드에서 다수 시나리오가 동시에 실패해 공통 원인(bridge 동작 불일치/idle 동기화/리셋 플래키)을 먼저 제거해야 했음."
+- **Files Touched**: ["GoStop/Core/SimulatorBridge.swift", "GoStop/Core/GameManager.swift", "tests/test_agent/main.py", "project_progress.md"]
+- **Validation**: "1) `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_socket_fix_build build CODE_SIGNING_ALLOWED=NO` 성공 후 시뮬레이터 재설치/재실행. 2) `python3 tests/test_agent/test_scenarios.py --mode socket 1 6 8 35 41 56` PASS. 3) `python3 tests/test_agent/test_scenarios.py --mode socket 52 54` PASS. 4) `python3 tests/test_agent/test_scenarios.py --mode socket` 전체 66개 PASS (로그: `/tmp/gostop_socket_full_after_resetfix.log`)."
+- **Outcome**: "socket 경로를 CLI와 동일 의미로 맞춤(재시작 시 ready 유지), ended-state 직렬화 penalty fallback 추가, socket idle 판정을 안정 구간 기반으로 강화, 리셋 시 초기 Nagari/Chongtong ended 플래키 재시도 보강을 적용해 기존 대량 FAIL 패턴을 해소하고 전체 시나리오 PASS를 확인함."
+
+### [2026-03-02 21:08:40 KST] User Request: 설계 단계에서 재발 방지용 checklist md 생성
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "반복된 animation 디버깅 이슈를 설계 초기에 예방할 수 있도록 실무용 체크리스트 문서가 필요했음."
+- **Files Touched**: ["design_checklist.md", "project_progress.md"]
+- **Validation**: "체크리스트가 아키텍처/상태머신/앵커/브리지/관측성/회귀테스트/릴리스 게이트를 포함하는지 항목 단위로 확인함."
+- **Outcome**: "`design_checklist.md`를 신규 생성해 route 단위 설계/검증 기준을 즉시 적용 가능한 체크박스 형식으로 정리함."

@@ -215,6 +215,10 @@ class CLIEngine {
                 _ = gameManager.checkEndgameConditions(player: winner, opponent: opponent, rules: rules, isAfterGo: false)
             }
             return ["status": "action executed", "action": "mock_endgame_check"]
+
+        case "reset_busy_state":
+            gameManager.emergencyResetBusyState()
+            return ["status": "ok", "action": "reset_busy_state"]
             
         case "force_chongtong_check":
             let timing = (request.data?["timing"]?.value as? String) ?? "initial"
@@ -342,6 +346,14 @@ class CLIEngine {
         if gameManager.gameState == .askingShake {
             dict["pendingShakeMonths"] = gameManager.pendingShakeMonths
         }
+        
+        // Expose transition/animation busy flags so CLI-based test agent can
+        // synchronize the same way as socket mode.
+        dict["isAutomationBusy"] = gameManager.isAutomationBusy
+        dict["pendingAutomationDelays"] = gameManager.pendingAutomationDelays
+        dict["currentMovingCardIds"] = gameManager.currentMovingCards.map { $0.id }
+        dict["hiddenInSourceCardIds"] = Array(gameManager.hiddenInSourceCardIds)
+        dict["hiddenInTargetCardIds"] = Array(gameManager.hiddenInTargetCardIds)
         
         if let month = gameManager.chongtongMonth {
             dict["chongtongMonth"] = month

@@ -132,16 +132,57 @@ class TestAgent:
     def _wait_for_socket_idle(self, timeout_sec: float = 8.0):
         deadline = time.time() + timeout_sec
         last_state = None
+        stable_signature = None
+        stable_since = None
+        settle_window_sec = 0.18
         while time.time() < deadline:
             state = self._send_command({"action": "get_state"}, record_action=False)
             last_state = state
             # Older bridge payloads may not expose these fields; a successful state fetch is enough then.
             if "isAutomationBusy" not in state and "pendingAutomationDelays" not in state:
                 return
-            # `isAutomationBusy` can remain true during stable decision states because of UI visibility markers.
-            # For test synchronization, delayed automation callbacks are the part that causes stale reads/races.
-            if int(state.get("pendingAutomationDelays", 0)) == 0:
-                return
+
+            pending = int(state.get("pendingAutomationDelays", 0))
+            busy = bool(state.get("isAutomationBusy", False))
+            moving_ids = state.get("currentMovingCardIds", []) or []
+            hidden_src = state.get("hiddenInSourceCardIds", []) or []
+            hidden_tgt = state.get("hiddenInTargetCardIds", []) or []
+            game_state = state.get("gameState")
+
+            # Decision states can legitimately pause while waiting for input.
+            decision_state = game_state in (
+                "askingShake",
+                "askingGoStop",
+                "choosingCapture",
+                "choosingChrysanthemumRole",
+            )
+
+            # Do not trust a single poll where pending=0. There can be transient gaps
+            # between chained callbacks, so require a short stable idle window.
+            idle_now = pending == 0 and (
+                (not busy and not moving_ids and not hidden_src and not hidden_tgt) or decision_state
+            )
+
+            signature = (
+                state.get("historyCount"),
+                game_state,
+                state.get("currentTurnIndex"),
+                pending,
+                busy,
+                len(moving_ids),
+                len(hidden_src),
+                len(hidden_tgt),
+            )
+
+            if idle_now:
+                if stable_signature != signature:
+                    stable_signature = signature
+                    stable_since = time.time()
+                elif stable_since is not None and (time.time() - stable_since) >= settle_window_sec:
+                    return
+            else:
+                stable_signature = None
+                stable_since = None
             time.sleep(0.05)
         raise RuntimeError(
             f"Socket app did not become idle within {timeout_sec}s. "
@@ -151,8 +192,15 @@ class TestAgent:
 
     def _reset_socket_app_state(self):
         # Socket mode reuses the simulator app process across scenarios, so explicitly reset state here.
-        self._send_command({"action": "click_restart_button"}, record_action=False)
-        self._wait_for_socket_idle()
+        # Initial deal can rarely end immediately (e.g., initial Nagari/Chongtong). Retry to start from
+        # a controllable non-ended state.
+        for _ in range(5):
+            self._send_command({"action": "click_restart_button"}, record_action=False)
+            self._wait_for_socket_idle()
+            state = self._send_command({"action": "get_state"}, record_action=False)
+            if state.get("gameState") != "ended":
+                return
+        raise RuntimeError("Socket reset repeatedly landed in ended state (initial special end).")
 
     def _save_repro_steps(self):
         """Saves current action sequence for deterministic replay."""

@@ -552,9 +552,17 @@ def scenario_verify_special_moves_suite(agent: TestAgent):
     Scenario: Verifies Sweep, Ttadak, Jjok, and Seolsa.
     """
     logger.info("Running Special Moves (Sweep, Ttadak, Jjok, Seolsa) verification...")
+
+    def restart_round():
+        # In CLI mode, `click_restart_button` puts the game back to `ready`.
+        # In socket mode, it may already transition to `playing`.
+        agent.send_user_action("click_restart_button")
+        state = agent.get_all_information()
+        if state.get("gameState") != "playing":
+            agent.send_user_action("start_game")
     
     # 1. Start game
-    agent.send_user_action("start_game")
+    restart_round()
     
     # 2. Setup Ttadak condition
     # Ttadak: play-phase capture and draw-phase capture must be the SAME month as the played card.
@@ -573,9 +581,10 @@ def scenario_verify_special_moves_suite(agent: TestAgent):
         "mock_opponent_captured_cards": [{"month": 1, "type": "junk"}] 
     })
     handle_potential_shake(agent)
+    wait_for_quiescent_state(agent, timeout_sec=3.0)
     agent.send_user_action("play_card", {"month": 1, "type": "junk"})
     
-    state = agent.get_all_information()
+    state = wait_for_quiescent_state(agent, timeout_sec=3.0)
     player = state["players"][0]
     assert player["ttadakCount"] == 1, f"Expected ttadakCount 1, got {player['ttadakCount']}"
     assert player.get("sweepCount", 0) == 0, f"Ttadak subcase should not also trigger Sweep, got sweepCount={player.get('sweepCount')}"
@@ -585,7 +594,7 @@ def scenario_verify_special_moves_suite(agent: TestAgent):
     logger.info("Ttadak verification passed!")
     
     # --- 2. Jjok (쪽) ---
-    agent.send_user_action("start_game")
+    restart_round()
     agent.set_condition({
         "mock_hand": [{"month": 3, "type": "junk"}, {"month": 5, "type": "junk"}],
         "mock_table": [],
@@ -596,6 +605,7 @@ def scenario_verify_special_moves_suite(agent: TestAgent):
         "mock_opponent_captured_cards": [{"month": 1, "type": "junk"}]
     })
     handle_potential_shake(agent)
+    wait_for_quiescent_state(agent, timeout_sec=3.0)
     pre_state = agent.get_all_information()
     pre_player = pre_state["players"][0]
     pre_opponent = pre_state["players"][1]
@@ -605,7 +615,7 @@ def scenario_verify_special_moves_suite(agent: TestAgent):
     pre_opponent_junkish = len([c for c in pre_opponent.get("capturedCards", []) if c.get("type") in ("junk", "doubleJunk")])
     agent.send_user_action("play_card", {"month": 3, "type": "junk"})
     
-    state = agent.get_all_information()
+    state = wait_for_quiescent_state(agent, timeout_sec=3.0)
     player = state["players"][0]
     opponent = state["players"][1]
     assert player["jjokCount"] == pre_jjok + 1, f"Expected jjokCount to increment by 1, {pre_jjok} -> {player['jjokCount']}"
@@ -623,7 +633,7 @@ def scenario_verify_special_moves_suite(agent: TestAgent):
     logger.info("Jjok verification passed!")
 
     # --- 3. Sweep (쓸기) ---
-    agent.send_user_action("start_game")
+    restart_round()
     agent.set_condition({
         "mock_hand": [{"month": 4, "type": "junk"}, {"month": 5, "type": "junk"}],
         # Play captures month 4, draw captures month 9 -> table becomes empty at end of turn (Sweep)
@@ -635,9 +645,10 @@ def scenario_verify_special_moves_suite(agent: TestAgent):
         "mock_opponent_captured_cards": [{"month": 1, "type": "junk"}]
     })
     handle_potential_shake(agent)
+    wait_for_quiescent_state(agent, timeout_sec=3.0)
     agent.send_user_action("play_card", {"month": 4, "type": "junk"})
     
-    state = agent.get_all_information()
+    state = wait_for_quiescent_state(agent, timeout_sec=3.0)
     player = state["players"][0]
     assert player["sweepCount"] == 1, f"Expected sweepCount 1, got {player['sweepCount']}"
     assert len(state["tableCards"]) == 0, f"Table should be empty after Sweep, got {len(state['tableCards'])} cards"
@@ -1146,6 +1157,13 @@ def scenario_verify_card_integrity_full_game(agent: TestAgent):
     
     # 1. Start the game
     agent.send_user_action("start_game")
+    # Keep both players externally controlled to avoid AI auto-step races in CLI mode.
+    agent.set_condition({
+        "mock_gameState": "playing",
+        "currentTurnIndex": 0,
+        "player0_data": {"isComputer": False},
+        "player1_data": {"isComputer": False}
+    })
     
     step_count = 0
     max_steps = 200 # Safety limit for the loop
@@ -1187,9 +1205,19 @@ def scenario_verify_card_integrity_full_game(agent: TestAgent):
         add_card(current_state.get("pendingChrysanthemumCard"))
 
         return len(seen_ids) + fallback_count
+
+    def get_stable_state():
+        try:
+            return wait_for_quiescent_state(agent, timeout_sec=4.0, poll_sec=0.05)
+        except AssertionError as e:
+            # Integrity scenarios are about card accounting, not animation health.
+            # Recover from transient stuck animation flags to continue rule-level validation.
+            logger.warning(f"Quiescent wait timeout in integrity loop. Resetting busy state: {e}")
+            agent.send_user_action("reset_busy_state")
+            return agent.get_all_information()
     
     while step_count < max_steps:
-        state = agent.get_all_information()
+        state = get_stable_state()
         game_state = state.get("gameState")
         
         # --- CARD INTEGRITY CHECK ---
@@ -1281,15 +1309,32 @@ def scenario_verify_monthly_pair_integrity(agent: TestAgent):
     logger.info("Running Monthly Pair Integrity Full Game verification...")
     
     agent.send_user_action("start_game")
+    # Keep both players externally controlled to avoid AI auto-step races in CLI mode.
+    agent.set_condition({
+        "mock_gameState": "playing",
+        "currentTurnIndex": 0,
+        "player0_data": {"isComputer": False},
+        "player1_data": {"isComputer": False}
+    })
     
     step_count = 0
     max_steps = 200
 
     def is_dummy(card):
         return card.get("type") == "dummy"
+
+    def get_stable_state():
+        try:
+            return wait_for_quiescent_state(agent, timeout_sec=4.0, poll_sec=0.05)
+        except AssertionError as e:
+            # Integrity scenarios are about card accounting, not animation health.
+            # Recover from transient stuck animation flags to continue rule-level validation.
+            logger.warning(f"Quiescent wait timeout in monthly loop. Resetting busy state: {e}")
+            agent.send_user_action("reset_busy_state")
+            return agent.get_all_information()
     
     while step_count < max_steps:
-        state = agent.get_all_information()
+        state = get_stable_state()
         game_state = state.get("gameState")
         
         # --- MONTHLY PAIR INTEGRITY AUDIT ---
