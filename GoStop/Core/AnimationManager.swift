@@ -15,6 +15,14 @@ struct AnimationConfig: Codable {
     var capture_to_player_duration: Double = 0.4
     var play_from_hand_duration: Double = 0.3
     var hand_to_table_motion: String = "instant"   // instant | throw | styled | linear
+    // Route-level overrides. If duration is nil or <= 0, fallback duration is used.
+    var deck_to_table_duration: Double? = nil
+    var table_to_captured_duration: Double? = nil
+    var captured_to_captured_duration: Double? = nil
+    // Route-level motion mode. Use "hand" to inherit hand_to_table_motion.
+    var deck_to_table_motion: String = "styled"
+    var table_to_captured_motion: String = "styled"
+    var captured_to_captured_motion: String = "hand"
     var opponent_preplay_reveal_duration: Double = 0.14
     var match_pause_duration: Double = 0.18
     var show_trail: Bool = false
@@ -33,10 +41,12 @@ class AnimationManager: ObservableObject {
     @Published var config = AnimationConfig()
     private var lastLoadedPath: String?
 
-    struct HandToTableMotionPlan {
+    struct CardMovePlan {
         let animation: Animation?
         let delay: Double
     }
+
+    typealias HandToTableMotionPlan = CardMovePlan
 
     
     private init() {
@@ -123,20 +133,64 @@ class AnimationManager: ObservableObject {
     /// Centralized policy for hand -> table motion.
     /// Update `animation.yaml: hand_to_table_motion` to apply globally.
     func handToTableMotionPlan() -> HandToTableMotionPlan {
-        let mode = config.hand_to_table_motion.lowercased()
-        let duration = max(0.01, config.play_from_hand_duration)
-        
-        switch mode {
-        case "instant":
-            return HandToTableMotionPlan(animation: nil, delay: 0)
-        case "throw":
-            return HandToTableMotionPlan(animation: throwAnimation(for: duration), delay: duration)
-        case "linear":
-            return HandToTableMotionPlan(animation: .linear(duration: duration), delay: duration)
-        case "styled":
-            return HandToTableMotionPlan(animation: animation(for: duration), delay: duration)
+        motionPlan(source: "hand", target: "table")
+    }
+
+    /// Unified motion planning engine for all card routes.
+    /// Route differences are controlled by `animation.yaml`.
+    func motionPlan(source: String, target: String) -> CardMovePlan {
+        let route = "\(source.lowercased())->\(target.lowercased())"
+        switch route {
+        case "hand->table":
+            return motionPlan(mode: config.hand_to_table_motion, duration: config.play_from_hand_duration)
+        case "deck->table":
+            return motionPlan(
+                mode: config.deck_to_table_motion,
+                duration: resolvedDuration(config.deck_to_table_duration, fallback: config.card_move_duration)
+            )
+        case "table->captured":
+            return motionPlan(
+                mode: config.table_to_captured_motion,
+                duration: resolvedDuration(config.table_to_captured_duration, fallback: config.capture_to_player_duration)
+            )
+        case "captured->captured":
+            return motionPlan(
+                mode: config.captured_to_captured_motion,
+                duration: resolvedDuration(config.captured_to_captured_duration, fallback: config.play_from_hand_duration)
+            )
         default:
-            return HandToTableMotionPlan(animation: nil, delay: 0)
+            return motionPlan(mode: "styled", duration: config.card_move_duration)
+        }
+    }
+
+    private func resolvedDuration(_ override: Double?, fallback: Double) -> Double {
+        if let override, override > 0 {
+            return override
+        }
+        return fallback
+    }
+
+    private func motionPlan(mode: String, duration: Double) -> CardMovePlan {
+        let normalizedMode = mode.lowercased()
+        let d = max(0.01, duration)
+
+        switch normalizedMode {
+        case "hand", "inherit", "inherit_hand_to_table":
+            let inheritedMode = config.hand_to_table_motion.lowercased()
+            if inheritedMode == "hand" || inheritedMode == "inherit" || inheritedMode == "inherit_hand_to_table" {
+                return CardMovePlan(animation: animation(for: max(0.01, config.play_from_hand_duration)), delay: max(0.01, config.play_from_hand_duration))
+            }
+            return motionPlan(mode: inheritedMode, duration: config.play_from_hand_duration)
+        case "instant":
+            return CardMovePlan(animation: nil, delay: 0)
+        case "throw":
+            return CardMovePlan(animation: throwAnimation(for: d), delay: d)
+        case "linear":
+            return CardMovePlan(animation: .linear(duration: d), delay: d)
+        case "styled":
+            return CardMovePlan(animation: animation(for: d), delay: d)
+        default:
+            return CardMovePlan(animation: nil, delay: 0)
         }
     }
 

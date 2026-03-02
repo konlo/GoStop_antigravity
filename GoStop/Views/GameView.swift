@@ -1,15 +1,39 @@
 import SwiftUI
 
 struct GameView: View {
+    private struct RewindSnapshot {
+        let moveEndEventId: String
+        let cards: [Card]
+        let sourceZone: String
+        let targetZone: String
+        let sourcePlayerId: String?
+        let targetPlayerId: String?
+        let duration: Double
+    }
+
     @StateObject var gameManager = GameManager()
     @Namespace private var cardAnimationNamespace
     @ObservedObject var config: ConfigManager = .shared
     @StateObject private var animationManager = AnimationManager.shared
     @State private var playerHandSlotManager: PlayerHandSlotManager?
     @State private var tableSlotManager: TableSlotManager?
+    @State private var tableCardCenters: [String: CGPoint] = [:]
+    // Key: "playerId:groupType" (e.g. "abc123:gwang") → screen-space center of that group slot
+    @State private var capturedGroupCenters: [String: CGPoint] = [:]
+    // Key: "cardId" -> exact rendered card center in captured area
+    @State private var capturedCardCenters: [String: CGPoint] = [:]
+    // Persistent debug info: survives animation end for inspection
+    @State private var persistentDebugSrc: CGPoint? = nil
+    @State private var persistentDebugTgt: CGPoint? = nil
+    @State private var persistentDebugIsReal: Bool = false
+    @State private var persistentDebugProgress: CGFloat = 0
     @State private var showingRestartAlert = false
     @State private var showingEventLog = false
     @State private var showingSettings = false
+    @State private var latestRewindSnapshot: RewindSnapshot? = nil
+    @State private var activeRewindSnapshot: RewindSnapshot? = nil
+    @State private var rewindProgress: CGFloat = 0
+    @State private var rewindGeneration: Int = 0
     
     var body: some View {
         GeometryReader { geometry in
@@ -29,6 +53,19 @@ struct GameView: View {
         .onChange(of: config.layoutV2) { onChangeLayout($0) }
         .onChange(of: gameManager.players.first?.hand) { onChangeHand($0) }
         .onChange(of: gameManager.tableCards) { onChangeTable($0) }
+        .onChange(of: gameManager.uxEventLogs.count) { _ in
+            updateLatestRewindSnapshot()
+        }
+        .onChange(of: gameManager.players.map { $0.id.uuidString }.joined(separator: ",")) { _ in
+            // Player IDs can rotate on restart/condition-set; clear stale geometry keys.
+            tableCardCenters.removeAll()
+            // Keep captured centers to avoid transient empty-target fallback jumps.
+            // CapturedGroupsAreaV2 will upsert fresh owner keys on next layout pass.
+            capturedCardCenters.removeAll()
+        }
+        .onChange(of: gameManager.penaltyMoveProgress) { value in
+            persistentDebugProgress = CGFloat(max(0, min(1, value)))
+        }
         .onReceive(gameManager.objectWillChange) { _ in
             // Slot managers can miss nested array mutations in long animation chains.
             // Resync from source-of-truth state on every GameManager change.
@@ -74,6 +111,19 @@ struct GameView: View {
             // Unified Moving Card Overlay
             movingCardOverlay(safeArea: safeArea)
                 .zIndex(210)
+
+            // Debug rewind overlay (debug mode only)
+            rewindOverlay(safeArea: safeArea)
+                .zIndex(211)
+
+            // ── PERSISTENT COORDINATE DEBUG OVERLAY (항상 표시) ──
+            persistentCoordDebugOverlay()
+                .zIndex(300)
+                .allowsHitTesting(false)
+
+            // Keep rewind HUD as the top-most interactive layer in debug mode.
+            moveRouteHUD(safeArea: safeArea)
+                .zIndex(1000)
         }
         .coordinateSpace(name: "GameSpace")
         .alert("재시작 확인", isPresented: $showingRestartAlert) {
@@ -95,10 +145,14 @@ struct GameView: View {
             gameManager.currentMoveSourceZone == "table" &&
             gameManager.currentMoveTargetZone == "captured"
         let sourceOwnerId = gameManager.capturedMoveSourcePlayerId
+        let targetOwnerId = gameManager.capturedMoveTargetPlayerId
         let playerOwnerId = gameManager.players.first?.id.uuidString
         let opponentOwnerId = gameManager.players.count > 1 ? gameManager.players[1].id.uuidString : nil
-        let opponentZ: Double = isCapturedTransfer && sourceOwnerId == opponentOwnerId ? 6 : 2
-        let playerZ: Double = isCapturedTransfer && sourceOwnerId == playerOwnerId ? 6 : 3
+        let tableToOpponentCapture = isTableToCaptured && targetOwnerId == opponentOwnerId
+        let tableToPlayerCapture = isTableToCaptured && targetOwnerId == playerOwnerId
+        let opponentZ: Double = tableToOpponentCapture ? 8 : (isCapturedTransfer && sourceOwnerId == opponentOwnerId ? 6 : 2)
+        let playerZ: Double = tableToPlayerCapture ? 8 : (isCapturedTransfer && sourceOwnerId == playerOwnerId ? 6 : 3)
+        let centerZ: Double = isTableToCaptured ? 7 : 1
 
         // 0. Setting Area
         if let settingFrame = ctx.areaFrames[.setting], settingFrame.height > 0 {
@@ -106,6 +160,9 @@ struct GameView: View {
                 ctx: ctx,
                 config: ctx.config.areas.setting,
                 onExitTapped: { showingRestartAlert = true },
+                showRewindButton: isAnimationDebugMode,
+                canRewind: canStartRewind,
+                onRewindTapped: triggerRewindPlayback,
                 onSettingsTapped: { showingSettings = true },
                 onLogTapped: { showingEventLog.toggle() }
             )
@@ -118,12 +175,12 @@ struct GameView: View {
         let opponentFrame = ctx.frame(for: .opponent)
         if isCapturedTransfer || isTableToCaptured {
             // Allow cross-area penalty card travel to remain visible end-to-end.
-            OpponentAreaV2(ctx: ctx, animationNamespace: cardAnimationNamespace, gameManager: gameManager)
+            OpponentAreaV2(ctx: ctx, animationNamespace: cardAnimationNamespace, gameManager: gameManager, capturedGroupCenters: $capturedGroupCenters, capturedCardCenters: $capturedCardCenters)
                 .frame(width: opponentFrame.width, height: opponentFrame.height)
                 .position(x: safeArea.leading + opponentFrame.midX, y: safeArea.top + opponentFrame.midY)
                 .zIndex(opponentZ)
         } else {
-            OpponentAreaV2(ctx: ctx, animationNamespace: cardAnimationNamespace, gameManager: gameManager)
+            OpponentAreaV2(ctx: ctx, animationNamespace: cardAnimationNamespace, gameManager: gameManager, capturedGroupCenters: $capturedGroupCenters, capturedCardCenters: $capturedCardCenters)
                 .frame(width: opponentFrame.width, height: opponentFrame.height)
                 .clipped()
                 .position(x: safeArea.leading + opponentFrame.midX, y: safeArea.top + opponentFrame.midY)
@@ -133,27 +190,27 @@ struct GameView: View {
         // 2. Center Area
         let centerFrame = ctx.frame(for: .center)
         if isTableToCaptured {
-            CenterAreaV2(ctx: ctx, animationNamespace: cardAnimationNamespace, gameManager: gameManager, tableSlotManager: tableSlotManager)
+            CenterAreaV2(ctx: ctx, animationNamespace: cardAnimationNamespace, gameManager: gameManager, tableSlotManager: tableSlotManager, tableCardCenters: $tableCardCenters)
                 .frame(width: centerFrame.width, height: centerFrame.height)
                 .position(x: safeArea.leading + centerFrame.midX, y: safeArea.top + centerFrame.midY)
-                .zIndex(1)
+                .zIndex(centerZ)
         } else {
-            CenterAreaV2(ctx: ctx, animationNamespace: cardAnimationNamespace, gameManager: gameManager, tableSlotManager: tableSlotManager)
+            CenterAreaV2(ctx: ctx, animationNamespace: cardAnimationNamespace, gameManager: gameManager, tableSlotManager: tableSlotManager, tableCardCenters: $tableCardCenters)
                 .frame(width: centerFrame.width, height: centerFrame.height)
                 .clipped()
                 .position(x: safeArea.leading + centerFrame.midX, y: safeArea.top + centerFrame.midY)
-                .zIndex(1)
+                .zIndex(centerZ)
         }
         
         // 3. Player Area
         let playerFrame = ctx.frame(for: .player)
         if isCapturedTransfer || isTableToCaptured {
-            PlayerAreaV2(ctx: ctx, animationNamespace: cardAnimationNamespace, gameManager: gameManager, slotManager: playerHandSlotManager)
+            PlayerAreaV2(ctx: ctx, animationNamespace: cardAnimationNamespace, gameManager: gameManager, slotManager: playerHandSlotManager, capturedGroupCenters: $capturedGroupCenters, capturedCardCenters: $capturedCardCenters)
                 .frame(width: playerFrame.width, height: playerFrame.height)
                 .position(x: safeArea.leading + playerFrame.midX, y: safeArea.top + playerFrame.midY)
                 .zIndex(playerZ)
         } else {
-            PlayerAreaV2(ctx: ctx, animationNamespace: cardAnimationNamespace, gameManager: gameManager, slotManager: playerHandSlotManager)
+            PlayerAreaV2(ctx: ctx, animationNamespace: cardAnimationNamespace, gameManager: gameManager, slotManager: playerHandSlotManager, capturedGroupCenters: $capturedGroupCenters, capturedCardCenters: $capturedCardCenters)
                 .frame(width: playerFrame.width, height: playerFrame.height)
                 .clipped()
                 .position(x: safeArea.leading + playerFrame.midX, y: safeArea.top + playerFrame.midY)
@@ -181,6 +238,7 @@ struct GameView: View {
             self.tableSlotManager = TableSlotManager(config: configV2)
             self.resyncSlotManagers()
         }
+        updateLatestRewindSnapshot()
     }
 
     private func onChangeLayout(_ newConfig: LayoutConfigV2?) {
@@ -204,6 +262,302 @@ struct GameView: View {
         AnimationManager.shared.withGameAnimation {
             tableSlotManager?.sync(with: newTableCards)
         }
+    }
+
+    // ── PERSISTENT COORD DEBUG: Always-on visualization ──
+    @ViewBuilder
+    private func persistentCoordDebugOverlay() -> some View {
+        ZStack {
+            // Green dots at each table card center
+            ForEach(Array(tableCardCenters.keys.sorted()), id: \.self) { cardId in
+                if let pt = tableCardCenters[cardId] {
+                    ZStack {
+                        Circle()
+                            .fill(Color.green.opacity(0.7))
+                            .frame(width: 8, height: 8)
+                        Text("T\nY:\(Int(pt.y))")
+                            .font(.system(size: 6, weight: .bold, design: .monospaced))
+                            .foregroundColor(.white)
+                            .padding(2)
+                            .background(Color.green.opacity(0.85))
+                            .cornerRadius(3)
+                            .offset(x: 18, y: 0)
+                    }
+                    .position(x: pt.x, y: pt.y)
+                }
+            }
+
+            // Red dots at each captured group slot center
+            ForEach(Array(capturedGroupCenters.keys.sorted()), id: \.self) { key in
+                if let pt = capturedGroupCenters[key] {
+                    let label = key.components(separatedBy: ":").last ?? key
+                    ZStack {
+                        Circle()
+                            .fill(Color.red.opacity(0.85))
+                            .frame(width: 8, height: 8)
+                        Text("C\n\(label)\nY:\(Int(pt.y))")
+                            .font(.system(size: 6, weight: .bold, design: .monospaced))
+                            .foregroundColor(.white)
+                            .padding(2)
+                            .background(Color.red.opacity(0.85))
+                            .cornerRadius(3)
+                            .offset(x: -20, y: 0)
+                    }
+                    .position(x: pt.x, y: pt.y)
+                }
+            }
+
+            // Mini status box (top-right corner)
+            VStack(alignment: .trailing, spacing: 1) {
+                Text("🟢T:\(tableCardCenters.count) 🔴C:\(capturedGroupCenters.count)")
+                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                    .foregroundColor(.white)
+                    .padding(4)
+                    .background(Color.black.opacity(0.7))
+                    .cornerRadius(4)
+            }
+            .position(x: UIScreen.main.bounds.width - 60, y: 60)
+
+            // Persistent panel: keep latest SRC/TGT + progress visible after animation ends.
+            VStack(alignment: .leading, spacing: 1) {
+                Text("🔍 COORD DEBUG  p(progress)=\(String(format: "%.2f", persistentDebugProgress))")
+                    .foregroundColor(.yellow)
+                Text("   p: 0.00(start) -> 1.00(end)")
+                    .foregroundColor(.yellow.opacity(0.9))
+                Divider().background(Color.yellow)
+                if let src = persistentDebugSrc {
+                    Text("🟢 SRC  Y:\(Int(src.y))  X:\(Int(src.x))")
+                        .foregroundColor(.green)
+                } else {
+                    Text("🟢 SRC  -")
+                        .foregroundColor(.green.opacity(0.8))
+                }
+                Text("   \(persistentDebugIsReal ? "✅ GeometryReader (real)" : "⚠️ Math fallback")")
+                    .foregroundColor(persistentDebugIsReal ? .green : .orange)
+                Divider().background(Color.red)
+                if let tgt = persistentDebugTgt {
+                    Text("🔴 TGT  Y:\(Int(tgt.y))  X:\(Int(tgt.x))")
+                        .foregroundColor(.red)
+                } else {
+                    Text("🔴 TGT  -")
+                        .foregroundColor(.red.opacity(0.8))
+                }
+                Divider().background(Color.white)
+                Text("tableCardCenters.count=\(tableCardCenters.count)")
+                Text("capturedGroupCenters.count=\(capturedGroupCenters.count)")
+            }
+            .font(.system(size: 8, weight: .semibold, design: .monospaced))
+            .foregroundColor(.white)
+            .padding(6)
+            .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.88)))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.yellow.opacity(0.6), lineWidth: 1))
+            .frame(width: 240)
+            .position(x: 130, y: 300)
+        }
+    }
+
+    @ViewBuilder
+    private func moveRouteHUD(safeArea: EdgeInsets) -> some View {
+        if let event = latestMoveStartEvent() {
+            let route = routeText(for: event)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("moveStart route")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.9))
+                Text(route)
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .foregroundColor(.white)
+                    .lineLimit(3)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color.black.opacity(0.72))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .padding(.top, safeArea.top + 6)
+            .padding(.leading, safeArea.leading + 8)
+            .allowsHitTesting(false)
+        }
+    }
+
+    private func latestMoveStartEvent() -> UXEvent? {
+        gameManager.uxEventLogs.reversed().first { $0.type == "moveStart" }
+    }
+
+    private var isAnimationDebugMode: Bool {
+        #if DEBUG
+        guard let debug = config.layoutV2?.debug else { return false }
+        return debug.showGrid ||
+        debug.showSafeArea ||
+        debug.showElementBounds ||
+        (debug.player?.handSlotGrid ?? false) ||
+        (debug.player?.sortedOrderOverlay ?? false)
+        #else
+        return false
+        #endif
+    }
+
+    private var canStartRewind: Bool {
+        isAnimationDebugMode &&
+        latestRewindSnapshot != nil &&
+        activeRewindSnapshot == nil
+    }
+
+    private func triggerRewindPlayback() {
+        guard canStartRewind, let snapshot = latestRewindSnapshot else { return }
+        activeRewindSnapshot = snapshot
+        rewindGeneration += 1
+        let generation = rewindGeneration
+        rewindProgress = 1
+
+        let duration = max(0.35, snapshot.duration)
+        withAnimation(animationManager.animation(for: duration)) {
+            rewindProgress = 0
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration + 0.03) {
+            guard generation == self.rewindGeneration else { return }
+            self.activeRewindSnapshot = nil
+            self.rewindProgress = 0
+        }
+    }
+
+    private func updateLatestRewindSnapshot() {
+        let logs = gameManager.uxEventLogs
+        latestRewindSnapshot = latestSupportedRewindSnapshot(in: logs)
+    }
+
+    private func latestSupportedRewindSnapshot(in logs: [UXEvent]) -> RewindSnapshot? {
+        for moveEnd in logs.reversed() where moveEnd.type == "moveEnd" {
+            guard let moveStart = matchingMoveStart(for: moveEnd, in: logs) else { continue }
+
+            let sourceZone = moveStart.data["source"] ?? moveEnd.data["source"] ?? ""
+            let targetZone = moveStart.data["target"] ?? moveEnd.data["target"] ?? ""
+            guard supportsRewind(source: sourceZone, target: targetZone) else { continue }
+
+            let ids = cardIds(from: moveEnd).isEmpty ? cardIds(from: moveStart) : cardIds(from: moveEnd)
+            let cards = ids.compactMap(resolveCardById)
+            guard !cards.isEmpty else { continue }
+
+            let sourcePlayerId = moveStart.data["sourcePlayerId"] ?? moveEnd.data["sourcePlayerId"]
+            let targetPlayerId = moveStart.data["targetPlayerId"] ?? moveEnd.data["targetPlayerId"]
+            let rewindDuration = durationForRoute(source: sourceZone, target: targetZone)
+
+            return RewindSnapshot(
+                moveEndEventId: moveEnd.id,
+                cards: cards,
+                sourceZone: sourceZone,
+                targetZone: targetZone,
+                sourcePlayerId: sourcePlayerId,
+                targetPlayerId: targetPlayerId,
+                duration: rewindDuration
+            )
+        }
+        return nil
+    }
+
+    private func supportsRewind(source: String, target: String) -> Bool {
+        (source == "table" && target == "captured") ||
+        (source == "captured" && target == "captured")
+    }
+
+    private func durationForRoute(source: String, target: String) -> Double {
+        let plan = animationManager.motionPlan(source: source, target: target)
+        let raw = plan.delay > 0 ? plan.delay : animationManager.config.card_move_duration
+        // Keep rewind visible even when runtime animation is configured as instant/very fast.
+        return max(0.35, min(1.1, raw))
+    }
+
+    private func matchingMoveStart(for moveEnd: UXEvent, in logs: [UXEvent]) -> UXEvent? {
+        guard let endIndex = logs.lastIndex(where: { $0.id == moveEnd.id }) else {
+            return logs.reversed().first { $0.type == "moveStart" }
+        }
+        guard endIndex > 0 else { return nil }
+
+        let endCardIdSet = Set(cardIds(from: moveEnd))
+        for index in stride(from: endIndex - 1, through: 0, by: -1) {
+            let candidate = logs[index]
+            guard candidate.type == "moveStart" else { continue }
+            if endCardIdSet.isEmpty {
+                return candidate
+            }
+            let startCardIdSet = Set(cardIds(from: candidate))
+            if !startCardIdSet.isEmpty && !startCardIdSet.isDisjoint(with: endCardIdSet) {
+                return candidate
+            }
+        }
+        return nil
+    }
+
+    private func cardIds(from event: UXEvent) -> [String] {
+        if let raw = event.data["cardIds"], !raw.isEmpty {
+            return raw
+                .split(separator: ",")
+                .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+        }
+        if let single = event.data["cardId"], !single.isEmpty {
+            return [single]
+        }
+        return []
+    }
+
+    private func resolveCardById(_ cardId: String) -> Card? {
+        if let moving = gameManager.currentMovingCards.first(where: { $0.id == cardId }) {
+            return moving
+        }
+        if let table = gameManager.tableCards.first(where: { $0.id == cardId }) {
+            return table
+        }
+        if let deck = gameManager.deck.cards.first(where: { $0.id == cardId }) {
+            return deck
+        }
+        if let out = gameManager.outOfPlayCards.first(where: { $0.id == cardId }) {
+            return out
+        }
+        for player in gameManager.players {
+            if let hand = player.hand.first(where: { $0.id == cardId }) {
+                return hand
+            }
+            if let captured = player.capturedCards.first(where: { $0.id == cardId }) {
+                return captured
+            }
+        }
+        return nil
+    }
+
+    private func routeText(for event: UXEvent) -> String {
+        let source = event.data["source"] ?? "?"
+        let target = event.data["target"] ?? "?"
+        var route = "\(source)->\(target)"
+
+        if source == "captured", target == "captured" {
+            let fromName = playerName(for: event.data["sourcePlayerId"])
+            let toName = playerName(for: event.data["targetPlayerId"])
+            if let fromName, let toName {
+                route += " (\(fromName)->\(toName))"
+            }
+        } else if target == "captured" {
+            if let toName = playerName(for: event.data["targetPlayerId"]) {
+                route += " (to:\(toName))"
+            }
+        }
+
+        if let reason = event.data["reason"], !reason.isEmpty {
+            route += " | \(reason)"
+        }
+        return route
+    }
+
+    private func playerName(for playerId: String?) -> String? {
+        guard let playerId else { return nil }
+        return gameManager.players.first(where: { $0.id.uuidString == playerId })?.name
     }
 
     private func resyncSlotManagers() {
@@ -675,79 +1029,433 @@ struct EventLogView: View {
 }
 
 extension GameView {
-    @ViewBuilder
     private func movingCardOverlay(safeArea: EdgeInsets) -> some View {
-        if gameManager.currentMoveSourceZone == "captured",
-           gameManager.currentMoveTargetZone == "captured",
+        let sourceZone = gameManager.currentMoveSourceZone
+        let targetZone = gameManager.currentMoveTargetZone
+
+        if sourceZone == "table",
+           targetZone == "captured",
+           let targetId = gameManager.capturedMoveTargetPlayerId {
+            return AnyView(tableToCapturedOverlay(targetPlayerId: targetId, safeArea: safeArea))
+        }
+
+        if sourceZone == "captured",
+           targetZone == "captured",
            let sourceId = gameManager.capturedMoveSourcePlayerId,
-           let targetId = gameManager.capturedMoveTargetPlayerId,
-           let sourcePoint = capturedAnchorPoint(for: sourceId, safeArea: safeArea),
-           let targetPoint = capturedAnchorPoint(for: targetId, safeArea: safeArea) {
-            let p = max(0, min(1, gameManager.penaltyMoveProgress))
-            let x = sourcePoint.x + (targetPoint.x - sourcePoint.x) * p
-            let y = sourcePoint.y + (targetPoint.y - sourcePoint.y) * p
+           let targetId = gameManager.capturedMoveTargetPlayerId {
+            return AnyView(capturedToCapturedOverlay(sourceId: sourceId, targetId: targetId, safeArea: safeArea))
+        }
+
+        return AnyView(defaultMovingCardOverlay())
+    }
+
+    @ViewBuilder
+    private func rewindOverlay(safeArea: EdgeInsets) -> some View {
+        if let snapshot = activeRewindSnapshot {
+            let p = CGFloat(max(0, min(1, rewindProgress)))
+            let center = CGPoint(x: safeArea.leading + config.gameSize.width / 2, y: safeArea.top + config.gameSize.height / 2)
+            let movingCards = Array(snapshot.cards.enumerated())
+
+            let trajectories: [(card: Card, position: CGPoint)] = movingCards.compactMap { index, card in
+                let start = rewindAnchorPoint(
+                    for: snapshot.sourceZone,
+                    card: card,
+                    ownerId: snapshot.sourcePlayerId,
+                    safeArea: safeArea
+                ) ?? center
+                let end = rewindAnchorPoint(
+                    for: snapshot.targetZone,
+                    card: card,
+                    ownerId: snapshot.targetPlayerId,
+                    safeArea: safeArea
+                ) ?? center
+
+                let sourceX = start.x + (snapshot.sourceZone == "captured" ? CGFloat(index) * 6 : 0)
+                let targetX = end.x + (snapshot.targetZone == "captured" ? CGFloat(index) * 6 : 0)
+                let x = sourceX + (targetX - sourceX) * p
+                let y = start.y + (end.y - start.y) * p
+                return (card, CGPoint(x: x, y: y))
+            }
 
             ZStack {
-                ForEach(gameManager.currentMovingCards) { card in
-                    CardView(
-                        card: card,
-                        isFaceUp: true,
-                        scale: gameManager.movingCardsScale,
-                        animationNamespace: nil,
-                        isSource: false,
-                        piCount: gameManager.movingCardsPiCount,
-                        showDebugInfo: gameManager.movingCardsShowDebug
-                    )
-                    .transition(.identity)
+                ForEach(Array(trajectories.enumerated()), id: \.element.card.id) { _, entry in
+                    movingOverlayCard(entry.card, namespace: nil)
+                        .position(x: entry.position.x, y: entry.position.y)
                 }
             }
-            .position(x: x, y: y)
-        } else {
-            ZStack {
-                ForEach(gameManager.currentMovingCards) { card in
-                    CardView(
-                        card: card,
-                        isFaceUp: true,
-                        scale: gameManager.movingCardsScale,
-                        animationNamespace: cardAnimationNamespace,
-                        isSource: false,
-                        piCount: gameManager.movingCardsPiCount,
-                        showDebugInfo: gameManager.movingCardsShowDebug
-                    )
-                    .transition(.identity)
+            .allowsHitTesting(false)
+        }
+    }
+
+    private func rewindAnchorPoint(for zone: String, card: Card, ownerId: String?, safeArea: EdgeInsets) -> CGPoint? {
+        switch zone {
+        case "table":
+            return tableAnchorPoint(for: card.id, safeArea: safeArea)
+        case "captured":
+            guard let ownerId else { return nil }
+            return capturedAnchorPoint(for: card, ownerId: ownerId, safeArea: safeArea)
+        default:
+            return nil
+        }
+    }
+
+    @ViewBuilder
+    private func tableToCapturedOverlay(targetPlayerId: String, safeArea: EdgeInsets) -> some View {
+        let p = CGFloat(max(0, min(1, gameManager.penaltyMoveProgress)))
+        let movingCards = Array(gameManager.currentMovingCards.enumerated())
+
+        // Build trajectory with debug info
+        var srcPoints: [CGPoint] = []
+        var tgtPoints: [CGPoint] = []
+        var usedRealCoords: [Bool] = []
+        let trajectories: [(card: Card, position: CGPoint)] = movingCards.compactMap { index, card in
+            let usedReal = tableCardCenters[card.id] != nil
+            let sourcePoint: CGPoint
+            if let realSource = tableAnchorPoint(for: card.id, safeArea: safeArea) {
+                sourcePoint = realSource
+            } else {
+                let centerFallback = CGPoint(
+                    x: safeArea.leading + config.gameSize.width / 2,
+                    y: safeArea.top + config.gameSize.height / 2
+                )
+                print("⚠️ [tableAnchorPoint] NIL for \(card.id). Using screen-center fallback -> \(centerFallback)")
+                sourcePoint = centerFallback
+            }
+            let fallbackTargetCenter = CGPoint(x: safeArea.leading + config.gameSize.width/2, y: safeArea.top + config.gameSize.height/2)
+            let targetPtObj = capturedAnchorPoint(for: card.id, ownerId: targetPlayerId, safeArea: safeArea) ?? fallbackTargetCenter
+            let targetX = targetPtObj.x + CGFloat(index) * 6
+            let targetY = targetPtObj.y
+            srcPoints.append(sourcePoint)
+            tgtPoints.append(CGPoint(x: targetX, y: targetY))
+            usedRealCoords.append(usedReal)
+            let x = sourcePoint.x + (targetX - sourcePoint.x) * p
+            let y = sourcePoint.y + (targetY - sourcePoint.y) * p
+            print("📦 [overlay] \(card.month)_\(card.type) src=(\(Int(sourcePoint.x)),\(Int(sourcePoint.y))) tgt=(\(Int(targetX)),\(Int(targetY))) p=\(String(format:"%.2f",p)) realCoord=\(usedReal)")
+            logMonth6TableToCapturedTrace(
+                card: card,
+                index: index,
+                progress: p,
+                sourcePoint: sourcePoint,
+                targetPoint: CGPoint(x: targetX, y: targetY),
+                currentPoint: CGPoint(x: x, y: y),
+                usedRealSource: usedReal,
+                targetPlayerId: targetPlayerId
+            )
+            return (card, CGPoint(x: x, y: y))
+        }
+
+        ZStack {
+            // ── Actual moving cards ──
+            ForEach(Array(trajectories.enumerated()), id: \.element.card.id) { _, entry in
+                movingOverlayCard(entry.card, namespace: nil)
+                    .position(x: entry.position.x, y: entry.position.y)
+            }
+
+            // ── DEBUG: Source dot (green) + Target dot (red) ──
+            ForEach(0..<srcPoints.count, id: \.self) { i in
+                // Green = source position (GameAreaViews.swift updateTableCardCenters)
+                ZStack {
+                    Circle().fill(Color.green.opacity(0.9)).frame(width: 12, height: 12)
+                    Text("S\(i)\nY:\(Int(srcPoints[i].y))")
+                        .font(.system(size: 7, weight: .bold, design: .monospaced))
+                        .foregroundColor(.black)
+                        .padding(2)
+                        .background(Color.green.opacity(0.85))
+                        .cornerRadius(3)
+                        .offset(x: 28, y: 0)
                 }
+                .position(x: srcPoints[i].x, y: srcPoints[i].y)
+                .allowsHitTesting(false)
+
+                // Red = target position (GameView.swift capturedAnchorPoint)
+                ZStack {
+                    Circle().fill(Color.red.opacity(0.9)).frame(width: 12, height: 12)
+                    Text("T\(i)\nY:\(Int(tgtPoints[i].y))")
+                        .font(.system(size: 7, weight: .bold, design: .monospaced))
+                        .foregroundColor(.white)
+                        .padding(2)
+                        .background(Color.red.opacity(0.85))
+                        .cornerRadius(3)
+                        .offset(x: -28, y: 0)
+                }
+                .position(x: tgtPoints[i].x, y: tgtPoints[i].y)
+                .allowsHitTesting(false)
+            }
+
+            // Persist latest coordinates so debug panel stays visible after animation.
+            if let src0 = srcPoints.first, let tgt0 = tgtPoints.first {
+                let isRealCoord = usedRealCoords.first ?? false
+                Color.clear
+                    .frame(width: 1, height: 1)
+                    .onAppear {
+                        updatePersistentCoordDebug(src: src0, tgt: tgt0, isReal: isRealCoord, progress: p)
+                    }
+                    .onChange(of: gameManager.penaltyMoveProgress) { _ in
+                        updatePersistentCoordDebug(src: src0, tgt: tgt0, isReal: isRealCoord, progress: p)
+                    }
             }
         }
     }
 
-    private func capturedAnchorPoint(for ownerId: String, safeArea: EdgeInsets) -> CGPoint? {
-        guard let ctx = config.layoutContext else { return nil }
+    @ViewBuilder
+    private func capturedToCapturedOverlay(sourceId: String, targetId: String, safeArea: EdgeInsets) -> some View {
+        let p = CGFloat(max(0, min(1, gameManager.penaltyMoveProgress)))
+        let movingCards = Array(gameManager.currentMovingCards.enumerated())
 
-        if let player = gameManager.players.first, player.id.uuidString == ownerId {
-            let frame = ctx.frame(for: .player)
-            let capConfig = ctx.config.areas.player.elements.captured
-            return CGPoint(
-                x: safeArea.leading + frame.minX + frame.width * capConfig.x,
-                y: safeArea.top + frame.minY + frame.height * capConfig.y
-            )
+        let trajectories: [(card: Card, position: CGPoint)] = movingCards.compactMap { index, card in
+            let center = CGPoint(x: safeArea.leading + config.gameSize.width/2, y: safeArea.top + config.gameSize.height/2)
+            let startP = capturedAnchorPoint(for: card.id, ownerId: sourceId, safeArea: safeArea) ?? center
+            let endP = capturedAnchorPoint(for: card.id, ownerId: targetId, safeArea: safeArea) ?? center
+            
+            let x = startP.x + (endP.x - startP.x) * p
+            let y = startP.y + (endP.y - startP.y) * p
+            return (card, CGPoint(x: x, y: y))
         }
 
-        if gameManager.players.count > 1, gameManager.players[1].id.uuidString == ownerId {
-            let frame = ctx.frame(for: .opponent)
-            let capConfig = ctx.config.areas.opponent.elements.captured
+        ZStack {
+            ForEach(Array(trajectories.enumerated()), id: \.element.card.id) { _, entry in
+                movingOverlayCard(entry.card, namespace: nil)
+                .position(x: entry.position.x, y: entry.position.y)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func defaultMovingCardOverlay() -> some View {
+        ZStack {
+            ForEach(gameManager.currentMovingCards) { card in
+                movingOverlayCard(card, namespace: cardAnimationNamespace)
+            }
+        }
+    }
+
+    private func movingOverlayCard(_ card: Card, namespace: Namespace.ID?) -> some View {
+        CardView(
+            card: card,
+            isFaceUp: true,
+            scale: gameManager.movingCardsScale,
+            animationNamespace: namespace,
+            isSource: false,
+            piCount: gameManager.movingCardsPiCount,
+            showDebugInfo: gameManager.movingCardsShowDebug
+        )
+        .overlay(
+            GeometryReader { geo in
+                let pt = geo.frame(in: .named("GameSpace")).center
+                VStack {
+                    Spacer()
+                    Text("X:\(Int(pt.x)) Y:\(Int(pt.y))")
+                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                        .foregroundColor(.white)
+                        .padding(2)
+                        .background(Color.blue.opacity(0.8))
+                        .cornerRadius(3)
+                        .offset(y: 20) // Place it slightly below the card
+                }
+            }
+        )
+        .transition(.identity)
+    }
+
+    private func capturedAnchorPoint(for cardId: String, ownerId: String, safeArea: EdgeInsets) -> CGPoint? {
+        guard let card = capturedCardForAnchor(cardId: cardId, ownerId: ownerId) else { return nil }
+        return capturedAnchorPoint(for: card, ownerId: ownerId, safeArea: safeArea)
+    }
+
+    private func capturedAnchorPoint(for card: Card, ownerId: String, safeArea: EdgeInsets) -> CGPoint? {
+        let targetType = capturedGroupType(for: card)
+        let key = "\(ownerId):\(targetType)"
+
+        // Priority 0: exact card center in captured area (best for table->captured direct path)
+        if let cardCenter = capturedCardCenters[card.id] {
+            print("🎯 [capturedAnchorPoint] CARD HIT for \(card.month)_\(card.type) id=\(card.id) -> \(cardCenter)")
+            return cardCenter
+        }
+
+        // Priority 1: Use real screen-space center captured by GeometryReader at render time
+        if let realCenter = capturedGroupCenters[key] {
+            print("🎯 [capturedAnchorPoint] REAL HIT for \(card.month)_\(card.type) key=\(key) -> \(realCenter)")
+            return realCenter
+        }
+
+        // Priority 2: If owner-specific key is stale/missing, reuse closest same-group center.
+        let fallbackCenter = capturedFallbackCenter(ownerId: ownerId, safeArea: safeArea)
+        let suffix = ":\(targetType)"
+        let sameGroupCenters = capturedGroupCenters.compactMap { entry -> CGPoint? in
+            entry.key.hasSuffix(suffix) ? entry.value : nil
+        }
+        if !sameGroupCenters.isEmpty {
+            if let fallbackCenter {
+                let best = sameGroupCenters.min { a, b in
+                    squaredDistance(a, fallbackCenter) < squaredDistance(b, fallbackCenter)
+                }
+                if let best {
+                    print("🟠 [capturedAnchorPoint] SURROGATE HIT for \(card.month)_\(card.type) key=\(key) via group=\(targetType) -> \(best)")
+                    return best
+                }
+            } else if let guessed = sameGroupCenters.first {
+                print("🟠 [capturedAnchorPoint] SURROGATE HIT for \(card.month)_\(card.type) key=\(key) using first group center -> \(guessed)")
+                return guessed
+            }
+        }
+
+        print("⚠️ [capturedAnchorPoint] REAL MISS for \(card.month)_\(card.type) key=\(key). Using math fallback.")
+        return fallbackCenter
+    }
+
+    private func capturedFallbackCenter(ownerId: String, safeArea: EdgeInsets) -> CGPoint? {
+        guard let ctx = config.layoutContext else { return nil }
+        let isPlayer = gameManager.players.first?.id.uuidString == ownerId
+        let frame = isPlayer ? ctx.frame(for: .player) : ctx.frame(for: .opponent)
+        let capConfig = isPlayer ? ctx.config.areas.player.elements.captured : ctx.config.areas.opponent.elements.captured
+        let baseCenterX = safeArea.leading + frame.minX + frame.width * capConfig.x
+        let baseCenterY: CGFloat
+        if isPlayer {
+            baseCenterY = safeArea.top + frame.minY + frame.height * capConfig.y
+        } else {
             let cardHeight = ctx.cardSize.height * capConfig.scale
             let desiredY = frame.height * capConfig.y
             let halfHeight = cardHeight / 2.0
             let padding = ctx.scaledTokens.panelPadding
             let maxY = frame.height - halfHeight - (padding / 2)
-            let finalY = min(desiredY, maxY)
+            baseCenterY = safeArea.top + frame.minY + min(desiredY, maxY)
+        }
+        return CGPoint(x: baseCenterX, y: baseCenterY)
+    }
 
-            return CGPoint(
-                x: safeArea.leading + frame.minX + frame.width * capConfig.x,
-                y: safeArea.top + frame.minY + finalY
-            )
+    private func squaredDistance(_ a: CGPoint, _ b: CGPoint) -> CGFloat {
+        let dx = a.x - b.x
+        let dy = a.y - b.y
+        return dx * dx + dy * dy
+    }
+
+    private func capturedCardForAnchor(cardId: String, ownerId: String) -> Card? {
+        if let owner = gameManager.players.first(where: { $0.id.uuidString == ownerId }),
+           let card = owner.capturedCards.first(where: { $0.id == cardId }) {
+            return card
+        }
+        return gameManager.currentMovingCards.first(where: { $0.id == cardId }) ?? resolveCardById(cardId)
+    }
+
+    private func capturedGroupType(for card: Card) -> String {
+        // September animal can be reassigned as double pi.
+        if card.month == .sep && card.type == .animal {
+            let defaultRoleStr = RuleLoader.shared.config?.cards.chrysanthemum_rule.default_role ?? "animal"
+            let defaultRole = CardRole(rawValue: defaultRoleStr) ?? .animal
+            let role = card.selectedRole ?? defaultRole
+            return role == .doublePi ? "pi" : "animal"
+        }
+        // November junk is treated as pi group in captured UI.
+        if card.month == .nov && (card.type == .junk || card.type == .doubleJunk) {
+            return "pi"
+        }
+        if card.type == .bright { return "gwang" }
+        if card.type == .animal { return "animal" }
+        if card.type == .ribbon { return "ribbon" }
+        return "pi"
+    }
+
+    private func updatePersistentCoordDebug(src: CGPoint, tgt: CGPoint, isReal: Bool, progress: CGFloat) {
+        DispatchQueue.main.async {
+            self.persistentDebugSrc = src
+            self.persistentDebugTgt = tgt
+            self.persistentDebugIsReal = isReal
+            self.persistentDebugProgress = max(0, min(1, progress))
+        }
+    }
+
+    private func logMonth6TableToCapturedTrace(
+        card: Card,
+        index: Int,
+        progress: CGFloat,
+        sourcePoint: CGPoint,
+        targetPoint: CGPoint,
+        currentPoint: CGPoint,
+        usedRealSource: Bool,
+        targetPlayerId: String
+    ) {
+        #if DEBUG
+        guard card.month == .jun else { return }
+        guard card.type == .junk || card.type == .doubleJunk else { return }
+        guard gameManager.currentMoveSourceZone == "table", gameManager.currentMoveTargetZone == "captured" else { return }
+        let targetName = playerName(for: targetPlayerId) ?? targetPlayerId
+        print(
+            "🧭 [JUNE_PI_PATH] " +
+            "id=\(card.id) idx=\(index) month=\(card.month.rawValue) type=\(card.type.rawValue) imageIndex=\(card.imageIndex) " +
+            "p=\(String(format: "%.3f", progress)) " +
+            "src=(\(Int(sourcePoint.x)),\(Int(sourcePoint.y))) " +
+            "tgt=(\(Int(targetPoint.x)),\(Int(targetPoint.y))) " +
+            "cur=(\(Int(currentPoint.x)),\(Int(currentPoint.y))) " +
+            "X=\(Int(currentPoint.x)) Y=\(Int(currentPoint.y)) " +
+            "sourceReal=\(usedRealSource) target=\(targetName)"
+        )
+        if currentPoint.y < 130 {
+            print("'130'보다 작아 졌어요. id=\(card.id) X=\(Int(currentPoint.x)) Y=\(Int(currentPoint.y)) p=\(String(format: "%.3f", progress))")
+        }
+        #endif
+    }
+
+    private func tableAnchorPoint(for cardId: String, safeArea: EdgeInsets) -> CGPoint? {
+        // Priority 1: Use real screen-space center captured by GeometryReader at render time
+        if let realCenter = tableCardCenters[cardId] {
+            print("🎯 [tableAnchorPoint] REAL HIT for \(cardId) -> \(realCenter)")
+            return realCenter
+        }
+        print("⚠️ [tableAnchorPoint] REAL MISS for \(cardId). Using tableCardCenters median fallback.")
+
+        // Priority 2: Use median of existing real positions (tableCardCenters has correct Y values from GeometryReader)
+        // This handles newly-played cards whose onAppear hasn't fired yet.
+        if !tableCardCenters.isEmpty {
+            let points = Array(tableCardCenters.values)
+            let sortedY = points.map { $0.y }.sorted()
+            let medianY = sortedY[sortedY.count / 2]
+            let sortedX = points.map { $0.x }.sorted()
+            let medianX = sortedX[sortedX.count / 2]
+            let medianPt = CGPoint(x: medianX, y: medianY)
+            print("📊 [tableAnchorPoint] Median fallback for \(cardId) -> \(medianPt) (from \(tableCardCenters.count) entries)")
+            return medianPt
         }
 
-        return nil
+        // Priority 3: Math-based slot lookup (only when tableCardCenters is completely empty)
+        guard let ctx = config.layoutContext else { return nil }
+        let tableConfig = ctx.config.areas.center.elements.table
+
+        if tableConfig.mode == "fixedSlots12", let manager = tableSlotManager {
+            let cardW = ctx.cardSize.width * tableConfig.scale
+            let cardH = ctx.cardSize.height * tableConfig.scale
+            let direction = tableConfig.grid.stackDirection ?? "vertical"
+            let overlap = tableConfig.grid.stackOverlapRatio
+            let isHorizontal = direction == "horizontal"
+            let isDiagonal = direction == "diagonal"
+
+            // Exact ID Match
+            for (slotIndex, slotState) in manager.slots {
+                guard let stackIndex = slotState.cards.firstIndex(where: { $0.id == cardId }),
+                      let slotFrame = ctx.centerSlotFrames[slotIndex] else { continue }
+                let xOff = (isHorizontal || isDiagonal) ? CGFloat(stackIndex) * (cardW * (1.0 - overlap)) : 0
+                let yOff = (!isHorizontal) ? CGFloat(stackIndex) * (cardH * (1.0 - overlap)) : 0
+                return CGPoint(x: safeArea.leading + slotFrame.midX + xOff, y: safeArea.top + slotFrame.midY + yOff)
+            }
+        }
+
+        return tableFallbackAnchorPoint(safeArea: safeArea, cardId: cardId)
+    }
+    
+    private func tableFallbackAnchorPoint(safeArea: EdgeInsets, cardId: String? = nil) -> CGPoint? {
+        #if DEBUG
+        if let cardId {
+            print("⚠️ [tableAnchorPoint] SLOT FALLBACK for \(cardId). No real center/slot match.")
+        } else {
+            print("⚠️ [tableAnchorPoint] SLOT FALLBACK invoked.")
+        }
+        #endif
+        guard let ctx = config.layoutContext else { return nil }
+        let centerFrame = ctx.frame(for: .center)
+        let tableConfig = ctx.config.areas.center.elements.table
+
+        return CGPoint(
+            x: safeArea.leading + centerFrame.minX + centerFrame.width * tableConfig.x,
+            y: safeArea.top + centerFrame.minY + centerFrame.height * tableConfig.y
+        )
     }
 }

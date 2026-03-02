@@ -778,7 +778,7 @@ def scenario_verify_chongtong_midgame_negative(agent: TestAgent):
 
 def scenario_verify_dummy_draw_phase(agent: TestAgent):
     """
-    Scenario: Verify that playing a dummy card does NOT trigger a draw phase.
+    Scenario: Verify that playing a dummy card DOES trigger a draw phase.
     """
     logger.info("Running Dummy Card Draw Phase verification...")
     
@@ -787,11 +787,13 @@ def scenario_verify_dummy_draw_phase(agent: TestAgent):
     # Mock situation:
     # - Player 1 has a dummy card
     # - Table has one card (month 4)
-    # - Deck top card is month 4 (would capture if a draw incorrectly occurred)
+    # - Deck top card is month 4 so draw-phase should capture month 4 pair
     agent.set_condition({
+        "clear_deck": True,
         "mock_hand": [{"month": 0, "type": "dummy", "imageIndex": 0}, {"month": 1, "type": "junk", "imageIndex": 0}],
         "mock_table": [{"month": 4, "type": "junk", "imageIndex": 0}],
-        "mock_deck": [{"month": 4, "type": "animal", "imageIndex": 0}, {"month": 5, "type": "junk", "imageIndex": 0}],
+        # draw() removes last -> month 4 animal is drawn first
+        "mock_deck": [{"month": 5, "type": "junk", "imageIndex": 0}, {"month": 4, "type": "animal", "imageIndex": 0}],
         "mock_gameState": "playing",
         "currentTurnIndex": 0,
         "player0_data": {"isComputer": False, "dummyCardCount": 1},
@@ -804,29 +806,38 @@ def scenario_verify_dummy_draw_phase(agent: TestAgent):
     
     # Play the dummy card
     agent.send_user_action("play_card", {"month": 0, "type": "dummy"})
-    
+
+    # Wait until dummy turn finishes (draw/match animations are async in CLI mode).
+    deadline = time.time() + 2.5
     state = agent.get_all_information()
+    while state.get("currentTurnIndex") == 0 and time.time() < deadline:
+        time.sleep(0.05)
+        state = agent.get_all_information()
     
-    # Dummy play should NOT draw and therefore should NOT capture month 4.
+    # Dummy play should draw from deck and capture month 4 pair.
     p0 = state["players"][0]
     captured_months = [c["month"] for c in p0.get("capturedCards", [])]
-    assert 4 not in captured_months, f"Dummy play should not trigger draw/capture. Captured: {captured_months}"
-    assert len(p0.get("capturedCards", [])) == 0, f"Expected 0 captured cards after dummy play, got {len(p0.get('capturedCards', []))}"
+    assert captured_months.count(4) == 2, (
+        f"Expected dummy draw to capture 2 month-4 cards, got captured months={captured_months}"
+    )
     assert p0.get("dummyCardCount") == 0, f"Expected dummyCardCount to decrement to 0, got {p0.get('dummyCardCount')}"
 
     # Hand should have only the remaining junk card.
     assert len(p0["hand"]) == 1, f"Expected 1 card in hand, got {len(p0['hand'])}"
     assert p0["hand"][0]["type"] == "junk", f"Expected remaining hand card to be junk, got {p0['hand'][0]}"
 
-    # Table and deck should be unchanged because no draw occurs on dummy play.
-    assert len(state.get("tableCards", [])) == len(before_table), (
-        f"Table card count changed on dummy play (before={len(before_table)}, after={len(state.get('tableCards', []))})"
+    # Draw happened: deck should decrement by 1 and month-4 table pair should be captured.
+    assert len(state.get("tableCards", [])) == max(0, len(before_table) - 1), (
+        f"Expected month-4 table card to be captured (before={len(before_table)}, after={len(state.get('tableCards', []))})"
     )
-    assert state.get("deckCount") == before_deck_count, (
-        f"Deck count changed on dummy play (before={before_deck_count}, after={state.get('deckCount')})"
+    assert all(c.get("type") != "dummy" for c in state.get("tableCards", [])), (
+        f"Dummy card should never remain on table after dummy play: {state.get('tableCards', [])}"
+    )
+    assert state.get("deckCount") == max(0, before_deck_count - 1), (
+        f"Expected deck draw on dummy play (before={before_deck_count}, after={state.get('deckCount')})"
     )
 
-    logger.info("Dummy Card Draw Phase verification passed (no draw on dummy play).")
+    logger.info("Dummy Card Draw Phase verification passed (draw/capture occurs on dummy play).")
 
 
 def scenario_verify_endgame_stats_validation(agent: TestAgent):
@@ -1379,7 +1390,7 @@ def scenario_verify_bomb_with_dummy_cards(agent: TestAgent):
       - After a bomb, the bomber receives `dummy_card_count` dummy cards (config-driven)
       - Dummy cards are held in hand until played
       - When played, they VANISH instantly — never placed on the table/floor
-      - No draw phase occurs when playing a dummy card (it is a pass turn)
+      - Dummy play still triggers draw phase (dummy itself is not placed on table)
     """
     logger.info("Running Bomb with Dummy Cards verification...")
 
@@ -1402,6 +1413,7 @@ def scenario_verify_bomb_with_dummy_cards(agent: TestAgent):
     # 1. Setup Bomb condition (3 in hand, 1 on table for Month 1)
     # NOTE: Set BOTH players as non-computer to prevent auto-play after bomb turn ends
     agent.set_condition({
+        "clear_deck": True,
         "mock_hand": [
             {"month": 1, "type": "junk"},
             {"month": 1, "type": "junk"},
@@ -1422,6 +1434,13 @@ def scenario_verify_bomb_with_dummy_cards(agent: TestAgent):
     # Find one of the Month 1 cards to play
     card_to_play = next(c for c in player["hand"] if c["month"] == 1)
     agent.send_user_action("play_card", {"month": card_to_play["month"], "type": card_to_play["type"]})
+
+    # Wait until bomb turn (including draw) is finalized.
+    deadline = time.time() + 2.5
+    state = agent.get_all_information()
+    while state.get("currentTurnIndex") == 0 and time.time() < deadline:
+        time.sleep(0.05)
+        state = agent.get_all_information()
     
     # 3. Verify Bomb results and Dummy Cards
     state = agent.get_all_information()
@@ -1445,13 +1464,19 @@ def scenario_verify_bomb_with_dummy_cards(agent: TestAgent):
         agent.set_condition({"currentTurnIndex": 0})
         before_state = agent.get_all_information()
         before_table_count = len(before_state.get("tableCards", []))
+        before_deck_count = before_state.get("deckCount", 0)
+        before_captured_count = len(before_state["players"][0].get("capturedCards", []))
         before_player = before_state["players"][0]
         dummy_cards = [c for c in before_player["hand"] if c["type"] == "dummy"]
         assert dummy_cards, f"Expected a dummy card before dummy play #{play_index + 1}"
 
         agent.send_user_action("play_card", {"month": dummy_cards[0]["month"], "type": dummy_cards[0]["type"]})
-
+        # Wait until dummy turn (draw/match animations) is finalized.
+        deadline = time.time() + 2.5
         state = agent.get_all_information()
+        while state.get("currentTurnIndex") == 0 and time.time() < deadline:
+            time.sleep(0.05)
+            state = agent.get_all_information()
         player = state["players"][0]
         remaining = expected_dummy_count - play_index - 1
         assert player.get("dummyCardCount") == remaining, (
@@ -1462,10 +1487,23 @@ def scenario_verify_bomb_with_dummy_cards(agent: TestAgent):
             f"Expected {remaining} dummy card(s) in hand after dummy play #{play_index + 1}, "
             f"got {len(current_dummy_cards)}"
         )
-        # Dummy cards should vanish instead of being placed on the table.
-        assert len(state.get("tableCards", [])) == before_table_count, (
-            f"Dummy play should not change table card count (before={before_table_count}, "
-            f"after={len(state.get('tableCards', []))})"
+        assert state.get("deckCount") == max(0, before_deck_count - 1), (
+            f"Dummy play should draw 1 card when deck is available (before={before_deck_count}, "
+            f"after={state.get('deckCount')})"
+        )
+        # This setup uses non-matching top deck cards, so each dummy draw adds one table card.
+        expected_table_after = before_table_count + (1 if before_deck_count > 0 else 0)
+        assert len(state.get("tableCards", [])) == expected_table_after, (
+            f"Unexpected table count after dummy draw (before={before_table_count}, "
+            f"after={len(state.get('tableCards', []))}, expected={expected_table_after})"
+        )
+        assert all(c.get("type") != "dummy" for c in state.get("tableCards", [])), (
+            f"Dummy card should never be placed on table: {state.get('tableCards', [])}"
+        )
+        # No matching months in this setup, so captured count should remain unchanged.
+        assert len(player.get("capturedCards", [])) == before_captured_count, (
+            f"Unexpected capture on dummy draw in non-matching setup (before={before_captured_count}, "
+            f"after={len(player.get('capturedCards', []))})"
         )
 
     # 5. Only the Month 2 junk should remain after all dummy plays
@@ -3428,6 +3466,215 @@ def scenario_verify_mungbak_threshold_boundary(agent: TestAgent):
     check_case(7, True)
     logger.info("Mungbak threshold boundary verification passed!")
 
+def scenario_verify_opponent_table_capture(agent: TestAgent):
+    """
+    Scenario: Verify only the flow where the opponent (player index 1)
+    captures one month-6 pi on table with one month-6 pi from hand.
+    """
+    logger.info("Running Opponent Table Capture verification...")
+
+    agent.send_user_action("start_game")
+    agent.set_condition({
+        "clear_deck": True,
+        "currentTurnIndex": 1,  # Opponent's turn
+        "mock_gameState": "playing",
+        "mock_table": [{"month": 6, "type": "junk", "imageIndex": 2}],
+        # Opponent hand (player1): one matching month-6 pi + one filler card
+        "player1_data": {
+            "isComputer": False,
+            "hand": [
+                {"month": 6, "type": "junk", "imageIndex": 3},
+                {"month": 1, "type": "junk", "imageIndex": 0}
+            ]
+        },
+        # Player 0 stays human and idle
+        "player0_data": {"isComputer": False},
+        # draw() removes last first -> month 11 junk is drawn, no extra month-6 capture
+        "mock_deck": [
+            {"month": 5, "type": "junk", "imageIndex": 0},
+            {"month": 11, "type": "junk", "imageIndex": 0}
+        ]
+    })
+
+    before = agent.get_all_information()
+    before_deck_count = before.get("deckCount", 0)
+    before_opponent_captured_count = len(before["players"][1].get("capturedCards", []))
+
+    # Opponent plays month-6 pi and should capture the single month-6 pi on table.
+    agent.send_user_action("play_card", {"month": 6, "type": "junk"})
+
+    # Wait until opponent turn is finalized and control returns to player 0.
+    deadline = time.time() + 2.5
+    state = agent.get_all_information()
+    while state.get("currentTurnIndex") == 1 and time.time() < deadline:
+        time.sleep(0.05)
+        state = agent.get_all_information()
+
+    opponent = state["players"][1]
+    captured_month6_pi = [
+        c for c in opponent.get("capturedCards", [])
+        if c.get("month") == 6 and c.get("type") in ("junk", "doubleJunk")
+    ]
+    assert len(captured_month6_pi) == 2, (
+        f"Expected opponent to capture exactly 2 month-6 pi cards (played+table), got {captured_month6_pi}"
+    )
+    assert len(opponent.get("capturedCards", [])) == before_opponent_captured_count + 2, (
+        f"Expected opponent captured count +2, before={before_opponent_captured_count}, "
+        f"after={len(opponent.get('capturedCards', []))}"
+    )
+    assert state.get("deckCount") == max(0, before_deck_count - 1), (
+        f"Expected one draw during opponent turn, before deck={before_deck_count}, after={state.get('deckCount')}"
+    )
+    assert not any(c.get("month") == 6 for c in state.get("tableCards", [])), (
+        f"Month-6 cards should be removed from table after opponent capture, table={state.get('tableCards', [])}"
+    )
+    assert state.get("currentTurnIndex") == 0, (
+        f"Turn should pass back to player 0 after opponent capture, got currentTurnIndex={state.get('currentTurnIndex')}"
+    )
+
+    logger.info("Opponent Table Capture verification passed!")
+
+def scenario_verify_opponent_four_card_capture(agent: TestAgent):
+    """
+    Scenario: Verify opponent captures 4 cards in one hand-play capture
+    (played card + 3 matching table cards).
+    """
+    logger.info("Running Opponent 4-Card Capture verification...")
+
+    agent.send_user_action("start_game")
+    agent.set_condition({
+        "clear_deck": True,
+        "currentTurnIndex": 1,  # Opponent's turn
+        "mock_gameState": "playing",
+        # 3 matching month-6 cards on table
+        "mock_table": [
+            {"month": 6, "type": "junk", "imageIndex": 2},
+            {"month": 6, "type": "ribbon", "imageIndex": 1},
+            {"month": 6, "type": "animal", "imageIndex": 0}
+        ],
+        # Opponent hand: one matching month-6 card + one filler
+        "player1_data": {
+            "isComputer": False,
+            "hand": [
+                {"month": 6, "type": "junk", "imageIndex": 3},
+                {"month": 1, "type": "junk", "imageIndex": 0}
+            ],
+            "capturedCards": []
+        },
+        # Keep player 0 idle and with no captured cards to avoid side-effect pi transfers.
+        "player0_data": {"isComputer": False, "capturedCards": []},
+        # draw() removes last first -> month 11 junk is drawn (non-matching), month 5 remains.
+        "mock_deck": [
+            {"month": 5, "type": "junk", "imageIndex": 0},
+            {"month": 11, "type": "junk", "imageIndex": 0}
+        ]
+    })
+
+    before = agent.get_all_information()
+    before_deck_count = before.get("deckCount", 0)
+    before_opponent_captured_count = len(before["players"][1].get("capturedCards", []))
+
+    # Opponent plays month-6 and should capture all four month-6 cards.
+    agent.send_user_action("play_card", {"month": 6, "type": "junk"})
+
+    deadline = time.time() + 3.0
+    state = agent.get_all_information()
+    while state.get("currentTurnIndex") == 1 and time.time() < deadline:
+        time.sleep(0.05)
+        state = agent.get_all_information()
+
+    opponent = state["players"][1]
+    captured_month6 = [c for c in opponent.get("capturedCards", []) if c.get("month") == 6]
+
+    assert len(captured_month6) == 4, (
+        f"Expected opponent to capture 4 month-6 cards (played+3 table), got {captured_month6}"
+    )
+    assert len(opponent.get("capturedCards", [])) == before_opponent_captured_count + 4, (
+        f"Expected opponent captured count +4, before={before_opponent_captured_count}, "
+        f"after={len(opponent.get('capturedCards', []))}"
+    )
+    assert state.get("deckCount") == max(0, before_deck_count - 1), (
+        f"Expected one draw during opponent turn, before deck={before_deck_count}, after={state.get('deckCount')}"
+    )
+    assert not any(c.get("month") == 6 for c in state.get("tableCards", [])), (
+        f"All month-6 cards should be removed from table after 4-card capture, table={state.get('tableCards', [])}"
+    )
+    assert state.get("currentTurnIndex") == 0, (
+        f"Turn should pass back to player 0 after opponent 4-card capture, got currentTurnIndex={state.get('currentTurnIndex')}"
+    )
+
+    logger.info("Opponent 4-Card Capture verification passed!")
+
+def scenario_verify_opponent_single_month6_pi_capture(agent: TestAgent):
+    """
+    Scenario: Verify opponent captures only one table month-6 pi card
+    using one month-6 pi from hand (played+table = 2 captured month-6 pi cards).
+    """
+    logger.info("Running Opponent Single Month-6 Pi Capture verification...")
+
+    agent.send_user_action("start_game")
+    agent.set_condition({
+        "clear_deck": True,
+        "currentTurnIndex": 1,  # Opponent's turn
+        "mock_gameState": "playing",
+        # Table has exactly one month-6 pi
+        "mock_table": [
+            {"month": 6, "type": "junk", "imageIndex": 2}
+        ],
+        # Opponent plays one month-6 pi
+        "player1_data": {
+            "isComputer": False,
+            "hand": [
+                {"month": 6, "type": "junk", "imageIndex": 3},
+                {"month": 2, "type": "junk", "imageIndex": 0}
+            ],
+            "capturedCards": []
+        },
+        # Keep player0 idle to avoid side effects.
+        "player0_data": {"isComputer": False, "capturedCards": []},
+        # draw() removes last first -> month-11 pi is drawn (non-matching)
+        "mock_deck": [
+            {"month": 5, "type": "junk", "imageIndex": 0},
+            {"month": 11, "type": "junk", "imageIndex": 0}
+        ]
+    })
+
+    before = agent.get_all_information()
+    before_deck_count = before.get("deckCount", 0)
+    before_opponent_captured_count = len(before["players"][1].get("capturedCards", []))
+
+    # Opponent plays month-6 junk and should capture exactly one table month-6 junk.
+    agent.send_user_action("play_card", {"month": 6, "type": "junk"})
+
+    deadline = time.time() + 3.0
+    state = agent.get_all_information()
+    while state.get("currentTurnIndex") == 1 and time.time() < deadline:
+        time.sleep(0.05)
+        state = agent.get_all_information()
+
+    opponent = state["players"][1]
+    captured_month6 = [c for c in opponent.get("capturedCards", []) if c.get("month") == 6]
+    captured_month6_pi = [c for c in captured_month6 if c.get("type") in ("junk", "doubleJunk")]
+
+    assert len(captured_month6_pi) == 2, (
+        f"Expected exactly 2 captured month-6 pi cards (played+table), got {captured_month6_pi}"
+    )
+    assert len(opponent.get("capturedCards", [])) == before_opponent_captured_count + 2, (
+        f"Expected opponent captured count +2, before={before_opponent_captured_count}, "
+        f"after={len(opponent.get('capturedCards', []))}"
+    )
+    assert state.get("deckCount") == max(0, before_deck_count - 1), (
+        f"Expected one draw during opponent turn, before deck={before_deck_count}, after={state.get('deckCount')}"
+    )
+    assert not any(c.get("month") == 6 for c in state.get("tableCards", [])), (
+        f"Month-6 cards should be removed from table after single pi capture, table={state.get('tableCards', [])}"
+    )
+    assert state.get("currentTurnIndex") == 0, (
+        f"Turn should pass back to player 0 after opponent single pi capture, got currentTurnIndex={state.get('currentTurnIndex')}"
+    )
+
+    logger.info("Opponent Single Month-6 Pi Capture verification passed!")
+
 def main():
     parser = argparse.ArgumentParser(description="GoStop Test Agent Scenarios")
     
@@ -3512,10 +3759,13 @@ def main():
         scenario_verify_pibak_threshold_boundary,
         scenario_verify_gwangbak_threshold_boundary,
         scenario_verify_mungbak_threshold_boundary,
+        scenario_verify_opponent_table_capture,
+        scenario_verify_opponent_four_card_capture,
         scenario_verify_acquisition_order,
         scenario_verify_chrysanthemum_choice,
         scenario_verify_captured_brights_visible_after_consecutive_captures,
-        scenario_verify_draw_choice_trigger_bright_visible_after_capture
+        scenario_verify_draw_choice_trigger_bright_visible_after_capture,
+        scenario_verify_opponent_single_month6_pi_capture
     ]
     
     # 2. Print available scenarios

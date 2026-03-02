@@ -409,6 +409,12 @@ func main() {
     // animation-delay race conditions during state assertions.
     AnimationManager.shared.config.card_move_duration = 0
     AnimationManager.shared.config.capture_to_player_duration = 0
+    AnimationManager.shared.config.deck_to_table_duration = 0
+    AnimationManager.shared.config.table_to_captured_duration = 0
+    AnimationManager.shared.config.captured_to_captured_duration = 0
+    AnimationManager.shared.config.deck_to_table_motion = "instant"
+    AnimationManager.shared.config.table_to_captured_motion = "instant"
+    AnimationManager.shared.config.captured_to_captured_motion = "instant"
     AnimationManager.shared.config.match_pause_duration = 0
     AnimationManager.shared.config.opponent_preplay_reveal_duration = 0
     AnimationManager.shared.config.opponent_action_delay = 0

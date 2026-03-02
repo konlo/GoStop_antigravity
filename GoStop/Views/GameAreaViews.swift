@@ -8,6 +8,9 @@ struct SettingAreaV2: View {
     let ctx: LayoutContext
     let config: SettingSectionConfigV2?
     let onExitTapped: () -> Void
+    let showRewindButton: Bool
+    let canRewind: Bool
+    let onRewindTapped: () -> Void
     let onSettingsTapped: () -> Void
     let onLogTapped: () -> Void
     
@@ -26,6 +29,19 @@ struct SettingAreaV2: View {
                     Spacer()
                     
                     HStack(spacing: 15) {
+                        if showRewindButton {
+                            Button(action: onRewindTapped) {
+                                Image(systemName: "backward.fill")
+                                    .font(.title3)
+                                    .foregroundColor(.white)
+                                    .padding(8)
+                                    .background((canRewind ? Color.blue : Color.gray).opacity(0.85))
+                                    .cornerRadius(8)
+                                    .shadow(radius: 2)
+                            }
+                            .disabled(!canRewind)
+                        }
+
                         // Exit/Restart Button
                         Button(action: onExitTapped) {
                             Image(systemName: "rectangle.portrait.and.arrow.right")
@@ -75,7 +91,9 @@ struct SettingAreaV2: View {
 struct OpponentAreaV2: View {
     let ctx: LayoutContext
     let animationNamespace: Namespace.ID?
-    @ObservedObject var gameManager: GameManager // Assuming shared state or passing environment
+    @ObservedObject var gameManager: GameManager
+    @Binding var capturedGroupCenters: [String: CGPoint]
+    @Binding var capturedCardCenters: [String: CGPoint]
     
     var body: some View {
         let areaConfig = ctx.config.areas.opponent
@@ -89,8 +107,6 @@ struct OpponentAreaV2: View {
                     .frame(width: frame.width * areaConfig.background.widthRatio, height: frame.height)
             }
             
-            // Hand (Opponent)
-            // JSON: "scale: 0.45", "grid": { ... }
             let handConfig = areaConfig.elements.hand
             if gameManager.players.count > 1 {
                 OpponentHandV2(ctx: ctx, animationNamespace: animationNamespace, gameManager: gameManager, handConfig: handConfig, hand: gameManager.players[1].hand)
@@ -101,22 +117,18 @@ struct OpponentAreaV2: View {
             // Captured (Opponent)
             let capConfig = areaConfig.elements.captured
             if gameManager.players.count > 1 {
-                // Auto-Layout Constraint: Clamp Y position to stay within bounds
                 let cardHeight = ctx.cardSize.height * capConfig.scale
                 let desiredY = frame.height * capConfig.y
                 let halfHeight = cardHeight / 2.0
                 let padding = ctx.scaledTokens.panelPadding
-                
-                // Ensure bottom edge (y + halfHeight) <= frame.height - padding/2
                 let maxY = frame.height - halfHeight - (padding / 2)
                 let finalY = min(desiredY, maxY)
                 
-                CapturedAreaV2(ctx: ctx, animationNamespace: animationNamespace, gameManager: gameManager, layoutConfig: capConfig.layout, cards: gameManager.players[1].capturedCards, ownerPlayerId: gameManager.players[1].id.uuidString, scale: capConfig.scale, alignLeading: false)
+                CapturedAreaV2(ctx: ctx, animationNamespace: animationNamespace, gameManager: gameManager, layoutConfig: capConfig.layout, cards: gameManager.players[1].capturedCards, ownerPlayerId: gameManager.players[1].id.uuidString, scale: capConfig.scale, alignLeading: false, capturedGroupCenters: $capturedGroupCenters, capturedCardCenters: $capturedCardCenters)
                     .position(x: frame.width * capConfig.x, y: finalY)
                     .zIndex(capConfig.zIndex)
             }
             
-            // Score (Opponent)
             if let scoreConfig = areaConfig.elements.score, gameManager.players.count > 1 {
                 ScoreViewV2(ctx: ctx, config: scoreConfig, score: gameManager.players[1].score)
                     .position(x: frame.width * scoreConfig.x, y: frame.height * scoreConfig.y)
@@ -132,6 +144,7 @@ struct CenterAreaV2: View {
     let animationNamespace: Namespace.ID?
     @ObservedObject var gameManager: GameManager
     var tableSlotManager: TableSlotManager?
+    @Binding var tableCardCenters: [String: CGPoint]
     
     var body: some View {
         let areaConfig = ctx.config.areas.center
@@ -147,7 +160,7 @@ struct CenterAreaV2: View {
             
             // Table
             let tableConfig = areaConfig.elements.table
-            TableAreaV2(ctx: ctx, animationNamespace: animationNamespace, gameManager: gameManager, config: tableConfig, cards: gameManager.tableCards, slotManager: tableSlotManager)
+            TableAreaV2(ctx: ctx, animationNamespace: animationNamespace, gameManager: gameManager, config: tableConfig, cards: gameManager.tableCards, slotManager: tableSlotManager, tableCardCenters: $tableCardCenters)
                 .position(x: frame.width * tableConfig.x, y: frame.height * tableConfig.y)
                 .zIndex(tableConfig.zIndex)
             
@@ -166,20 +179,20 @@ struct PlayerAreaV2: View {
     let animationNamespace: Namespace.ID?
     @ObservedObject var gameManager: GameManager
     var slotManager: PlayerHandSlotManager?
+    @Binding var capturedGroupCenters: [String: CGPoint]
+    @Binding var capturedCardCenters: [String: CGPoint]
     
     var body: some View {
         let areaConfig = ctx.config.areas.player
         let frame = ctx.frame(for: .player)
         
         ZStack {
-            // Background
             if areaConfig.background.opacity > 0 {
                 RoundedRectangle(cornerRadius: ctx.scaledTokens.panelCornerRadius)
                     .fill(areaConfig.background.colorSwiftUI)
                     .frame(width: frame.width * areaConfig.background.widthRatio, height: frame.height)
             }
             
-            // Hand (Player)
             let handConfig = areaConfig.elements.hand
             if let player = gameManager.players.first {
                 PlayerHandV2(ctx: ctx, animationNamespace: animationNamespace, config: handConfig, gameManager: gameManager, slotManager: slotManager, hand: player.hand)
@@ -190,7 +203,7 @@ struct PlayerAreaV2: View {
             // Captured (Player)
             let capConfig = areaConfig.elements.captured
             if let player = gameManager.players.first {
-                CapturedAreaV2(ctx: ctx, animationNamespace: animationNamespace, gameManager: gameManager, layoutConfig: capConfig.layout, cards: player.capturedCards, ownerPlayerId: player.id.uuidString, scale: capConfig.scale, alignLeading: true)
+                CapturedAreaV2(ctx: ctx, animationNamespace: animationNamespace, gameManager: gameManager, layoutConfig: capConfig.layout, cards: player.capturedCards, ownerPlayerId: player.id.uuidString, scale: capConfig.scale, alignLeading: true, capturedGroupCenters: $capturedGroupCenters, capturedCardCenters: $capturedCardCenters)
                     .position(x: frame.width * capConfig.x, y: frame.height * capConfig.y)
                     .zIndex(capConfig.zIndex)
             }
@@ -269,7 +282,7 @@ struct OpponentHandV2: View {
         // Usually overlap implies negative spacing in HStack or manual offset in ZStack.
         // Let's use ZStack for overlap control.
         
-        ZStack {
+        ZStack(alignment: .leading) {
             ForEach(Array(hand.enumerated()), id: \.element.id) { index, card in
                 let isHidden = gameManager.currentMovingCards.contains(where: { $0.id == card.id }) || gameManager.hiddenInSourceCardIds.contains(card.id)
                 let isPreplayReveal = gameManager.opponentPreplayRevealCardId == card.id
@@ -431,10 +444,12 @@ struct CapturedAreaV2: View {
     let ownerPlayerId: String
     let scale: CGFloat
     let alignLeading: Bool
+    @Binding var capturedGroupCenters: [String: CGPoint]
+    @Binding var capturedCardCenters: [String: CGPoint]
     
     var body: some View {
         if let groups = layoutConfig.groups {
-            CapturedGroupsAreaV2(ctx: ctx, animationNamespace: animationNamespace, gameManager: gameManager, layoutConfig: layoutConfig, groups: groups, cards: cards, ownerPlayerId: ownerPlayerId, scale: scale)
+            CapturedGroupsAreaV2(ctx: ctx, animationNamespace: animationNamespace, gameManager: gameManager, layoutConfig: layoutConfig, groups: groups, cards: cards, ownerPlayerId: ownerPlayerId, scale: scale, capturedGroupCenters: $capturedGroupCenters, capturedCardCenters: $capturedCardCenters)
         } else {
             legacyScrollView
         }
@@ -452,17 +467,20 @@ struct CapturedAreaV2: View {
         
         return ScrollView(.horizontal, showsIndicators: false) {
              HStack(spacing: startSpacing) {
-                 ForEach(Array(cards.enumerated()), id: \.element.id) { index, card in
+                ForEach(Array(cards.enumerated()), id: \.element.id) { index, card in
                      let sourceContains = capturedActsAsSource && gameManager.hiddenInSourceCardIds.contains(card.id)
                      let targetContains = capturedActsAsTarget && gameManager.hiddenInTargetCardIds.contains(card.id)
                      let hideTargetCard = targetContains
-                     // Keep a tiny visible target anchor so matched-geometry can preserve trajectory.
-                     let targetHiddenOpacity: Double = 0.01
+                     let disableMatchedGeometryForRoute =
+                        (gameManager.currentMoveSourceZone == "table" && gameManager.currentMoveTargetZone == "captured") ||
+                        (gameManager.currentMoveSourceZone == "captured" && gameManager.currentMoveTargetZone == "captured")
+                     // For table->captured overlay mode, keep target fully hidden to avoid reverse-looking trails.
+                     let targetHiddenOpacity: Double = (gameManager.currentMoveSourceZone == "table" && gameManager.currentMoveTargetZone == "captured") ? 0.0 : 0.01
                      let opacity: Double = sourceContains ? 0.0 : (hideTargetCard ? targetHiddenOpacity : 1.0)
                      let isTarget = targetContains
                      let isSourceCue = capturedActsAsSource && gameManager.sourceCueCardIds.contains(card.id)
                      let isTargetCue = capturedActsAsTarget && gameManager.targetCueCardIds.contains(card.id)
-                     CardView(card: card, isFaceUp: true, scale: scale, animationNamespace: animationNamespace, isSource: !isTarget, isMoveSourceCue: isSourceCue, isMoveTargetCue: isTargetCue, isCapturedAreaCard: true)
+                     CardView(card: card, isFaceUp: true, scale: scale, animationNamespace: disableMatchedGeometryForRoute ? nil : animationNamespace, isSource: !isTarget, isMoveSourceCue: isSourceCue, isMoveTargetCue: isTargetCue, isCapturedAreaCard: true)
                         .zIndex(Double(index))
                         .opacity(opacity)
                  }
@@ -482,6 +500,8 @@ struct CapturedGroupsAreaV2: View {
     let cards: [Card]
     let ownerPlayerId: String
     let scale: CGFloat
+    @Binding var capturedGroupCenters: [String: CGPoint]
+    @Binding var capturedCardCenters: [String: CGPoint]
     
     var body: some View {
         GeometryReader { geo in
@@ -491,7 +511,6 @@ struct CapturedGroupsAreaV2: View {
             let vSpacing = cardW * layoutConfig.groupSpacingCardRatio
             let totalSpacing = vSpacing * CGFloat(groups.count - 1)
             let baseActiveWidth = max(0, totalWidth - padding - totalSpacing)
-            
             let totalWeight = groups.reduce(0) { $0 + $1.priorityWeight }
             
             HStack(alignment: .bottom, spacing: vSpacing) {
@@ -508,14 +527,59 @@ struct CapturedGroupsAreaV2: View {
                         cards: groupCards,
                         ownerPlayerId: ownerPlayerId,
                         scale: scale,
-                        allocatedWidth: groupWidth
+                        allocatedWidth: groupWidth,
+                        capturedCardCenters: $capturedCardCenters
+                    )
+                    .overlay(
+                        GeometryReader { slotGeo in
+                            let frame = slotGeo.frame(in: .named("GameSpace"))
+                            Color.clear
+                                .onAppear {
+                                    upsertCapturedGroupCenter(
+                                        ownerPlayerId: ownerPlayerId,
+                                        groupType: group.type,
+                                        frame: frame
+                                    )
+                                }
+                                .onChange(of: ownerPlayerId) { _ in
+                                    let nextFrame = slotGeo.frame(in: .named("GameSpace"))
+                                    upsertCapturedGroupCenter(
+                                        ownerPlayerId: ownerPlayerId,
+                                        groupType: group.type,
+                                        frame: nextFrame
+                                    )
+                                }
+                                .onChange(of: cards.count) { _ in
+                                    let nextFrame = slotGeo.frame(in: .named("GameSpace"))
+                                    upsertCapturedGroupCenter(
+                                        ownerPlayerId: ownerPlayerId,
+                                        groupType: group.type,
+                                        frame: nextFrame
+                                    )
+                                }
+                                .onChange(of: frame) { nextFrame in
+                                    upsertCapturedGroupCenter(
+                                        ownerPlayerId: ownerPlayerId,
+                                        groupType: group.type,
+                                        frame: nextFrame
+                                    )
+                                }
+                        }
                     )
                 }
             }
             .padding(.horizontal, ctx.scaledTokens.panelPadding)
             .frame(width: geo.size.width, height: geo.size.height, alignment: .bottom)
         }
-        .frame(height: ctx.cardSize.height * scale * 1.8) // Extra space for wrapped cards
+        .frame(height: ctx.cardSize.height * scale * 1.8)
+    }
+
+    private func upsertCapturedGroupCenter(ownerPlayerId: String, groupType: String, frame: CGRect) {
+        let key = "\(ownerPlayerId):\(groupType)"
+        let center = CGPoint(x: frame.midX, y: frame.midY)
+        if capturedGroupCenters[key] != center {
+            capturedGroupCenters[key] = center
+        }
     }
     
     func matchCardType(card: Card, targetType: String) -> Bool {
@@ -555,6 +619,7 @@ struct CapturedGroupSlotView: View {
     let ownerPlayerId: String
     let scale: CGFloat
     let allocatedWidth: CGFloat
+    @Binding var capturedCardCenters: [String: CGPoint]
     
     var body: some View {
         let cardW = ctx.cardSize.width * scale
@@ -633,16 +698,33 @@ struct CapturedGroupSlotView: View {
                     let sourceContains = capturedActsAsSource && gameManager.hiddenInSourceCardIds.contains(card.id)
                     let targetContains = capturedActsAsTarget && gameManager.hiddenInTargetCardIds.contains(card.id)
                     let hideTargetCard = targetContains
-                    // Keep a tiny visible target anchor so matched-geometry can preserve trajectory.
-                    let targetHiddenOpacity: Double = 0.01
+                    let disableMatchedGeometryForRoute =
+                        (gameManager.currentMoveSourceZone == "table" && gameManager.currentMoveTargetZone == "captured") ||
+                        (gameManager.currentMoveSourceZone == "captured" && gameManager.currentMoveTargetZone == "captured")
+                    // For table->captured overlay mode, keep target fully hidden to avoid reverse-looking trails.
+                    let targetHiddenOpacity: Double = (gameManager.currentMoveSourceZone == "table" && gameManager.currentMoveTargetZone == "captured") ? 0.0 : 0.01
                     let opacity: Double = sourceContains ? 0.0 : (hideTargetCard ? targetHiddenOpacity : 1.0)
                     let isTarget = targetContains
                     let isSourceCue = capturedActsAsSource && gameManager.sourceCueCardIds.contains(card.id)
                     let isTargetCue = capturedActsAsTarget && gameManager.targetCueCardIds.contains(card.id)
-                    CardView(card: card, isFaceUp: true, scale: scale, animationNamespace: animationNamespace, isSource: !isTarget, piCount: piCount, isMoveSourceCue: isSourceCue, isMoveTargetCue: isTargetCue, isCapturedAreaCard: true)
+                    CardView(card: card, isFaceUp: true, scale: scale, animationNamespace: disableMatchedGeometryForRoute ? nil : animationNamespace, isSource: !isTarget, piCount: piCount, isMoveSourceCue: isSourceCue, isMoveTargetCue: isTargetCue, isCapturedAreaCard: true)
                         .opacity(opacity)
                 }
                 .position(x: cardW/2 + xOffset, y: cardH/2 + yOffset)
+                .overlay(
+                    GeometryReader { cardGeo in
+                        Color.clear
+                            .onAppear {
+                                capturedCardCenters[card.id] = cardGeo.frame(in: .named("GameSpace")).center
+                            }
+                            .onChange(of: cards.count) { _ in
+                                capturedCardCenters[card.id] = cardGeo.frame(in: .named("GameSpace")).center
+                            }
+                            .onChange(of: ownerPlayerId) { _ in
+                                capturedCardCenters[card.id] = cardGeo.frame(in: .named("GameSpace")).center
+                            }
+                    }
+                )
                 .zIndex(Double(index))
             }
             
@@ -667,11 +749,12 @@ struct TableAreaV2: View {
     let config: ElementTableConfig
     let cards: [Card]
     var slotManager: TableSlotManager?
+    @Binding var tableCardCenters: [String: CGPoint]
     
     var body: some View {
         Group {
             if config.mode == "fixedSlots12", let manager = slotManager {
-                TableFixedSlotsView(ctx: ctx, animationNamespace: animationNamespace, gameManager: gameManager, config: config, manager: manager)
+                TableFixedSlotsView(ctx: ctx, animationNamespace: animationNamespace, gameManager: gameManager, config: config, manager: manager, tableCardCenters: $tableCardCenters)
             } else {
                 legacyGrid
             }
@@ -682,6 +765,8 @@ struct TableAreaV2: View {
         let groups = Dictionary(grouping: cards, by: { $0.month }).values.sorted(by: { $0.first!.month.rawValue < $1.first!.month.rawValue })
         let tableActsAsSource = gameManager.currentMoveSourceZone == "table"
         let tableActsAsTarget = gameManager.currentMoveTargetZone == "table"
+        let disableMatchedGeometryForRoute =
+            (gameManager.currentMoveSourceZone == "table" && gameManager.currentMoveTargetZone == "captured")
         let hideTableTarget = tableActsAsTarget && gameManager.currentMoveSourceZone == "deck"
         let tableToCapturedSourceCueScale: CGFloat = (gameManager.currentMoveSourceZone == "table" && gameManager.currentMoveTargetZone == "captured") ? 1.0 : 1.06
         let deckToTableTargetCueScale: CGFloat = (gameManager.currentMoveSourceZone == "deck" && gameManager.currentMoveTargetZone == "table") ? 1.0 : 1.03
@@ -701,11 +786,12 @@ struct TableAreaV2: View {
                 let stack = groups[index]
                 ZStack {
                     ForEach(Array(stack.enumerated()), id: \.element.id) { i, card in
-                        let isHidden = hideTableTarget && gameManager.hiddenInTargetCardIds.contains(card.id)
+                        let sourceHidden = tableActsAsSource && gameManager.hiddenInSourceCardIds.contains(card.id)
+                        let isHidden = sourceHidden || (hideTableTarget && gameManager.hiddenInTargetCardIds.contains(card.id))
                         let isTarget = tableActsAsTarget && gameManager.hiddenInTargetCardIds.contains(card.id)
                         let isSourceCue = tableActsAsSource && gameManager.sourceCueCardIds.contains(card.id)
                         let isTargetCue = tableActsAsTarget && gameManager.targetCueCardIds.contains(card.id)
-                        CardView(card: card, isFaceUp: true, scale: config.scale, animationNamespace: animationNamespace, isSource: !isTarget, isMoveSourceCue: isSourceCue, isMoveTargetCue: isTargetCue, sourceCueScaleMultiplier: tableToCapturedSourceCueScale, targetCueScaleMultiplier: deckToTableTargetCueScale)
+                        CardView(card: card, isFaceUp: true, scale: config.scale, animationNamespace: disableMatchedGeometryForRoute ? nil : animationNamespace, isSource: !isTarget, isMoveSourceCue: isSourceCue, isMoveTargetCue: isTargetCue, sourceCueScaleMultiplier: tableToCapturedSourceCueScale, targetCueScaleMultiplier: deckToTableTargetCueScale)
                             .offset(y: CGFloat(i) * (cardH * (1.0 - config.grid.stackOverlapRatio))) 
                             .opacity(isHidden ? 0 : 1)
                     }
@@ -722,6 +808,7 @@ struct TableFixedSlotsView: View {
     @ObservedObject var gameManager: GameManager
     let config: ElementTableConfig
     @ObservedObject var manager: TableSlotManager
+    @Binding var tableCardCenters: [String: CGPoint]
     
     var body: some View {
         let cardW = ctx.cardSize.width * config.scale
@@ -729,6 +816,8 @@ struct TableFixedSlotsView: View {
         let currentTableIds = Set(gameManager.tableCards.map { $0.id })
         let tableActsAsSource = gameManager.currentMoveSourceZone == "table"
         let tableActsAsTarget = gameManager.currentMoveTargetZone == "table"
+        let disableMatchedGeometryForRoute =
+            (gameManager.currentMoveSourceZone == "table" && gameManager.currentMoveTargetZone == "captured")
         let hideTableTarget = tableActsAsTarget && gameManager.currentMoveSourceZone == "deck"
         let tableToCapturedSourceCueScale: CGFloat = (gameManager.currentMoveSourceZone == "table" && gameManager.currentMoveTargetZone == "captured") ? 1.0 : 1.06
         let deckToTableTargetCueScale: CGFloat = (gameManager.currentMoveSourceZone == "deck" && gameManager.currentMoveTargetZone == "table") ? 1.0 : 1.03
@@ -765,11 +854,12 @@ struct TableFixedSlotsView: View {
                                       
                                       let xOff = (isHorizontal || isDiagonal) ? CGFloat(i) * (cardW * (1.0 - overlap)) : 0
                                       let yOff = (!isHorizontal) ? CGFloat(i) * (cardH * (1.0 - overlap)) : 0
-                                      let isHidden = hideTableTarget && gameManager.hiddenInTargetCardIds.contains(card.id)
+                                      let sourceHidden = tableActsAsSource && gameManager.hiddenInSourceCardIds.contains(card.id)
+                                      let isHidden = sourceHidden || (hideTableTarget && gameManager.hiddenInTargetCardIds.contains(card.id))
                                       let isTarget = tableActsAsTarget && gameManager.hiddenInTargetCardIds.contains(card.id)
                                       let isSourceCue = tableActsAsSource && gameManager.sourceCueCardIds.contains(card.id)
                                       let isTargetCue = tableActsAsTarget && gameManager.targetCueCardIds.contains(card.id)
-                                      CardView(card: card, isFaceUp: true, scale: config.scale, animationNamespace: animationNamespace, isSource: !isTarget, showDebugInfo: ctx.config.debug.player?.sortedOrderOverlay == true, isMoveSourceCue: isSourceCue, isMoveTargetCue: isTargetCue, sourceCueScaleMultiplier: tableToCapturedSourceCueScale, targetCueScaleMultiplier: deckToTableTargetCueScale)
+                                      CardView(card: card, isFaceUp: true, scale: config.scale, animationNamespace: disableMatchedGeometryForRoute ? nil : animationNamespace, isSource: !isTarget, showDebugInfo: ctx.config.debug.player?.sortedOrderOverlay == true, isMoveSourceCue: isSourceCue, isMoveTargetCue: isTargetCue, sourceCueScaleMultiplier: tableToCapturedSourceCueScale, targetCueScaleMultiplier: deckToTableTargetCueScale)
                                           .offset(x: xOff, y: yOff)
                                           .zIndex(Double(i))
                                           .opacity(isHidden ? 0 : 1)
@@ -781,8 +871,37 @@ struct TableFixedSlotsView: View {
                      }
                      .frame(width: cardW, height: cardH)
                      .offset(x: pos.x, y: pos.y)
+                     .overlay(
+                         GeometryReader { geo in
+                             Color.clear
+                                 .onAppear {
+                                     let center = geo.frame(in: .named("GameSpace")).center
+                                     updateTableCardCenters(slot: slot, center: center, cardW: cardW, cardH: cardH)
+                                 }
+                                 .onChange(of: gameManager.tableCards.count) { _ in
+                                     let center = geo.frame(in: .named("GameSpace")).center
+                                     updateTableCardCenters(slot: slot, center: center, cardW: cardW, cardH: cardH)
+                                 }
+                         }
+                     )
                  }
              }
+        }
+    }
+    
+    private func updateTableCardCenters(slot: TableFixedSlot, center: CGPoint, cardW: CGFloat, cardH: CGFloat) {
+        let stack = manager.cards(at: slot.slotIndex)
+        let currentTableIds = Set(gameManager.tableCards.map { $0.id })
+        let config = self.config
+        let direction = config.grid.stackDirection ?? "vertical"
+        let overlap = config.grid.stackOverlapRatio
+        let isHorizontal = direction == "horizontal" || direction == "diagonal"
+        let isVertical = !(direction == "horizontal")
+        for (i, card) in stack.enumerated() {
+            guard currentTableIds.contains(card.id) else { continue }
+            let xOff = isHorizontal ? CGFloat(i) * (cardW * (1.0 - overlap)) : 0
+            let yOff = isVertical ? CGFloat(i) * (cardH * (1.0 - overlap)) : 0
+            tableCardCenters[card.id] = CGPoint(x: center.x + xOff, y: center.y + yOff)
         }
     }
     
@@ -844,6 +963,11 @@ struct TableFixedSlotsView: View {
 }
 
 
+
+// CGRect center helper
+extension CGRect {
+    var center: CGPoint { CGPoint(x: midX, y: midY) }
+}
 
 // Helper Extension
 extension Array {

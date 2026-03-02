@@ -134,14 +134,16 @@ struct CardView: View {
         }
     }
     
+    @ViewBuilder
     func backView(size: CGSize) -> some View {
+        let ratio = config.layoutV2?.card.cornerRadiusRatio ?? config.layout.card.cornerRadius
         ZStack {
-            config.layout.card.backColorSwiftUI
+            RoundedRectangle(cornerRadius: size.width * ratio)
+                .fill(config.layout.card.backColorSwiftUI)
             
-            // Texture Pattern (Simple Circle)
             Circle()
                 .fill(config.layout.card.backCircleColorSwiftUI)
-                .frame(width: size.width * 0.5, height: size.width * 0.5)
+                .frame(width: size.width * 0.4, height: size.width * 0.4)
                 .overlay(
                     Circle().stroke(Color.black.opacity(0.2), lineWidth: 1)
                 )

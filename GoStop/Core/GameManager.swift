@@ -228,6 +228,7 @@ class GameManager: ObservableObject {
         self.chongtongMonth = nil
         self.chongtongTiming = nil
         self.eventLogs = []
+        self.uxEventLogs.removeAll()
         self.stateHistory = []
         self.deck.reset(seed: seed)
         self.monthOwners = [:]
@@ -317,6 +318,7 @@ class GameManager: ObservableObject {
             return
         }
         gLog("Game started. Player 1 turn.")
+        self.uxEventLogs.removeAll() // Ensure HUD is correctly reset for test agent loops
         currentTurnIndex = 0 // Player 1 starts
         gameState = .playing
         maybeScheduleInternalComputerAction()
@@ -585,24 +587,32 @@ class GameManager: ObservableObject {
             return
         }
 
-        let moveDelay = AnimationManager.shared.config.card_move_duration
+        let movePlan = AnimationManager.shared.motionPlan(source: "table", target: "captured")
+        let moveDelay = movePlan.delay
         let capturedIds = Set(captured.map { $0.id })
         let filtered = captured.filter { !($0.month == .sep && $0.type == .animal) }
         let filteredIds = Set(filtered.map { $0.id })
 
         currentMovingCards = []
+        movingCardsPiCount = nil
+        movingCardsShowDebug = false
         penaltyMoveProgress = 0
         for c in captured {
             hiddenInSourceCardIds.remove(c.id)
             hiddenInTargetCardIds.remove(c.id)
         }
-        // Keep captured target cards hidden until the table->captured move reaches arrival.
+        // Hide source+target during overlay flight so trajectory is driven only by movingCardOverlay.
         for c in filtered {
+            hiddenInSourceCardIds.insert(c.id)
             hiddenInTargetCardIds.insert(c.id)
         }
 
         if filtered.isEmpty {
-            withAnimation {
+            if let moveAnimation = movePlan.animation {
+                withAnimation(moveAnimation) {
+                    tableCards.removeAll { capturedIds.contains($0.id) }
+                }
+            } else {
                 tableCards.removeAll { capturedIds.contains($0.id) }
             }
             runAfterAnimationDelay(moveDelay) {
@@ -619,22 +629,57 @@ class GameManager: ObservableObject {
         )
         if !filtered.isEmpty {
             // Mount target hidden under the correct move context so it never flashes visible.
+            let cardIds = filtered.map { $0.id }
+            self.hiddenInSourceCardIds.formUnion(cardIds)
+            self.hiddenInTargetCardIds.formUnion(cardIds)
+
             player.capture(cards: filtered)
             player.score = ScoringSystem.calculateScore(for: player)
         }
+        currentMovingCards = filtered
+        movingCardsScale = 0.86
+        movingCardsPiCount = nil
+        movingCardsShowDebug = false
         showSourceCue(for: filtered, holdBeforeMove: false)
         let cardIds = filtered.map { $0.id }.joined(separator: ",")
-        addUXEvent(type: "moveStart", data: ["cardIds": cardIds, "source": "table", "target": "captured"])
+        addUXEvent(
+            type: "moveStart",
+            data: [
+                "cardIds": cardIds,
+                "source": "table",
+                "target": "captured",
+                "targetPlayerId": targetPlayerId
+            ]
+        )
         takeSnapshot()
 
-        withAnimation {
-            tableCards.removeAll { capturedIds.contains($0.id) }
+        let runMove: () -> Void = {
+            self.penaltyMoveProgress = 1
+        }
+
+        if let moveAnimation = movePlan.animation {
+            withAnimation(moveAnimation) {
+                runMove()
+            }
+        } else {
+            runMove()
         }
 
         runAfterAnimationDelay(moveDelay) {
+            self.tableCards.removeAll { capturedIds.contains($0.id) }
             let cardIds = filtered.map { $0.id }.joined(separator: ",")
-            self.addUXEvent(type: "moveEnd", data: ["cardIds": cardIds, "target": "captured"])
+            self.addUXEvent(
+                type: "moveEnd",
+                data: [
+                    "cardIds": cardIds,
+                    "target": "captured",
+                    "targetPlayerId": targetPlayerId
+                ]
+            )
+            self.hiddenInSourceCardIds.subtract(filteredIds)
             self.hiddenInTargetCardIds.subtract(filteredIds)
+            self.currentMovingCards = []
+            self.penaltyMoveProgress = 0
             let captureCueHold = self.capturedTargetCueDuration
             self.showTargetCue(for: filtered, durationOverride: captureCueHold)
             self.movingCardsPiCount = nil
@@ -679,6 +724,8 @@ class GameManager: ObservableObject {
         guard let rules = RuleLoader.shared.config else { return }
         guard gameState == .playing, !isAutomationBusy, let player = currentPlayer else { return }
 
+        self.uxEventLogs.removeAll() // Clear stale logs from previous turn
+
         // Mid-game shake check (bomb takes priority).
         if card.type != .dummy, rules.special_moves.shake.enabled {
             let sameMonthCount = player.hand.filter { $0.month == card.month }.count
@@ -716,8 +763,8 @@ class GameManager: ObservableObject {
             if let idx = player.hand.firstIndex(where: { $0.id == card.id }) {
                 player.hand.remove(at: idx)
             }
-            // Dummy cards vanish on play and do not trigger a draw phase.
-            finalizeTurnState(player: player, rules: rules)
+            // Dummy cards vanish on play, but the turn still continues with deck draw/capture.
+            proceedToDrawPhase(player: player, rules: rules)
         } else {
             // Check for Bomb/Shake first
             let month = card.month
@@ -734,7 +781,7 @@ class GameManager: ObservableObject {
                     // We also keep it in Hand virtually (hidden) so matchedGeometryEffect has a source
                     // Important: Insert back at SAME index to avoid layout jump
                     player.hand.insert(pCard, at: idx)
-                    let handToTableMotion = AnimationManager.shared.handToTableMotionPlan()
+                    let handToTableMotion = AnimationManager.shared.motionPlan(source: "hand", target: "table")
                     let finalizeHandToTable: () -> Void = {
                         self.runAfterAnimationDelay(handToTableMotion.delay) {
                             
@@ -888,82 +935,99 @@ class GameManager: ObservableObject {
 
             self.tableCards.append(drawnCard)
             self.deck.pushCardsOnTop([drawnCard])
-            self.hiddenInSourceCardIds.insert(drawnCard.id)
+            let deckToTableMotion = AnimationManager.shared.motionPlan(source: "deck", target: "table")
             self.hiddenInTargetCardIds.insert(drawnCard.id)
             self.setMoveContext(source: "deck", target: "table")
-            self.showSourceCue(for: [drawnCard], holdBeforeMove: false)
 
-            self.addUXEvent(type: "moveStart", data: ["cardId": drawnCard.id, "source": "deck", "target": "table"])
-            self.takeSnapshot()
+            let finalizeDeckToTable: () -> Void = {
+                self.runAfterAnimationDelay(deckToTableMotion.delay) {
+                    self.addUXEvent(type: "moveEnd", data: ["cardId": drawnCard.id, "target": "table"])
+                    self.currentMovingCards = []
+                    self.penaltyMoveProgress = 0
+                    self.hiddenInSourceCardIds.remove(drawnCard.id)
+                    self.hiddenInTargetCardIds.remove(drawnCard.id)
+                    self.showTargetCue(for: [drawnCard])
+                    self.clearMoveContextAfterCue(expectedSource: "deck", expectedTarget: "table")
 
-            self.movingCardsScale = 0.7
-            self.movingCardsShowDebug = false
-            self.currentMovingCards = [drawnCard]
+                    let sameMonthInLogicalTable = logicalTableBeforeDraw.filter { $0.month == drawnCard.month }
+                    let isSeolsa = self.turnPlayPhaseCaptured.count == 2 &&
+                        self.turnPlayPhaseCaptured[0].month == drawnCard.month &&
+                        sameMonthInLogicalTable.isEmpty
 
-            withAnimation { }
-
-            self.deck.remove(card: drawnCard)
-
-            let moveDelay = AnimationManager.shared.config.card_move_duration
-            self.runAfterAnimationDelay(moveDelay) {
-                self.addUXEvent(type: "moveEnd", data: ["cardId": drawnCard.id, "target": "table"])
-                self.currentMovingCards = []
-                self.penaltyMoveProgress = 0
-                self.hiddenInSourceCardIds.remove(drawnCard.id)
-                self.hiddenInTargetCardIds.remove(drawnCard.id)
-                self.showTargetCue(for: [drawnCard])
-                self.clearMoveContextAfterCue(expectedSource: "deck", expectedTarget: "table")
-
-                let sameMonthInLogicalTable = logicalTableBeforeDraw.filter { $0.month == drawnCard.month }
-                let isSeolsa = self.turnPlayPhaseCaptured.count == 2 &&
-                    self.turnPlayPhaseCaptured[0].month == drawnCard.month &&
-                    sameMonthInLogicalTable.isEmpty
-
-                if isSeolsa {
-                    self.turnIsSeolsa = true
-                    gLog("SEOLSA!")
-                    self.turnPlayPhaseCaptured = []
-                    self.turnDrawPhaseCaptured = []
-                    self.turnPlayPhaseResultingTable = nil
-                    self.turnDrawPhaseBaseTable = nil
-                    self.finalizeTurnState(player: player, rules: rules)
-                    return
-                }
-
-                var drawLogicalTable = logicalTableBeforeDraw
-                if let captured = self.performTableCapture(for: drawnCard, on: &drawLogicalTable, player: player) {
-                    self.turnDrawPhaseCaptured = captured
-                    self.handleDrawCaptured(drawnCard: drawnCard, player: player)
-                    self.turnDrawPhaseBaseTable = nil
-
-                    let finalTable = drawLogicalTable
-                    let commit: () -> Void = {
-                        self.commitResolvedCapturesAndFinalize(
-                            player: player,
-                            rules: rules,
-                            finalTable: finalTable,
-                            drawnCard: drawnCard
-                        )
+                    if isSeolsa {
+                        self.turnIsSeolsa = true
+                        gLog("SEOLSA!")
+                        self.turnPlayPhaseCaptured = []
+                        self.turnDrawPhaseCaptured = []
+                        self.turnPlayPhaseResultingTable = nil
+                        self.turnDrawPhaseBaseTable = nil
+                        self.finalizeTurnState(player: player, rules: rules)
+                        return
                     }
 
-                    let hasAnyCapture = !self.turnPlayPhaseCaptured.isEmpty || !captured.isEmpty
-                    let matchPause = AnimationManager.shared.config.match_pause_duration
-                    if hasAnyCapture && matchPause > 0 {
-                        self.runAfterAnimationDelay(matchPause) {
+                    var drawLogicalTable = logicalTableBeforeDraw
+                    if let captured = self.performTableCapture(for: drawnCard, on: &drawLogicalTable, player: player) {
+                        self.turnDrawPhaseCaptured = captured
+                        self.handleDrawCaptured(drawnCard: drawnCard, player: player)
+                        self.turnDrawPhaseBaseTable = nil
+
+                        let finalTable = drawLogicalTable
+                        let commit: () -> Void = {
+                            self.commitResolvedCapturesAndFinalize(
+                                player: player,
+                                rules: rules,
+                                finalTable: finalTable,
+                                drawnCard: drawnCard
+                            )
+                        }
+
+                        let hasAnyCapture = !self.turnPlayPhaseCaptured.isEmpty || !captured.isEmpty
+                        let matchPause = AnimationManager.shared.config.match_pause_duration
+                        if hasAnyCapture && matchPause > 0 {
+                            self.runAfterAnimationDelay(matchPause) {
+                                commit()
+                            }
+                        } else {
                             commit()
                         }
                     } else {
-                        commit()
+                        // Draw capture needs user selection. Keep draw card visible and wait for choice.
+                        self.turnDrawPhaseBaseTable = drawLogicalTable
+                        self.pendingCaptureDrawnCard = drawnCard
+                        self.pendingCaptureOptions = drawLogicalTable.filter { $0.month == drawnCard.month }
+                        self.gameState = .choosingCapture
+                        player.score = ScoringSystem.calculateScore(for: player)
+                        self.maybeScheduleInternalComputerAction()
+                    }
+                }
+            }
+
+            let startDeckToTableMove: () -> Void = {
+                self.hiddenInSourceCardIds.insert(drawnCard.id)
+                self.addUXEvent(type: "moveStart", data: ["cardId": drawnCard.id, "source": "deck", "target": "table"])
+                self.takeSnapshot()
+
+                self.movingCardsScale = 0.7
+                self.movingCardsShowDebug = false
+                self.currentMovingCards = [drawnCard]
+
+                if let moveAnimation = deckToTableMotion.animation {
+                    withAnimation(moveAnimation) {
+                        self.deck.remove(card: drawnCard)
                     }
                 } else {
-                    // Draw capture needs user selection. Keep draw card visible and wait for choice.
-                    self.turnDrawPhaseBaseTable = drawLogicalTable
-                    self.pendingCaptureDrawnCard = drawnCard
-                    self.pendingCaptureOptions = drawLogicalTable.filter { $0.month == drawnCard.month }
-                    self.gameState = .choosingCapture
-                    player.score = ScoringSystem.calculateScore(for: player)
-                    self.maybeScheduleInternalComputerAction()
+                    self.deck.remove(card: drawnCard)
                 }
+                finalizeDeckToTable()
+            }
+
+            if deckToTableMotion.animation == nil {
+                self.showSourceCue(for: [drawnCard], holdBeforeMove: true) {
+                    startDeckToTableMove()
+                }
+            } else {
+                self.showSourceCue(for: [drawnCard], holdBeforeMove: false)
+                startDeckToTableMove()
             }
         }
     }
@@ -1212,6 +1276,7 @@ class GameManager: ObservableObject {
         self.clearMoveContext()
         self.opponentPreplayRevealCardId = nil
         self.internalComputerActionScheduled = false
+        self.uxEventLogs.removeAll()
         gLog("Emergency Busy State Reset triggered via SimulatorBridge.")
     }
 
@@ -1483,9 +1548,10 @@ class GameManager: ObservableObject {
         let cardIds = cards.map { $0.id }
         let cardIdSet = Set(cardIds)
         let cardIdsJoined = cardIds.joined(separator: ",")
-        let motion = AnimationManager.shared.handToTableMotionPlan()
+        let motion = AnimationManager.shared.motionPlan(source: "captured", target: "captured")
 
-        // Match hand->table flow: mount hidden target first, then animate source removal.
+        // Apply ownership atomically first so model state never contains duplicate IDs.
+        from.capturedCards.removeAll { cardIdSet.contains($0.id) }
         for movedCard in cards {
             if !to.capturedCards.contains(where: { $0.id == movedCard.id }) {
                 to.capturedCards.append(movedCard)
@@ -1493,7 +1559,8 @@ class GameManager: ObservableObject {
             hiddenInTargetCardIds.insert(movedCard.id)
             hiddenInSourceCardIds.remove(movedCard.id)
         }
-        currentMovingCards = []
+
+        currentMovingCards = cards
         movingCardsScale = 0.86
         movingCardsPiCount = nil
         movingCardsShowDebug = false
@@ -1522,10 +1589,10 @@ class GameManager: ObservableObject {
 
             if let moveAnimation = motion.animation {
                 withAnimation(moveAnimation) {
-                    from.capturedCards.removeAll { cardIdSet.contains($0.id) }
+                    self.penaltyMoveProgress = 1
                 }
             } else {
-                from.capturedCards.removeAll { cardIdSet.contains($0.id) }
+                self.penaltyMoveProgress = 1
             }
 
             self.runAfterAnimationDelay(motion.delay) {
@@ -1557,12 +1624,11 @@ class GameManager: ObservableObject {
             }
         }
 
-        if motion.animation == nil {
-            showSourceCue(for: cards, holdBeforeMove: true) {
-                performTransfer()
-            }
-        } else {
-            showSourceCue(for: cards, holdBeforeMove: false)
+        // Delay pi transfer start to prevent visual illusion where it overlaps
+        // with the preceding table->captured animation.
+        let delayBeforeTransfer = max(0.2, AnimationManager.shared.config.match_pause_duration * 1.5)
+        
+        self.runAfterAnimationDelay(delayBeforeTransfer) {
             performTransfer()
         }
     }

@@ -9,6 +9,12 @@ class SimulatorBridge {
     private var receiveBuffers: [ObjectIdentifier: Data] = [:]
     private let gameManager: GameManager
     private let queue = DispatchQueue(label: "com.antigravity.SimulatorBridge")
+    private var pendingStateConnections: [NWConnection] = []
+    private var stateSnapshotInFlight = false
+    private var stateSnapshotDirty = false
+    private var cachedStatePayload: Data?
+    private var cachedStateTimestamp: TimeInterval = 0
+    private let stateCacheTTL: TimeInterval = 0.0
     
     init(gameManager: GameManager, port: UInt16 = 8080) {
         self.gameManager = gameManager
@@ -93,6 +99,15 @@ class SimulatorBridge {
             }
             
             gLog("SimulatorBridge: Received action: \(action)")
+            if action != "get_state" {
+                cachedStatePayload = nil
+                cachedStateTimestamp = 0
+                if stateSnapshotInFlight {
+                    // A mutating action arrived while a snapshot was being built.
+                    // Drop that snapshot result and rebuild for queued get_state callers.
+                    stateSnapshotDirty = true
+                }
+            }
             
             let playActions: Set<String> = ["play_card", "respond_to_go", "respond_to_capture", "decide_shake", "decide_chrysanthemum"]
             if playActions.contains(action) {
@@ -103,7 +118,7 @@ class SimulatorBridge {
             
             switch action {
             case "get_state":
-                sendState(connection: connection)
+                enqueueStateResponse(connection: connection)
                 
             case "start_game":
                 DispatchQueue.main.async {
@@ -212,7 +227,9 @@ class SimulatorBridge {
                         let opponent = self.gameManager.players[1]
                         _ = self.gameManager.checkEndgameConditions(player: winner, opponent: opponent, rules: rules, isAfterGo: false)
                     }
-                    self.sendState(connection: connection)
+                    self.queue.async {
+                        self.enqueueStateResponse(connection: connection)
+                    }
                 }
                 
             case "restore_state":
@@ -449,27 +466,68 @@ class SimulatorBridge {
             connection.send(content: finalData, completion: .contentProcessed({ _ in }))
         }
     }
-    
-    private func sendState(connection: NWConnection) {
-        DispatchQueue.main.async {
+
+    private func enqueueStateResponse(connection: NWConnection?) {
+        if let connection {
+            pendingStateConnections.append(connection)
+        }
+        let now = Date().timeIntervalSince1970
+        if stateCacheTTL > 0,
+           let cached = cachedStatePayload,
+           (now - cachedStateTimestamp) <= stateCacheTTL,
+           !pendingStateConnections.isEmpty {
+            flushPendingStateResponses(payload: cached)
+            return
+        }
+        guard !pendingStateConnections.isEmpty else { return }
+        guard !stateSnapshotInFlight else { return }
+
+        stateSnapshotInFlight = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
             let state = self.gameManager.serializeState()
-            
-            // We need to encode this to JSON data
             let encoder = JSONEncoder()
-            do {
-                let data = try encoder.encode(state)
-                // Add a newline because our Python agent expects it
-                var messageData = data
-                messageData.append("\n".data(using: .utf8)!)
-                
-                connection.send(content: messageData, completion: .contentProcessed({ error in
-                    if let error = error {
-                        print("SimulatorBridge: Failed to send state: \(error)")
-                    }
-                }))
-            } catch {
-                print("SimulatorBridge: Failed to encode state: \(error)")
+            var payload: Data?
+            if let data = try? encoder.encode(state) {
+                var message = data
+                message.append("\n".data(using: .utf8)!)
+                payload = message
             }
+            self.queue.async {
+                self.stateSnapshotInFlight = false
+                guard let payload else {
+                    let pending = self.pendingStateConnections
+                    self.pendingStateConnections.removeAll()
+                    for conn in pending {
+                        self.sendErrorResponse(message: "Failed to encode state.", connection: conn)
+                    }
+                    return
+                }
+
+                if self.stateSnapshotDirty {
+                    // Serve queued callers with a post-mutation snapshot, not stale pre-action data.
+                    self.stateSnapshotDirty = false
+                    self.enqueueStateResponse(connection: nil)
+                    return
+                }
+
+                self.cachedStatePayload = payload
+                self.cachedStateTimestamp = Date().timeIntervalSince1970
+                self.flushPendingStateResponses(payload: payload)
+            }
+        }
+    }
+
+    private func flushPendingStateResponses(payload: Data) {
+        guard !pendingStateConnections.isEmpty else { return }
+        let targets = pendingStateConnections
+        pendingStateConnections.removeAll()
+        for conn in targets {
+            conn.send(content: payload, completion: .contentProcessed({ error in
+                if let error = error {
+                    print("SimulatorBridge: Failed to send state: \(error)")
+                }
+            }))
         }
     }
     
