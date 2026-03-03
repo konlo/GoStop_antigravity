@@ -44,6 +44,77 @@ func gLog(_ message: String) {
     }
 }
 
+private struct CumulativeWinScoreSnapshot: Codable {
+    let version: Int
+    let totals: [String: Int]
+}
+
+private final class CumulativeWinScoreStore {
+    static let shared = CumulativeWinScoreStore()
+
+    private let fileManager: FileManager
+    private let fileURL: URL
+    private var totals: [String: Int] = [:]
+    private let encoder = JSONEncoder()
+    private let decoder = JSONDecoder()
+
+    private init(fileManager: FileManager = .default) {
+        self.fileManager = fileManager
+        self.fileURL = Self.resolveFileURL(fileManager: fileManager)
+        self.encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        self.loadFromDisk()
+    }
+
+    func snapshot() -> [String: Int] {
+        totals
+    }
+
+    @discardableResult
+    func add(points: Int, to playerName: String) -> Int {
+        guard points > 0 else { return totals[playerName, default: 0] }
+        let updatedTotal = totals[playerName, default: 0] + points
+        totals[playerName] = updatedTotal
+        persistToDisk()
+        return updatedTotal
+    }
+
+    private static func resolveFileURL(fileManager: FileManager) -> URL {
+        let baseURL =
+            fileManager.urls(for: .documentDirectory, in: .userDomainMask).first ??
+            URL(fileURLWithPath: fileManager.currentDirectoryPath, isDirectory: true)
+        if !fileManager.fileExists(atPath: baseURL.path) {
+            try? fileManager.createDirectory(at: baseURL, withIntermediateDirectories: true)
+        }
+        return baseURL.appendingPathComponent("gostop_cumulative_win_scores.json")
+    }
+
+    private func loadFromDisk() {
+        guard fileManager.fileExists(atPath: fileURL.path) else {
+            totals = [:]
+            return
+        }
+
+        do {
+            let data = try Data(contentsOf: fileURL)
+            let snapshot = try decoder.decode(CumulativeWinScoreSnapshot.self, from: data)
+            totals = snapshot.totals
+        } catch {
+            // Keep gameplay running even if score file is malformed.
+            totals = [:]
+        }
+    }
+
+    private func persistToDisk() {
+        let snapshot = CumulativeWinScoreSnapshot(version: 1, totals: totals)
+        do {
+            let data = try encoder.encode(snapshot)
+            try data.write(to: fileURL, options: [.atomic])
+        } catch {
+            // Persistence failure should not block gameplay.
+        }
+    }
+}
+
 class GameManager: ObservableObject {
     static var shared: GameManager?
     
@@ -118,12 +189,16 @@ class GameManager: ObservableObject {
     @Published var chongtongMonth: Int? = nil
     @Published var chongtongTiming: String? = nil // "initial" or "midgame"
     
+    // Persistent cumulative winning scores (loaded from file).
+    @Published private(set) var cumulativeWinScores: [String: Int] = [:]
+    
     // Event Logs for inspection
     @Published var eventLogs: [String] = []
     @Published var uxEventLogs: [UXEvent] = []
     private var stateHistory: [[String: AnyCodable]] = []
     
     private var playerChangeCancellables: [AnyCancellable] = []
+    private let cumulativeWinScoreStore = CumulativeWinScoreStore.shared
 
     
     // Manual UI uses internal computer automation. External agents should disable it.
@@ -164,6 +239,7 @@ class GameManager: ObservableObject {
     
     init() {
         GameManager.shared = self
+        cumulativeWinScores = cumulativeWinScoreStore.snapshot()
         setupGame()
     }
 
@@ -189,6 +265,15 @@ class GameManager: ObservableObject {
         if self.uxEventLogs.count > 200 {
             self.uxEventLogs.removeFirst()
         }
+    }
+
+    func cumulativeWinScore(for player: Player) -> Int {
+        cumulativeWinScores[player.name, default: 0]
+    }
+
+    private func recordWinScore(points: Int, for player: Player) {
+        let updated = cumulativeWinScoreStore.add(points: points, to: player.name)
+        cumulativeWinScores[player.name] = updated
     }
     
     func getHistoryEntry(at index: Int) -> [String: AnyCodable]? {
@@ -312,16 +397,95 @@ class GameManager: ObservableObject {
         deck.pushCardsOnTop(cards)
     }
     
-    func startGame() {
+    func startGame(initialTurnIndex: Int? = nil) {
         if gameState == .ended {
             gLog("Game already ended (e.g. initial Chongtong). Skipping startGame playing state.")
             return
         }
-        gLog("Game started. Player 1 turn.")
+        let startingTurnIndex: Int
+        if let initialTurnIndex, players.indices.contains(initialTurnIndex) {
+            startingTurnIndex = initialTurnIndex
+        } else {
+            startingTurnIndex = 0
+        }
+        let starterName = players.indices.contains(startingTurnIndex) ? players[startingTurnIndex].name : "Player 1"
+        gLog("Game started. \(starterName) turn.")
         self.uxEventLogs.removeAll() // Ensure HUD is correctly reset for test agent loops
-        currentTurnIndex = 0 // Player 1 starts
+        currentTurnIndex = startingTurnIndex
         gameState = .playing
         maybeScheduleInternalComputerAction()
+    }
+
+    /// Returns the current round winner index (0-based) so the next round can start from winner.
+    /// Returns nil when there is no winner (e.g., nagari) or winner is not in current players list.
+    func previousRoundWinnerIndex() -> Int? {
+        guard let winner = gameWinner else { return nil }
+        return players.firstIndex(where: { $0.id == winner.id })
+    }
+
+    func isNightDayStarterDaytime(dayStartHour: Int, dayEndHour: Int, referenceDate: Date = Date()) -> Bool {
+        let hour = Calendar.current.component(.hour, from: referenceDate)
+        let normalizedDayStart = ((dayStartHour % 24) + 24) % 24
+        let normalizedDayEnd = ((dayEndHour % 24) + 24) % 24
+        if normalizedDayStart == normalizedDayEnd {
+            return true
+        }
+        if normalizedDayStart < normalizedDayEnd {
+            return hour >= normalizedDayStart && hour < normalizedDayEnd
+        }
+        // Wrap-around window (e.g., day starts at 22 and ends at 06).
+        return hour >= normalizedDayStart || hour < normalizedDayEnd
+    }
+
+    /// Returns starter index based on 밤일낮장 comparison.
+    /// - Returns: `0` for player one, `1` for player two, `nil` when tied.
+    func resolveNightDayStarterWinner(
+        playerOneMonth: Int,
+        playerTwoMonth: Int,
+        dayStartHour: Int,
+        dayEndHour: Int,
+        referenceDate: Date = Date()
+    ) -> Int? {
+        guard playerOneMonth != playerTwoMonth else { return nil }
+        let isDaytime = isNightDayStarterDaytime(
+            dayStartHour: dayStartHour,
+            dayEndHour: dayEndHour,
+            referenceDate: referenceDate
+        )
+        let playerOneStarts = isDaytime
+            ? (playerOneMonth > playerTwoMonth)
+            : (playerOneMonth < playerTwoMonth)
+        return playerOneStarts ? 0 : 1
+    }
+
+    func resolveNightDayStarterIndex(dayStartHour: Int, dayEndHour: Int, referenceDate: Date = Date()) -> Int {
+        let isDaytime = isNightDayStarterDaytime(
+            dayStartHour: dayStartHour,
+            dayEndHour: dayEndHour,
+            referenceDate: referenceDate
+        )
+
+        let drawMonths = deck.cards.reversed().map { $0.month.rawValue }
+        var drawIndex = 0
+        while drawIndex + 1 < drawMonths.count {
+            let playerOneMonth = drawMonths[drawIndex]
+            let playerTwoMonth = drawMonths[drawIndex + 1]
+            if let winnerIndex = resolveNightDayStarterWinner(
+                playerOneMonth: playerOneMonth,
+                playerTwoMonth: playerTwoMonth,
+                dayStartHour: dayStartHour,
+                dayEndHour: dayEndHour,
+                referenceDate: referenceDate
+            ) {
+                let modeLabel = isDaytime ? "낮장" : "밤일"
+                gLog("First-launch starter decided by \(modeLabel): P1=\(playerOneMonth), P2=\(playerTwoMonth), winner=\(winnerIndex)")
+                return winnerIndex
+            }
+            drawIndex += 2
+        }
+
+        gLog("Night/day starter draw tie fallback. Defaulting to Player 1.")
+        return 0
     }
     
     private func getMonthsWithThreePlus(in hand: [Card]) -> [Int] {
@@ -367,6 +531,7 @@ class GameManager: ObservableObject {
             isYeokbak: false,
             scoreFormula: "Chongtong Rule (\(timing)) = \(score)"
         )
+        recordWinScore(points: score, for: player)
         
         self.gameState = .ended
         gLog("Game ended via CHONGTONG! Winner: \(player.name), Score: \(score)")
@@ -888,7 +1053,6 @@ class GameManager: ObservableObject {
             turnPlayPhaseCaptured.append(target)
         }
         player.bombCount += 1
-        player.shakeCount += 1
         
         for _ in 0..<rules.special_moves.bomb.dummy_card_count {
             let dummy = Card(month: .none, type: .dummy, imageIndex: 0)
@@ -1109,6 +1273,7 @@ class GameManager: ObservableObject {
         gLog("\(player.name) calls STOP (\(reason)) and wins! Final Score: \(result.finalScore)")
         opponent.money -= result.finalScore * 100
         player.money += result.finalScore * 100
+        recordWinScore(points: result.finalScore, for: player)
         self.gameEndReason = reason
         self.lastPenaltyResult = result
         self.gameWinner = player
@@ -1119,6 +1284,7 @@ class GameManager: ObservableObject {
     
     private func fallbackEndTurn(player: Player) {
         if player.score >= 7 {
+            recordWinScore(points: player.score, for: player)
             self.gameEndReason = .stop
             self.gameWinner = player
             settleResidualCardsIfHandsEmpty()

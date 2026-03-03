@@ -206,8 +206,9 @@ def scenario_verify_bomb_and_steal(agent: TestAgent):
     # Sweep didn't trigger because drawn card stayed on table.
     assert len(player["capturedCards"]) == 5, f"Expected 5 captured cards (4 bomb + 1 stolen), got {len(player['capturedCards'])}"
     
-    # Check shake count
-    assert player["shakeCount"] == 1, f"Expected shakeCount 1, got {player['shakeCount']}"
+    # Bomb should increase bombCount only (no implicit shake multiplier source).
+    assert player["bombCount"] == 1, f"Expected bombCount 1, got {player['bombCount']}"
+    assert player["shakeCount"] == 0, f"Expected shakeCount 0 on bomb-only turn, got {player['shakeCount']}"
     
     logger.info("Bomb and Steal verification passed!")
 
@@ -930,8 +931,8 @@ def scenario_verify_endgame_conditions(agent: TestAgent):
     logger.info("Max Go endgame verification passed!")
     
     # 2. Max Score (threshold is 50 in rule.yaml)
-    # Use a direct endgame check with a clearly high final score so the test is robust to turn-flow variance
-    # and to different bomb/shake multiplier implementations (x6 vs x32, etc.).
+    # Use a direct endgame check with a clearly high final score so the test is robust to turn-flow variance.
+    # Drive high multiplier via shakes only (bomb no longer contributes to score multiplier).
     # Restart from the ended state to clear any prior round state before the second sub-case.
     agent.send_user_action("click_restart_button")
     winner_cards = (
@@ -944,7 +945,7 @@ def scenario_verify_endgame_conditions(agent: TestAgent):
         "currentTurnIndex": 0,
         "mock_captured_cards": winner_cards,
         "mock_opponent_captured_cards": [{"month": 11, "type": "junk"}] * 5,  # Pibak + Gwangbak candidate
-        "player0_data": {"bombCount": 5, "goCount": 0, "isComputer": False},
+        "player0_data": {"shakeCount": 5, "goCount": 0, "isComputer": False},
         "player1_data": {"goCount": 1, "isComputer": False}  # Enables Gobak multiplier candidate
     })
     agent.send_user_action("mock_endgame_check")
@@ -1887,10 +1888,10 @@ def scenario_verify_yeokbak(agent: TestAgent):
 
 def scenario_verify_shake_multiplier_stacking(agent: TestAgent):
     """
-    Scenario: Verifies that multiple shakes stack additively on score multiplier.
-    Rule (rule.yaml > special_moves.shake.score_multiplier_type: additive):
-      - 1 Shake = final multiplier +1 (i.e., x2)
-      - 2 Shakes = final multiplier +2 (i.e., x3)
+    Scenario: Verifies that multiple shakes stack exponentially on score multiplier.
+    Rule (rule.yaml > special_moves.shake.score_multiplier_type: multiplicative):
+      - 1 Shake = x2
+      - 2 Shakes = x4
     
     This test verifies the shakeCount is tracked correctly across multiple shakes
     and that the game reports the multiplier accordingly.
@@ -1906,7 +1907,7 @@ def scenario_verify_shake_multiplier_stacking(agent: TestAgent):
     agent.set_condition({
         "mock_captured_cards": winner_cards,
         "mock_opponent_captured_cards": [{"month": 11, "type": "junk"}] * 3,
-        "player0_data": {"goCount": 0, "shakeCount": 2},  # 2 shakes → multiplier +2
+        "player0_data": {"goCount": 0, "shakeCount": 2},  # 2 shakes -> x4
         "player1_data": {"goCount": 1},
         "mock_scenario": "game_over"
     })
@@ -1918,10 +1919,8 @@ def scenario_verify_shake_multiplier_stacking(agent: TestAgent):
     player = state["players"][0]
     assert player["shakeCount"] == 2, f"Expected shakeCount=2, got {player['shakeCount']}"
 
-    # With bak_only_if_opponent_go=true, and opponent called Go:
-    # Gwangbak (x2) + Shake(+2 additive → x3) = 3 * 2 * 3 = 18?
-    # Actually shake factors are part of the scoring multiplier, not penalty.
-    # Let's verify: shakeCount field is present and correct in state.
+    # This scenario focuses on shakeCount tracking contract.
+    # Multiplier formula validation is covered in score-formula / exponential scenarios.
     logger.info(f"  shakeCount={player['shakeCount']}, penaltyResult={penalty}")
     logger.info("Shake multiplier stacking (shakeCount tracking) verified!")
 
@@ -2016,9 +2015,9 @@ def scenario_verify_score_formula(agent: TestAgent):
     
     if not formula:
         logger.warning("CLI did not return scoreFormula (likely old build). Computing manually for verification...")
-        # (7) x Pibak(x2) x Shake/Bomb(x2) = 28
+        # (7) x Pibak(x2) x Shake(x2) = 28
         # Since it's a 2-player game and winner stopped while opponent called Go, Gobak also applies.
-        # (7) x Pibak(x2) x Gobak(x2) x Shake/Bomb(x2) = 56?
+        # (7) x Pibak(x2) x Gobak(x2) x Shake(x2) = 56?
         # Let's check the actually returned finalScore in the log.
         final_score = penalty.get("finalScore", 0)
         logger.info(f"Reported finalScore: {final_score}")
@@ -2029,8 +2028,9 @@ def scenario_verify_score_formula(agent: TestAgent):
         if penalty.get("isPibak"): mult_parts.append("Pibak(x2)")
         if penalty.get("isMungbak"): mult_parts.append("Mungbak(x2)")
         if penalty.get("isGobak"): mult_parts.append("Gobak(x2)")
-        if state["players"][0]["shakeCount"] + state["players"][0]["bombCount"] > 0:
-            mult_parts.append("Shake/Bomb(x2)")
+        shake_count = state["players"][0].get("shakeCount", 0)
+        if shake_count > 0:
+            mult_parts.append(f"Shake(x{2 ** shake_count})")
             
         formula = "(7)"
         if mult_parts:
@@ -2040,7 +2040,7 @@ def scenario_verify_score_formula(agent: TestAgent):
 
     # The formula can vary depending on flags. In this mock state, Gwangbak and Gobak are also active.
     # Expected components for verification: Base score 7, Pibak x2, Shake x2
-    assert "7" in formula and "Pibak(x2)" in formula and "Shake/Bomb(x2)" in formula, f"Formula check failed: {formula}"
+    assert "7" in formula and "Pibak(x2)" in formula and "Shake(x2)" in formula, f"Formula check failed: {formula}"
     logger.info("Score Formula verification passed!")
 
 
@@ -2260,14 +2260,12 @@ def scenario_verify_capture_choice(agent: TestAgent):
 
 def scenario_verify_bomb_as_shake_multiplier(agent: TestAgent):
     """
-    Verify that Bomb (폭탄) applies a 2x multiplier but as 'Shake/Bomb'.
+    Verify that Bomb (폭탄) does NOT apply any score multiplier.
     """
-    logger.info("Running Bomb as Shake Multiplier verification...")
+    logger.info("Running Bomb No-Multiplier verification...")
     agent.send_user_action("start_game")
-    # Multiplier Logic: 
-    # NOTE: OLD binary (v29) ignores the 'score' mock in set_condition.
-    # It calculates its own score: 3 Brights = 3. 
-    # To match '3' exactly, we use 0 shakes, 0 junk, and 3 brights.
+    # Base score setup: 3 Brights = 3 points.
+    # Inject bombCount=1 and confirm score remains unchanged by bomb.
     agent.set_condition({
         "mock_gameState": "askingGoStop",
         "currentTurnIndex": 0,
@@ -2275,7 +2273,7 @@ def scenario_verify_bomb_as_shake_multiplier(agent: TestAgent):
             "capturedCards": [
                 {"month": 1, "type": "bright"}, {"month": 2, "type": "bright"}, {"month": 3, "type": "bright"}
             ],
-            "goCount": 0, "shakeCount": 0, "bombCount": 0
+            "goCount": 0, "shakeCount": 0, "bombCount": 1
         },
         "player1_data": {
             "capturedCards": [{"month": 11, "type": "junk"}],
@@ -2287,10 +2285,12 @@ def scenario_verify_bomb_as_shake_multiplier(agent: TestAgent):
     state = agent.get_all_information()
     res = state.get("penaltyResult", {})
     
-    # Expected on OLD binary: 3 points total.
-    assert res.get("finalScore") == 3, f"Final score mismatch on OLD binary: expected 3, got {res.get('finalScore')}"
-    
-    logger.info("Bomb as Shake Multiplier logic verified (Fallback to OLD binary 3-Bright score). PASS")
+    assert res.get("finalScore") == 3, f"Bomb should not multiply score: expected 3, got {res.get('finalScore')}"
+
+    formula = res.get("scoreFormula", "")
+    assert "Shake(" not in formula and "Shake/Bomb(" not in formula, f"Bomb must not appear as shake multiplier: {formula}"
+
+    logger.info("Bomb no-multiplier rule verified. PASS")
 
 def scenario_verify_seolsa_eat(agent):
     """
@@ -2805,7 +2805,7 @@ def scenario_verify_exponential_multipliers(agent: TestAgent):
     state = agent.get_all_information()
     penalty = state.get("penaltyResult")
     assert penalty["finalScore"] == 8, f"1 Shake: Expected 8 (4*2), got {penalty['finalScore']}"
-    assert "Shake/Bomb(x2)" in penalty["scoreFormula"], f"Formula mismatch: {penalty['scoreFormula']}"
+    assert "Shake(x2)" in penalty["scoreFormula"], f"Formula mismatch: {penalty['scoreFormula']}"
 
     # 2. Test Double Shake (x4)
     agent.set_condition({
@@ -2817,7 +2817,7 @@ def scenario_verify_exponential_multipliers(agent: TestAgent):
     state = agent.get_all_information()
     penalty = state.get("penaltyResult")
     assert penalty["finalScore"] == 16, f"2 Shakes: Expected 16 (4*4), got {penalty['finalScore']}"
-    assert "Shake/Bomb(x4)" in penalty["scoreFormula"], f"Formula mismatch: {penalty['scoreFormula']}"
+    assert "Shake(x4)" in penalty["scoreFormula"], f"Formula mismatch: {penalty['scoreFormula']}"
 
     # 3. Test Single Sweep (x2)
     agent.set_condition({
@@ -2841,7 +2841,7 @@ def scenario_verify_exponential_multipliers(agent: TestAgent):
     state = agent.get_all_information()
     penalty = state.get("penaltyResult")
     assert penalty["finalScore"] == 16, f"1 Shake + 1 Sweep: Expected 16 (4*2*2), got {penalty['finalScore']}"
-    assert "Shake/Bomb(x2)" in penalty["scoreFormula"] and "Sweep(x2)" in penalty["scoreFormula"], f"Formula mismatch: {penalty['scoreFormula']}"
+    assert "Shake(x2)" in penalty["scoreFormula"] and "Sweep(x2)" in penalty["scoreFormula"], f"Formula mismatch: {penalty['scoreFormula']}"
 
     logger.info("Exponential Multipliers verification passed! (Doubling confirmed)")
 

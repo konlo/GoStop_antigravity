@@ -1,6 +1,24 @@
 import SwiftUI
 
 struct GameView: View {
+    private static let firstLaunchStarterAppliedKey = "gostop.firstLaunchNightDayStarterApplied"
+
+    private enum StarterSelectionPhase {
+        case playerPick
+        case resolving
+        case revealAll
+    }
+
+    private struct StarterSelectionState {
+        var phase: StarterSelectionPhase
+        var rule: StarterRule
+        var remainingCardIds: [String]
+        var revealedCardIds: Set<String>
+        var playerCardId: String?
+        var opponentCardId: String?
+        var statusText: String
+    }
+
     private struct RewindSnapshot {
         let moveEndEventId: String
         let cards: [Card]
@@ -9,6 +27,56 @@ struct GameView: View {
         let sourcePlayerId: String?
         let targetPlayerId: String?
         let duration: Double
+    }
+
+    private struct SpecialEventPopup: Identifiable {
+        enum Kind {
+            case sweep
+            case seolsa
+            case seolsaEat
+            case selfSeolsaEat
+            case shake
+            case bomb
+        }
+
+        let id = UUID()
+        let kind: Kind
+        let title: String
+        let detail: String
+
+        var accentColor: Color {
+            switch kind {
+            case .sweep:
+                return .yellow
+            case .seolsa:
+                return .pink
+            case .seolsaEat:
+                return .orange
+            case .selfSeolsaEat:
+                return .red
+            case .shake:
+                return .cyan
+            case .bomb:
+                return .purple
+            }
+        }
+
+        var iconName: String {
+            switch kind {
+            case .sweep:
+                return "wind"
+            case .seolsa:
+                return "exclamationmark.triangle.fill"
+            case .seolsaEat:
+                return "hand.thumbsup.fill"
+            case .selfSeolsaEat:
+                return "flame.fill"
+            case .shake:
+                return "waveform.path.ecg"
+            case .bomb:
+                return "burst.fill"
+            }
+        }
     }
 
     @StateObject var gameManager = GameManager()
@@ -30,10 +98,17 @@ struct GameView: View {
     @State private var showingRestartAlert = false
     @State private var showingEventLog = false
     @State private var showingSettings = false
+    @State private var showingDeveloperInfo = false
     @State private var latestRewindSnapshot: RewindSnapshot? = nil
     @State private var activeRewindSnapshot: RewindSnapshot? = nil
     @State private var rewindProgress: CGFloat = 0
     @State private var rewindGeneration: Int = 0
+    @State private var starterSelectionState: StarterSelectionState? = nil
+    @State private var starterSelectionGeneration: Int = 0
+    @State private var specialEventPopupQueue: [SpecialEventPopup] = []
+    @State private var activeSpecialEventPopup: SpecialEventPopup? = nil
+    @State private var specialEventPopupGeneration: Int = 0
+    @State private var lastProcessedEventLogCount: Int = 0
     
     var body: some View {
         GeometryReader { geometry in
@@ -55,6 +130,9 @@ struct GameView: View {
         .onChange(of: gameManager.tableCards) { onChangeTable($0) }
         .onChange(of: gameManager.uxEventLogs.count) { _ in
             updateLatestRewindSnapshot()
+        }
+        .onChange(of: gameManager.eventLogs.count) { _ in
+            processNewSpecialEventLogs()
         }
         .onChange(of: gameManager.players.map { $0.id.uuidString }.joined(separator: ",")) { _ in
             // Player IDs can rotate on restart/condition-set; clear stale geometry keys.
@@ -116,7 +194,7 @@ struct GameView: View {
             rewindOverlay(safeArea: safeArea)
                 .zIndex(211)
 
-            // ── PERSISTENT COORDINATE DEBUG OVERLAY (항상 표시) ──
+            // ── PERSISTENT COORDINATE DEBUG OVERLAY (debug mode level3) ──
             persistentCoordDebugOverlay()
                 .zIndex(300)
                 .allowsHitTesting(false)
@@ -160,11 +238,12 @@ struct GameView: View {
                 ctx: ctx,
                 config: ctx.config.areas.setting,
                 onExitTapped: { showingRestartAlert = true },
-                showRewindButton: isAnimationDebugMode,
+                showRewindButton: isLevel3DebugMode,
                 canRewind: canStartRewind,
                 onRewindTapped: triggerRewindPlayback,
                 onSettingsTapped: { showingSettings = true },
-                onLogTapped: { showingEventLog.toggle() }
+                onLogTapped: { showingEventLog.toggle() },
+                onDeveloperInfoTapped: { showingDeveloperInfo = true }
             )
             .frame(width: settingFrame.width, height: settingFrame.height)
             .position(x: safeArea.leading + settingFrame.midX, y: safeArea.top + settingFrame.midY)
@@ -190,12 +269,36 @@ struct GameView: View {
         // 2. Center Area
         let centerFrame = ctx.frame(for: .center)
         if isTableToCaptured {
-            CenterAreaV2(ctx: ctx, animationNamespace: cardAnimationNamespace, gameManager: gameManager, tableSlotManager: tableSlotManager, tableCardCenters: $tableCardCenters)
+            CenterAreaV2(
+                ctx: ctx,
+                animationNamespace: cardAnimationNamespace,
+                gameManager: gameManager,
+                tableSlotManager: tableSlotManager,
+                tableCardCenters: $tableCardCenters,
+                tableCardFaceUpResolver: isStarterSelectionActive ? { card in
+                    isStarterTableCardFaceUp(card)
+                } : nil,
+                onTableCardTapped: isStarterSelectionActive ? { card in
+                    handleStarterTableCardTapped(card)
+                } : nil
+            )
                 .frame(width: centerFrame.width, height: centerFrame.height)
                 .position(x: safeArea.leading + centerFrame.midX, y: safeArea.top + centerFrame.midY)
                 .zIndex(centerZ)
         } else {
-            CenterAreaV2(ctx: ctx, animationNamespace: cardAnimationNamespace, gameManager: gameManager, tableSlotManager: tableSlotManager, tableCardCenters: $tableCardCenters)
+            CenterAreaV2(
+                ctx: ctx,
+                animationNamespace: cardAnimationNamespace,
+                gameManager: gameManager,
+                tableSlotManager: tableSlotManager,
+                tableCardCenters: $tableCardCenters,
+                tableCardFaceUpResolver: isStarterSelectionActive ? { card in
+                    isStarterTableCardFaceUp(card)
+                } : nil,
+                onTableCardTapped: isStarterSelectionActive ? { card in
+                    handleStarterTableCardTapped(card)
+                } : nil
+            )
                 .frame(width: centerFrame.width, height: centerFrame.height)
                 .clipped()
                 .position(x: safeArea.leading + centerFrame.midX, y: safeArea.top + centerFrame.midY)
@@ -221,6 +324,7 @@ struct GameView: View {
     private func onAppearAction() {
         gameManager.internalComputerAutomationEnabled = true
         gameManager.externalControlMode = false
+        lastProcessedEventLogCount = gameManager.eventLogs.count
         #if targetEnvironment(simulator)
         if SimulatorBridge.shared == nil {
             // Keep simulator UI behavior aligned with real device by default.
@@ -264,101 +368,103 @@ struct GameView: View {
         }
     }
 
-    // ── PERSISTENT COORD DEBUG: Always-on visualization ──
+    // ── PERSISTENT COORD DEBUG: Level 3 visualization ──
     @ViewBuilder
     private func persistentCoordDebugOverlay() -> some View {
-        ZStack {
-            // Green dots at each table card center
-            ForEach(Array(tableCardCenters.keys.sorted()), id: \.self) { cardId in
-                if let pt = tableCardCenters[cardId] {
-                    ZStack {
-                        Circle()
-                            .fill(Color.green.opacity(0.7))
-                            .frame(width: 8, height: 8)
-                        Text("T\nY:\(Int(pt.y))")
-                            .font(.system(size: 6, weight: .bold, design: .monospaced))
-                            .foregroundColor(.white)
-                            .padding(2)
-                            .background(Color.green.opacity(0.85))
-                            .cornerRadius(3)
-                            .offset(x: 18, y: 0)
+        if isLevel3DebugMode {
+            ZStack {
+                // Green dots at each table card center
+                ForEach(Array(tableCardCenters.keys.sorted()), id: \.self) { cardId in
+                    if let pt = tableCardCenters[cardId] {
+                        ZStack {
+                            Circle()
+                                .fill(Color.green.opacity(0.7))
+                                .frame(width: 8, height: 8)
+                            Text("T\nY:\(Int(pt.y))")
+                                .font(.system(size: 6, weight: .bold, design: .monospaced))
+                                .foregroundColor(.white)
+                                .padding(2)
+                                .background(Color.green.opacity(0.85))
+                                .cornerRadius(3)
+                                .offset(x: 18, y: 0)
+                        }
+                        .position(x: pt.x, y: pt.y)
                     }
-                    .position(x: pt.x, y: pt.y)
                 }
-            }
 
-            // Red dots at each captured group slot center
-            ForEach(Array(capturedGroupCenters.keys.sorted()), id: \.self) { key in
-                if let pt = capturedGroupCenters[key] {
-                    let label = key.components(separatedBy: ":").last ?? key
-                    ZStack {
-                        Circle()
-                            .fill(Color.red.opacity(0.85))
-                            .frame(width: 8, height: 8)
-                        Text("C\n\(label)\nY:\(Int(pt.y))")
-                            .font(.system(size: 6, weight: .bold, design: .monospaced))
-                            .foregroundColor(.white)
-                            .padding(2)
-                            .background(Color.red.opacity(0.85))
-                            .cornerRadius(3)
-                            .offset(x: -20, y: 0)
+                // Red dots at each captured group slot center
+                ForEach(Array(capturedGroupCenters.keys.sorted()), id: \.self) { key in
+                    if let pt = capturedGroupCenters[key] {
+                        let label = key.components(separatedBy: ":").last ?? key
+                        ZStack {
+                            Circle()
+                                .fill(Color.red.opacity(0.85))
+                                .frame(width: 8, height: 8)
+                            Text("C\n\(label)\nY:\(Int(pt.y))")
+                                .font(.system(size: 6, weight: .bold, design: .monospaced))
+                                .foregroundColor(.white)
+                                .padding(2)
+                                .background(Color.red.opacity(0.85))
+                                .cornerRadius(3)
+                                .offset(x: -20, y: 0)
+                        }
+                        .position(x: pt.x, y: pt.y)
                     }
-                    .position(x: pt.x, y: pt.y)
                 }
-            }
 
-            // Mini status box (top-right corner)
-            VStack(alignment: .trailing, spacing: 1) {
-                Text("🟢T:\(tableCardCenters.count) 🔴C:\(capturedGroupCenters.count)")
-                    .font(.system(size: 8, weight: .bold, design: .monospaced))
-                    .foregroundColor(.white)
-                    .padding(4)
-                    .background(Color.black.opacity(0.7))
-                    .cornerRadius(4)
-            }
-            .position(x: UIScreen.main.bounds.width - 60, y: 60)
+                // Mini status box (top-right corner)
+                VStack(alignment: .trailing, spacing: 1) {
+                    Text("🟢T:\(tableCardCenters.count) 🔴C:\(capturedGroupCenters.count)")
+                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                        .foregroundColor(.white)
+                        .padding(4)
+                        .background(Color.black.opacity(0.7))
+                        .cornerRadius(4)
+                }
+                .position(x: UIScreen.main.bounds.width - 60, y: 60)
 
-            // Persistent panel: keep latest SRC/TGT + progress visible after animation ends.
-            VStack(alignment: .leading, spacing: 1) {
-                Text("🔍 COORD DEBUG  p(progress)=\(String(format: "%.2f", persistentDebugProgress))")
-                    .foregroundColor(.yellow)
-                Text("   p: 0.00(start) -> 1.00(end)")
-                    .foregroundColor(.yellow.opacity(0.9))
-                Divider().background(Color.yellow)
-                if let src = persistentDebugSrc {
-                    Text("🟢 SRC  Y:\(Int(src.y))  X:\(Int(src.x))")
-                        .foregroundColor(.green)
-                } else {
-                    Text("🟢 SRC  -")
-                        .foregroundColor(.green.opacity(0.8))
+                // Persistent panel: keep latest SRC/TGT + progress visible after animation ends.
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("🔍 COORD DEBUG  p(progress)=\(String(format: "%.2f", persistentDebugProgress))")
+                        .foregroundColor(.yellow)
+                    Text("   p: 0.00(start) -> 1.00(end)")
+                        .foregroundColor(.yellow.opacity(0.9))
+                    Divider().background(Color.yellow)
+                    if let src = persistentDebugSrc {
+                        Text("🟢 SRC  Y:\(Int(src.y))  X:\(Int(src.x))")
+                            .foregroundColor(.green)
+                    } else {
+                        Text("🟢 SRC  -")
+                            .foregroundColor(.green.opacity(0.8))
+                    }
+                    Text("   \(persistentDebugIsReal ? "✅ GeometryReader (real)" : "⚠️ Math fallback")")
+                        .foregroundColor(persistentDebugIsReal ? .green : .orange)
+                    Divider().background(Color.red)
+                    if let tgt = persistentDebugTgt {
+                        Text("🔴 TGT  Y:\(Int(tgt.y))  X:\(Int(tgt.x))")
+                            .foregroundColor(.red)
+                    } else {
+                        Text("🔴 TGT  -")
+                            .foregroundColor(.red.opacity(0.8))
+                    }
+                    Divider().background(Color.white)
+                    Text("tableCardCenters.count=\(tableCardCenters.count)")
+                    Text("capturedGroupCenters.count=\(capturedGroupCenters.count)")
                 }
-                Text("   \(persistentDebugIsReal ? "✅ GeometryReader (real)" : "⚠️ Math fallback")")
-                    .foregroundColor(persistentDebugIsReal ? .green : .orange)
-                Divider().background(Color.red)
-                if let tgt = persistentDebugTgt {
-                    Text("🔴 TGT  Y:\(Int(tgt.y))  X:\(Int(tgt.x))")
-                        .foregroundColor(.red)
-                } else {
-                    Text("🔴 TGT  -")
-                        .foregroundColor(.red.opacity(0.8))
-                }
-                Divider().background(Color.white)
-                Text("tableCardCenters.count=\(tableCardCenters.count)")
-                Text("capturedGroupCenters.count=\(capturedGroupCenters.count)")
+                .font(.system(size: 8, weight: .semibold, design: .monospaced))
+                .foregroundColor(.white)
+                .padding(6)
+                .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.88)))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.yellow.opacity(0.6), lineWidth: 1))
+                .frame(width: 240)
+                .position(x: 130, y: 300)
             }
-            .font(.system(size: 8, weight: .semibold, design: .monospaced))
-            .foregroundColor(.white)
-            .padding(6)
-            .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.88)))
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.yellow.opacity(0.6), lineWidth: 1))
-            .frame(width: 240)
-            .position(x: 130, y: 300)
         }
     }
 
     @ViewBuilder
     private func moveRouteHUD(safeArea: EdgeInsets) -> some View {
-        if let event = latestMoveStartEvent() {
+        if isLevel3DebugMode, let event = latestMoveStartEvent() {
             let route = routeText(for: event)
             VStack(alignment: .leading, spacing: 4) {
                 Text("moveStart route")
@@ -403,8 +509,20 @@ struct GameView: View {
         #endif
     }
 
+    private var currentDebugModeLevel: Int {
+        config.layoutV2?.debug.normalizedDebugMode ?? 1
+    }
+
+    private var isLevel3DebugMode: Bool {
+        #if DEBUG
+        return isAnimationDebugMode && currentDebugModeLevel >= 3
+        #else
+        return false
+        #endif
+    }
+
     private var canStartRewind: Bool {
-        isAnimationDebugMode &&
+        isLevel3DebugMode &&
         latestRewindSnapshot != nil &&
         activeRewindSnapshot == nil
     }
@@ -560,6 +678,123 @@ struct GameView: View {
         return gameManager.players.first(where: { $0.id.uuidString == playerId })?.name
     }
 
+    private func processNewSpecialEventLogs() {
+        let logs = gameManager.eventLogs
+        if logs.count < lastProcessedEventLogCount {
+            lastProcessedEventLogCount = logs.count
+            resetSpecialEventPopups()
+            return
+        }
+        guard lastProcessedEventLogCount < logs.count else { return }
+
+        let newLogs = Array(logs[lastProcessedEventLogCount..<logs.count])
+        lastProcessedEventLogCount = logs.count
+
+        for log in newLogs {
+            if let popup = specialEventPopup(from: log) {
+                enqueueSpecialEventPopup(popup)
+            }
+        }
+    }
+
+    private func specialEventPopup(from log: String) -> SpecialEventPopup? {
+        if log.contains("declared SHAKE for month") {
+            let actor = actorName(in: log, marker: " declared") ?? "플레이어"
+            return SpecialEventPopup(
+                kind: .shake,
+                title: "흔들기",
+                detail: "\(actor)이(가) 흔들기를 선언했습니다."
+            )
+        }
+        if log.contains("triggered BOMB!") {
+            let actor = actorName(in: log, marker: " triggered") ?? "플레이어"
+            return SpecialEventPopup(
+                kind: .bomb,
+                title: "폭탄",
+                detail: "\(actor)이(가) 폭탄을 사용했습니다."
+            )
+        }
+        if log.contains("swept the table (싹쓸이)!") {
+            let actor = actorName(in: log, marker: " swept") ?? "플레이어"
+            return SpecialEventPopup(
+                kind: .sweep,
+                title: "싹쓸이",
+                detail: "\(actor)이(가) 테이블을 싹쓸이했습니다."
+            )
+        }
+        if log.contains("triggered 뻑(Seolsa)") {
+            let actor = actorName(in: log, marker: " triggered") ?? "플레이어"
+            return SpecialEventPopup(
+                kind: .seolsa,
+                title: "뻑(설사)",
+                detail: "\(actor)의 뻑(설사) 이벤트가 발생했습니다."
+            )
+        }
+        if log.contains("triggered 뻑 먹기(Seolsa Eat)") {
+            let actor = actorName(in: log, marker: " triggered") ?? "플레이어"
+            return SpecialEventPopup(
+                kind: .seolsaEat,
+                title: "뻑 먹기",
+                detail: "\(actor)이(가) 뻑 먹기를 성공했습니다."
+            )
+        }
+        if log.contains("triggered 자뻑(Self Seolsa Eat)") {
+            let actor = actorName(in: log, marker: " triggered") ?? "플레이어"
+            return SpecialEventPopup(
+                kind: .selfSeolsaEat,
+                title: "자뻑",
+                detail: "\(actor)의 자뻑 먹기 이벤트가 발생했습니다."
+            )
+        }
+        return nil
+    }
+
+    private func actorName(in log: String, marker: String) -> String? {
+        guard let markerRange = log.range(of: marker) else { return nil }
+        let actor = log[..<markerRange.lowerBound].trimmingCharacters(in: .whitespacesAndNewlines)
+        return actor.isEmpty ? nil : actor
+    }
+
+    private func enqueueSpecialEventPopup(_ popup: SpecialEventPopup) {
+        if activeSpecialEventPopup?.kind == popup.kind && activeSpecialEventPopup?.detail == popup.detail {
+            return
+        }
+        if specialEventPopupQueue.last?.kind == popup.kind && specialEventPopupQueue.last?.detail == popup.detail {
+            return
+        }
+        specialEventPopupQueue.append(popup)
+        showNextSpecialEventPopupIfNeeded()
+    }
+
+    private func showNextSpecialEventPopupIfNeeded() {
+        guard activeSpecialEventPopup == nil else { return }
+        guard !specialEventPopupQueue.isEmpty else { return }
+
+        specialEventPopupGeneration += 1
+        let generation = specialEventPopupGeneration
+        let nextPopup = specialEventPopupQueue.removeFirst()
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
+            activeSpecialEventPopup = nextPopup
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.7) {
+            guard generation == self.specialEventPopupGeneration else { return }
+            withAnimation(.easeOut(duration: 0.18)) {
+                self.activeSpecialEventPopup = nil
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                guard generation == self.specialEventPopupGeneration else { return }
+                self.showNextSpecialEventPopupIfNeeded()
+            }
+        }
+    }
+
+    private func resetSpecialEventPopups() {
+        specialEventPopupGeneration += 1
+        activeSpecialEventPopup = nil
+        specialEventPopupQueue.removeAll()
+    }
+
     private func resyncSlotManagers() {
         if let hand = gameManager.players.first?.hand {
             playerHandSlotManager?.sync(with: hand, compactToFront: !gameManager.isAutomationBusy)
@@ -574,11 +809,15 @@ struct GameView: View {
     var overlayArea: some View {
         ZStack {
             if gameManager.gameState == .ready {
-                colorBackgroundOverlay(text: "Start Game", action: {
-                    // Initial reload to ensure config is fresh
-                    config.reloadConfig()
-                    startManualGame()
-                })
+                if let starterSelectionState {
+                    starterSelectionOverlay(state: starterSelectionState)
+                } else {
+                    colorBackgroundOverlay(text: "Start Game", action: {
+                        // Initial reload to ensure config is fresh
+                        config.reloadConfig()
+                        startManualGame()
+                    })
+                }
             } else if gameManager.gameState == .ended {
                 if gameManager.gameEndReason == .chongtong {
                     ZStack {
@@ -595,6 +834,31 @@ struct GameView: View {
                                     .foregroundColor(.white)
                             }
                             
+                            Button(action: {
+                                restartManualGame()
+                            }) {
+                                Text("Restart Game")
+                                    .font(.headline)
+                                    .padding()
+                                    .background(Color.yellow)
+                                    .foregroundColor(.black)
+                                    .cornerRadius(15)
+                            }
+                        }
+                    }
+                } else if gameManager.gameEndReason == .nagari {
+                    ZStack {
+                        Color.black.opacity(0.6).ignoresSafeArea()
+                        VStack(spacing: 20) {
+                            Text("나가리! (Nagari)")
+                                .font(.system(size: 60, weight: .black, design: .rounded))
+                                .foregroundColor(.yellow)
+                                .shadow(color: .orange, radius: 10, x: 0, y: 5)
+
+                            Text("무승부로 종료되었습니다.")
+                                .font(.title)
+                                .foregroundColor(.white)
+
                             Button(action: {
                                 restartManualGame()
                             }) {
@@ -645,6 +909,35 @@ struct GameView: View {
             if showingSettings {
                 RuleSettingsView(isPresented: $showingSettings)
             }
+
+            if showingDeveloperInfo {
+                DeveloperInfoView(isPresented: $showingDeveloperInfo)
+            }
+
+            specialEventPopupOverlay()
+        }
+    }
+
+    @ViewBuilder
+    private func specialEventPopupOverlay() -> some View {
+        if let popup = activeSpecialEventPopup {
+            VStack(spacing: 8) {
+                Text(popup.title)
+                    .font(.system(size: 34, weight: .black, design: .rounded))
+                    .foregroundColor(popup.accentColor)
+                    .multilineTextAlignment(.center)
+                    .shadow(color: .black.opacity(0.85), radius: 5, x: 0, y: 2)
+
+                Text(popup.detail)
+                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .shadow(color: .black.opacity(0.85), radius: 4, x: 0, y: 2)
+                    .padding(.horizontal, 20)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            .transition(.scale(scale: 0.92).combined(with: .opacity))
+            .allowsHitTesting(false)
         }
     }
 
@@ -672,17 +965,210 @@ struct GameView: View {
         }
     }
 
+    private var isStarterSelectionActive: Bool {
+        starterSelectionState != nil
+    }
+
     private func startManualGame() {
+        resetSpecialEventPopups()
         gameManager.internalComputerAutomationEnabled = true
         gameManager.externalControlMode = false
+        if let starterRule = starterRuleForManualStart() {
+            beginStarterSelection(rule: starterRule)
+            return
+        }
+        resetStarterSelectionState()
         gameManager.startGame()
     }
 
     private func restartManualGame() {
+        let previousWinnerIndex = gameManager.previousRoundWinnerIndex()
+        resetSpecialEventPopups()
+        resetStarterSelectionState()
         gameManager.internalComputerAutomationEnabled = true
         gameManager.externalControlMode = false
         gameManager.setupGame()
-        gameManager.startGame()
+        gameManager.startGame(initialTurnIndex: previousWinnerIndex)
+    }
+
+    private func starterRuleForManualStart() -> StarterRule? {
+        guard let starterRule = RuleLoader.shared.config?.starter,
+              starterRule.enabled,
+              starterRule.mode == "night_day" else {
+            return nil
+        }
+        if starterRule.first_launch_only &&
+            UserDefaults.standard.bool(forKey: Self.firstLaunchStarterAppliedKey) {
+            return nil
+        }
+        return starterRule
+    }
+
+    private func beginStarterSelection(rule: StarterRule) {
+        resetStarterSelectionState()
+        let cardIds = gameManager.tableCards.map { $0.id }
+        guard cardIds.count >= 2 else {
+            let fallbackStarter = gameManager.resolveNightDayStarterIndex(
+                dayStartHour: rule.day_start_hour,
+                dayEndHour: rule.day_end_hour
+            )
+            finalizeStarterSelection(starterIndex: fallbackStarter, rule: rule)
+            return
+        }
+
+        starterSelectionState = StarterSelectionState(
+            phase: .playerPick,
+            rule: rule,
+            remainingCardIds: cardIds,
+            revealedCardIds: [],
+            playerCardId: nil,
+            opponentCardId: nil,
+            statusText: "\(starterModeLabel(for: rule)) 규칙: 테이블 카드에서 한 장을 선택하세요."
+        )
+    }
+
+    private func resetStarterSelectionState() {
+        starterSelectionGeneration += 1
+        starterSelectionState = nil
+    }
+
+    private func finalizeStarterSelection(starterIndex: Int, rule: StarterRule) {
+        if rule.first_launch_only {
+            UserDefaults.standard.set(true, forKey: Self.firstLaunchStarterAppliedKey)
+        }
+        resetStarterSelectionState()
+        gameManager.startGame(initialTurnIndex: starterIndex)
+    }
+
+    private func isStarterTableCardFaceUp(_ card: Card) -> Bool {
+        guard let state = starterSelectionState else { return true }
+        if state.phase == .revealAll {
+            return true
+        }
+        return state.revealedCardIds.contains(card.id)
+    }
+
+    private func monthForTableCard(id: String?) -> Int? {
+        guard let id else { return nil }
+        return gameManager.tableCards.first(where: { $0.id == id })?.month.rawValue
+    }
+
+    private func starterModeLabel(for rule: StarterRule) -> String {
+        let isDaytime = gameManager.isNightDayStarterDaytime(
+            dayStartHour: rule.day_start_hour,
+            dayEndHour: rule.day_end_hour
+        )
+        return isDaytime ? "낮장" : "밤일"
+    }
+
+    private func handleStarterTableCardTapped(_ card: Card) {
+        guard var state = starterSelectionState, state.phase == .playerPick else { return }
+        guard state.remainingCardIds.contains(card.id) else { return }
+
+        let opponentCandidates = state.remainingCardIds.filter { $0 != card.id }
+        guard let opponentCardId = opponentCandidates.randomElement() else {
+            let fallbackStarter = gameManager.resolveNightDayStarterIndex(
+                dayStartHour: state.rule.day_start_hour,
+                dayEndHour: state.rule.day_end_hour
+            )
+            finalizeStarterSelection(starterIndex: fallbackStarter, rule: state.rule)
+            return
+        }
+
+        state.playerCardId = card.id
+        state.opponentCardId = opponentCardId
+        state.revealedCardIds = [card.id, opponentCardId]
+        state.phase = .resolving
+
+        guard let playerMonth = monthForTableCard(id: card.id),
+              let opponentMonth = monthForTableCard(id: opponentCardId) else {
+            let fallbackStarter = gameManager.resolveNightDayStarterIndex(
+                dayStartHour: state.rule.day_start_hour,
+                dayEndHour: state.rule.day_end_hour
+            )
+            finalizeStarterSelection(starterIndex: fallbackStarter, rule: state.rule)
+            return
+        }
+
+        let modeLabel = starterModeLabel(for: state.rule)
+        let winnerIndex = gameManager.resolveNightDayStarterWinner(
+            playerOneMonth: playerMonth,
+            playerTwoMonth: opponentMonth,
+            dayStartHour: state.rule.day_start_hour,
+            dayEndHour: state.rule.day_end_hour
+        )
+
+        let generation = starterSelectionGeneration
+        if let winnerIndex {
+            state.phase = .revealAll
+            state.revealedCardIds = Set(gameManager.tableCards.map { $0.id })
+            let winnerName = gameManager.players.indices.contains(winnerIndex)
+                ? gameManager.players[winnerIndex].name
+                : "Player \(winnerIndex + 1)"
+            state.statusText = "\(modeLabel) 결과: \(winnerName) 선 (\(playerMonth)월 vs \(opponentMonth)월)"
+            starterSelectionState = state
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
+                guard generation == starterSelectionGeneration else { return }
+                finalizeStarterSelection(starterIndex: winnerIndex, rule: state.rule)
+            }
+            return
+        }
+
+        let usedIds = Set([card.id, opponentCardId])
+        state.remainingCardIds.removeAll { usedIds.contains($0) }
+        state.statusText = "\(modeLabel) 동월 무승부 (\(playerMonth)월). 다시 선택합니다."
+        starterSelectionState = state
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+            guard generation == starterSelectionGeneration, var nextState = starterSelectionState else { return }
+            if nextState.remainingCardIds.count < 2 {
+                let fallbackStarter = gameManager.resolveNightDayStarterIndex(
+                    dayStartHour: nextState.rule.day_start_hour,
+                    dayEndHour: nextState.rule.day_end_hour
+                )
+                finalizeStarterSelection(starterIndex: fallbackStarter, rule: nextState.rule)
+                return
+            }
+            nextState.phase = .playerPick
+            nextState.revealedCardIds = []
+            nextState.playerCardId = nil
+            nextState.opponentCardId = nil
+            nextState.statusText = "\(starterModeLabel(for: nextState.rule)) 규칙: 테이블 카드에서 한 장을 선택하세요."
+            starterSelectionState = nextState
+        }
+    }
+
+    @ViewBuilder
+    private func starterSelectionOverlay(state: StarterSelectionState) -> some View {
+        VStack {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("선 정하기: \(starterModeLabel(for: state.rule))")
+                    .font(.headline)
+                    .foregroundStyle(.yellow)
+                Text(state.statusText)
+                    .font(.subheadline)
+                    .foregroundStyle(.white)
+                if let playerMonth = monthForTableCard(id: state.playerCardId),
+                   let opponentMonth = monthForTableCard(id: state.opponentCardId) {
+                    Text("내 카드 \(playerMonth)월 / 상대 카드 \(opponentMonth)월")
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.9))
+                }
+            }
+            .padding(12)
+            .frame(maxWidth: 360, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 12).fill(Color.black.opacity(0.72)))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.yellow.opacity(0.5), lineWidth: 1)
+            )
+            .shadow(radius: 8)
+            .padding(.top, 28)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .allowsHitTesting(false)
     }
 
     @ViewBuilder
@@ -1028,6 +1514,64 @@ struct EventLogView: View {
     }
 }
 
+struct DeveloperInfoView: View {
+    @Binding var isPresented: Bool
+
+    private var appVersionText: String {
+        let info = Bundle.main.infoDictionary
+        let shortVersion = info?["CFBundleShortVersionString"] as? String ?? "-"
+        let buildNumber = info?["CFBundleVersion"] as? String ?? "-"
+        return "\(shortVersion) (\(buildNumber))"
+    }
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.6).ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                HStack {
+                    Text("개발자 정보")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                    Spacer()
+                    Button(action: { isPresented = false }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.title2)
+                            .foregroundColor(.white.opacity(0.7))
+                    }
+                }
+                .padding()
+                .background(Color.blue.opacity(0.8))
+
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Antigravity GoStop")
+                        .font(.title3.bold())
+                        .foregroundColor(.white)
+
+                    HStack(spacing: 8) {
+                        Text("앱 버전")
+                            .foregroundColor(.white.opacity(0.75))
+                        Text(appVersionText)
+                            .foregroundColor(.white)
+                            .font(.system(.body, design: .monospaced))
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(20)
+            }
+            .frame(maxWidth: 420)
+            .background(Color(red: 0.1, green: 0.1, blue: 0.15))
+            .cornerRadius(20)
+            .overlay(
+                RoundedRectangle(cornerRadius: 20)
+                    .stroke(Color.blue.opacity(0.5), lineWidth: 1)
+            )
+            .shadow(radius: 20)
+            .padding(40)
+        }
+    }
+}
+
 extension GameView {
     private func movingCardOverlay(safeArea: EdgeInsets) -> some View {
         let sourceZone = gameManager.currentMoveSourceZone
@@ -1051,7 +1595,7 @@ extension GameView {
 
     @ViewBuilder
     private func rewindOverlay(safeArea: EdgeInsets) -> some View {
-        if let snapshot = activeRewindSnapshot {
+        if isLevel3DebugMode, let snapshot = activeRewindSnapshot {
             let p = CGFloat(max(0, min(1, rewindProgress)))
             let center = CGPoint(x: safeArea.leading + config.gameSize.width / 2, y: safeArea.top + config.gameSize.height / 2)
             let movingCards = Array(snapshot.cards.enumerated())
@@ -1152,34 +1696,36 @@ extension GameView {
             }
 
             // ── DEBUG: Source dot (green) + Target dot (red) ──
-            ForEach(0..<srcPoints.count, id: \.self) { i in
-                // Green = source position (GameAreaViews.swift updateTableCardCenters)
-                ZStack {
-                    Circle().fill(Color.green.opacity(0.9)).frame(width: 12, height: 12)
-                    Text("S\(i)\nY:\(Int(srcPoints[i].y))")
-                        .font(.system(size: 7, weight: .bold, design: .monospaced))
-                        .foregroundColor(.black)
-                        .padding(2)
-                        .background(Color.green.opacity(0.85))
-                        .cornerRadius(3)
-                        .offset(x: 28, y: 0)
-                }
-                .position(x: srcPoints[i].x, y: srcPoints[i].y)
-                .allowsHitTesting(false)
+            if isLevel3DebugMode {
+                ForEach(0..<srcPoints.count, id: \.self) { i in
+                    // Green = source position (GameAreaViews.swift updateTableCardCenters)
+                    ZStack {
+                        Circle().fill(Color.green.opacity(0.9)).frame(width: 12, height: 12)
+                        Text("S\(i)\nY:\(Int(srcPoints[i].y))")
+                            .font(.system(size: 7, weight: .bold, design: .monospaced))
+                            .foregroundColor(.black)
+                            .padding(2)
+                            .background(Color.green.opacity(0.85))
+                            .cornerRadius(3)
+                            .offset(x: 28, y: 0)
+                    }
+                    .position(x: srcPoints[i].x, y: srcPoints[i].y)
+                    .allowsHitTesting(false)
 
-                // Red = target position (GameView.swift capturedAnchorPoint)
-                ZStack {
-                    Circle().fill(Color.red.opacity(0.9)).frame(width: 12, height: 12)
-                    Text("T\(i)\nY:\(Int(tgtPoints[i].y))")
-                        .font(.system(size: 7, weight: .bold, design: .monospaced))
-                        .foregroundColor(.white)
-                        .padding(2)
-                        .background(Color.red.opacity(0.85))
-                        .cornerRadius(3)
-                        .offset(x: -28, y: 0)
+                    // Red = target position (GameView.swift capturedAnchorPoint)
+                    ZStack {
+                        Circle().fill(Color.red.opacity(0.9)).frame(width: 12, height: 12)
+                        Text("T\(i)\nY:\(Int(tgtPoints[i].y))")
+                            .font(.system(size: 7, weight: .bold, design: .monospaced))
+                            .foregroundColor(.white)
+                            .padding(2)
+                            .background(Color.red.opacity(0.85))
+                            .cornerRadius(3)
+                            .offset(x: -28, y: 0)
+                    }
+                    .position(x: tgtPoints[i].x, y: tgtPoints[i].y)
+                    .allowsHitTesting(false)
                 }
-                .position(x: tgtPoints[i].x, y: tgtPoints[i].y)
-                .allowsHitTesting(false)
             }
 
             // Persist latest coordinates so debug panel stays visible after animation.
@@ -1239,21 +1785,23 @@ extension GameView {
             piCount: gameManager.movingCardsPiCount,
             showDebugInfo: gameManager.movingCardsShowDebug
         )
-        .overlay(
-            GeometryReader { geo in
-                let pt = geo.frame(in: .named("GameSpace")).center
-                VStack {
-                    Spacer()
-                    Text("X:\(Int(pt.x)) Y:\(Int(pt.y))")
-                        .font(.system(size: 8, weight: .bold, design: .monospaced))
-                        .foregroundColor(.white)
-                        .padding(2)
-                        .background(Color.blue.opacity(0.8))
-                        .cornerRadius(3)
-                        .offset(y: 20) // Place it slightly below the card
+        .overlay {
+            if isLevel3DebugMode {
+                GeometryReader { geo in
+                    let pt = geo.frame(in: .named("GameSpace")).center
+                    VStack {
+                        Spacer()
+                        Text("X:\(Int(pt.x)) Y:\(Int(pt.y))")
+                            .font(.system(size: 8, weight: .bold, design: .monospaced))
+                            .foregroundColor(.white)
+                            .padding(2)
+                            .background(Color.blue.opacity(0.8))
+                            .cornerRadius(3)
+                            .offset(y: 20) // Place it slightly below the card
+                    }
                 }
             }
-        )
+        }
         .transition(.identity)
     }
 

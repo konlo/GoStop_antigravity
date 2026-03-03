@@ -256,3 +256,46 @@
 - Before: Brights clipped on left edge. Bottom cards in stack were hidden.
 - After: Horizontal scroll ensures nothing is ever lost. Stack layers are distinct.
 - Verdict: PASS
+
+---
+## [2026-03-03 22:39] Iteration Log: 사용자 정보 옆 누적 승점 표시
+
+**Trigger:** 라운드 종료 점수만 보이고, 세션 간 누적 승점과 사용자 정보 인접 표시가 없어 요청 반영 필요.
+**Scope:** Visual Only + UI/Core 연결
+
+**Changes:**
+- Modified `GoStop/Views/GameAreaViews.swift` to show `playerName` and `승리누적` in `ScoreViewV2`.
+- Modified `GoStop/Core/GameManager.swift` to expose `cumulativeWinScore(for:)` for UI binding.
+- Added `ui_design_document.md` section describing score panel data flow and persistence contract.
+
+**Validation:**
+- [x] Logic is clean of UI code.
+- [x] `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator build CODE_SIGNING_ALLOWED=NO` succeeds.
+- [x] Existing failing tests identified and recorded (`GoStopTests.testGameManagerForwardsNestedPlayerCapturedChanges`, `GoStopTests.testMatchingLogic`).
+
+---
+## [2026-03-03 22:58] Iteration Log: 누적 승점 강조색 조정(오렌지→빨강)
+
+**Trigger:** `승리누적` 텍스트가 오렌지색이라 배경 대비가 낮아 가독성이 떨어짐.
+**Scope:** Visual Only
+
+**Changes:**
+- Modified `GoStop/Views/GameAreaViews.swift`: `승리누적` 텍스트 색상을 `.orange`에서 `.red`로 변경.
+- Updated `ui_design_document.md`: 누적 승점 텍스트를 빨강으로 유지한다는 시각 규칙 기록.
+
+**Validation:**
+- [x] `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator build CODE_SIGNING_ALLOWED=NO` succeeds.
+
+---
+## [2026-03-03 23:00] Iteration Log: Player Area Sort 버튼 제거
+
+**Trigger:** 플레이 영역의 `Sort` 버튼 제거 요청.
+**Scope:** Visual Only
+
+**Changes:**
+- Modified `GoStop/Views/GameAreaViews.swift`: `PlayerAreaV2` 내 Debug Sort 버튼 렌더링/액션 블록 제거.
+- Updated `ui_design_document.md`: Sort 버튼 제거 결정 및 UI/아키텍처 경계 기록.
+
+**Validation:**
+- [x] Logic is clean of UI code.
+- [x] `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator build CODE_SIGNING_ALLOWED=NO` succeeds.

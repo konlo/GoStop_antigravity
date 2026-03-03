@@ -92,12 +92,12 @@ special_moves:
   bomb:
     enabled: true
     steal_pi_count: 1
-    score_multiplier: 2 # Shaking (흔듦) bonus if done via bomb
+    score_multiplier: 1 # Bomb does not change final score multiplier
     description: "Play 3 identical month cards when 1 is on table"
   shake:
     enabled: true
-    score_multiplier_type: "additive" # 1 shake = +1 to multiplier factor
-    description: "Multi-shake additive: 1 shake = 2x, 2 shakes = 3x. Declared at start."
+    score_multiplier_type: "multiplicative" # 1 shake = 2x, 2 shakes = 4x, 3 shakes = 8x
+    description: "Exponential shake: 2^n multiplier. Declared at start."
   sweep:
     enabled: true
     bonus_points: 0

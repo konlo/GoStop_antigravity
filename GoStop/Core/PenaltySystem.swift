@@ -139,12 +139,12 @@ struct PenaltySystem {
             }
         }
         
-        // 5. Shake & Bomb Multiplier (폭탄 & 흔듦)
-        // Rule: Both bombs and shakes count towards the same exponential multiplier.
-        // Formula: 2^totalShakeBombCount
-        let totalShakeBomb = winner.shakeCount + winner.bombCount
-        if totalShakeBomb > 0 {
-            multiplier *= Int(pow(2.0, Double(totalShakeBomb)))
+        // 5. Shake Multiplier (흔듦)
+        // Rule: Only declared shakes contribute to exponential score multiplier.
+        // Formula: 2^shakeCount
+        let shakeCount = winner.shakeCount
+        if shakeCount > 0 {
+            multiplier *= Int(pow(2.0, Double(shakeCount)))
         }
         
         // 6. Sweep Multiplier (싹쓸이) - removed
@@ -200,9 +200,9 @@ struct PenaltySystem {
             if isPibak { multParts.append("Pibak(x\(rules.penalties.pibak.multiplier))") }
             if isMungbak { multParts.append("Mungbak(x\(rules.penalties.mungbak.multiplier))") }
             if isGobak { multParts.append("Gobak(x\(rules.penalties.gobak.multiplier))") }
-            let totalShakeBomb = winner.shakeCount + winner.bombCount
-            if totalShakeBomb > 0 { multParts.append("Shake/Bomb(x\(Int(pow(2.0, Double(totalShakeBomb)))))") }
-            // Bomb multiplier removed as per user request (integrated into Shake)
+            let shakeCount = winner.shakeCount
+            if shakeCount > 0 { multParts.append("Shake(x\(Int(pow(2.0, Double(shakeCount)))))") }
+            // Bomb multiplier removed as per rule: bomb does not affect score multiplier.
             // Sweep multiplier removed as per user request
             if winner.mungddaCount > 0 { multParts.append("Mungdda - REMOVED") }
             if winner.bombMungddaCount > 0 { multParts.append("BombMungdda - REMOVED") }

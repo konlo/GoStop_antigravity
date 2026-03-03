@@ -3,6 +3,26 @@ import Combine
 @testable import GoStop
 
 final class GoStopTests: XCTestCase {
+    private func makePlayableGame() -> GameManager {
+        let game = GameManager()
+        if game.gameState != .ended {
+            return game
+        }
+
+        for seed in 1...1000 {
+            game.setupGame(seed: seed)
+            if game.gameState != .ended {
+                return game
+            }
+        }
+
+        XCTFail("Could not find a non-ended initial state within deterministic seed range.")
+        return game
+    }
+
+    private func makeCard(month: Month) -> Card {
+        Card(month: month, type: .junk, imageIndex: 0)
+    }
     
     func testDeckCount() {
         let deck = Deck()
@@ -111,5 +131,36 @@ final class GoStopTests: XCTestCase {
 
         wait(for: [exp], timeout: 0.5)
         withExtendedLifetime(cancellable) {}
+    }
+
+    func testStartGameAcceptsInitialTurnOverride() {
+        let game = makePlayableGame()
+        game.startGame(initialTurnIndex: 1)
+
+        XCTAssertEqual(game.gameState, .playing)
+        XCTAssertEqual(game.currentTurnIndex, 1)
+    }
+
+    func testNightDayStarterDayModeUsesHigherMonth() {
+        let game = GameManager()
+        _ = game.deck.drainAll()
+        // pushCardsOnTop appends; reverse-read makes P1 read from the last pushed card first.
+        game.mockDeck(cards: [makeCard(month: .jan), makeCard(month: .dec)]) // P1=12, P2=1
+
+        let noon = Calendar.current.date(from: DateComponents(year: 2026, month: 1, day: 1, hour: 12))!
+        let starter = game.resolveNightDayStarterIndex(dayStartHour: 6, dayEndHour: 18, referenceDate: noon)
+
+        XCTAssertEqual(starter, 0, "Day mode should choose the higher month card as starter.")
+    }
+
+    func testNightDayStarterNightModeUsesLowerMonth() {
+        let game = GameManager()
+        _ = game.deck.drainAll()
+        game.mockDeck(cards: [makeCard(month: .jan), makeCard(month: .dec)]) // P1=12, P2=1
+
+        let lateNight = Calendar.current.date(from: DateComponents(year: 2026, month: 1, day: 1, hour: 1))!
+        let starter = game.resolveNightDayStarterIndex(dayStartHour: 6, dayEndHour: 18, referenceDate: lateNight)
+
+        XCTAssertEqual(starter, 1, "Night mode should choose the lower month card as starter.")
     }
 }

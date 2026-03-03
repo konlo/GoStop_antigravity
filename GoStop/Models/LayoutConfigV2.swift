@@ -20,7 +20,8 @@ struct LayoutConfigV2: Codable, Equatable {
                 showGrid: false,
                 showSafeArea: false,
                 showElementBounds: false,
-                player: DebugPlayerConfig(handSlotGrid: false, sortedOrderOverlay: false)
+                player: DebugPlayerConfig(handSlotGrid: false, sortedOrderOverlay: false),
+                debugMode: debug.debugMode
             ),
             referenceCanvas: referenceCanvas,
             scaling: scaling,
@@ -38,6 +39,11 @@ struct DebugConfigV2: Codable, Equatable {
     let showSafeArea: Bool
     let showElementBounds: Bool
     let player: DebugPlayerConfig?
+    let debugMode: Int?
+
+    var normalizedDebugMode: Int {
+        min(max(debugMode ?? 1, 1), 3)
+    }
 }
 
 struct DebugPlayerConfig: Codable, Equatable {

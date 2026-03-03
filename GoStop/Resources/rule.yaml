@@ -63,6 +63,14 @@ go_stop:
       add: 0
       multiply: 4
 
+starter:
+  enabled: true
+  mode: "night_day" # "night_day" => night: lower month starts, day: higher month starts
+  first_launch_only: true
+  day_start_hour: 6
+  day_end_hour: 18
+  description: "Apply 밤일낮장 only once on the first app launch."
+
 penalties:
   gobak:
     enabled: true
@@ -98,7 +106,7 @@ special_moves:
   bomb:
     enabled: true
     steal_pi_count: 1
-    score_multiplier: 2 # Shaking (흔듦) bonus if done via bomb
+    score_multiplier: 1 # Bomb does not change final score multiplier
     dummy_card_count: 2
     dummy_cards_disappear_on_play: true
     description: "Play 3 identical month cards when 1 is on table"

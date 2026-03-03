@@ -482,3 +482,187 @@
 - **Files Touched**: ["design_checklist.md", "project_progress.md"]
 - **Validation**: "체크리스트가 아키텍처/상태머신/앵커/브리지/관측성/회귀테스트/릴리스 게이트를 포함하는지 항목 단위로 확인함."
 - **Outcome**: "`design_checklist.md`를 신규 생성해 route 단위 설계/검증 기준을 즉시 적용 가능한 체크박스 형식으로 정리함."
+
+### [2026-03-02 21:31:27 KST] User Request: debug mode를 level1~3으로 나누고 좌표/rewind/moveStart route/COORD 패널을 level3로 관리, 현재 모드 level3 설정
+- **Skills Planned**: ["gostop-ui-playability", "project_logger"]
+- **Skills Used**: ["gostop-ui-playability", "project_logger"]
+- **Trigger Reason**: "디버그 UI 노출을 단계별로 관리하고, 특정 4개 디버그 요소를 최고 레벨에서만 켜지도록 분리할 필요가 있었음."
+- **Files Touched**: ["GoStop/Models/LayoutConfigV2.swift", "GoStop/Views/GameView.swift", "GoStop/Resources/layout_hwatu.json", "project_progress.md"]
+- **Validation**: "`xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator build CODE_SIGNING_ALLOWED=NO` 성공."
+- **Outcome**: "`DebugConfigV2`에 `debugMode`(1~3)와 정규화 로직을 추가하고, 요청한 4개 디버그 UI(화면 좌표 오버레이/rewind 버튼/좌상단 moveStart route/중앙 COORD 패널)를 `level3`에서만 노출되도록 `GameView` 조건을 분리했으며, `layout_hwatu.json` 기본값을 `debugMode: 3`으로 설정함."
+
+### [2026-03-02 21:36:40 KST] User Request: 화투 이동 시 화투 밑에 나오는 좌표도 level3로 제한
+- **Skills Planned**: ["gostop-ui-playability", "project_logger"]
+- **Skills Used**: ["gostop-ui-playability", "project_logger"]
+- **Trigger Reason**: "이동 카드 하단 좌표 라벨(`X/Y`)이 레벨과 무관하게 표시되어, 디버그 단계 정책(level3 전용)에 맞춰 노출 조건을 일치시켜야 했음."
+- **Files Touched**: ["GoStop/Views/GameView.swift", "project_progress.md"]
+- **Validation**: "`xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator build CODE_SIGNING_ALLOWED=NO` 성공."
+- **Outcome**: "`movingOverlayCard`의 `GeometryReader` 좌표 오버레이를 `isLevel3DebugMode` 조건으로 감싸, 화투 이동 중 카드 하단 좌표 라벨이 debug level3에서만 표시되도록 수정함."
+
+### [2026-03-02 21:45:38 KST] User Request: 가운데 table capture 시 녹색 좌표를 level3로 제한
+- **Skills Planned**: ["gostop-ui-playability", "project_logger"]
+- **Skills Used**: ["gostop-ui-playability", "project_logger"]
+- **Trigger Reason**: "`table->captured` 경로에서 소스(녹색) 좌표 점/라벨이 레벨 조건 없이 표시되어, debug level 정책과 일치시키기 위해 오버레이 조건 분리가 필요했음."
+- **Files Touched**: ["GoStop/Views/GameView.swift", "project_progress.md"]
+- **Validation**: "`xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator build CODE_SIGNING_ALLOWED=NO` 성공."
+- **Outcome**: "`tableToCapturedOverlay`의 source/target 디버그 점 렌더 블록을 `isLevel3DebugMode`로 감싸, 가운데 table->captured 이동 시 녹색 좌표(및 짝인 빨간 좌표)가 level3에서만 표시되도록 수정함."
+
+### [2026-03-03 21:25:01 KST] User Request: shake/bomb(x4) 규칙 확인
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "점수식의 Shake/Bomb(x4) 표기가 어떤 카운트/수식으로 계산되는지 코드 기준으로 확인 요청이 있었음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`rg`로 shake/bomb 관련 구현을 추적하고 `GoStop/Core/PenaltySystem.swift`, `GoStop/Core/GameManager.swift`, `rule.yaml`을 라인 단위로 교차 확인함."
+- **Outcome**: "현재 구현은 Shake/Bomb 배수를 `2^(shakeCount + bombCount)`로 계산하며, Bomb 발생 시 `bombCount`와 `shakeCount`를 모두 +1 하므로 Bomb 1회만으로도 Shake/Bomb 항이 x4가 됨을 확인함."
+
+### [2026-03-03 21:27:04 KST] User Request: 앱 첫 실행 1회에만 밤일낮장으로 선 결정 규칙 추가 계획 수립
+- **Skills Planned**: ["game_engine_iteration", "project_logger"]
+- **Skills Used**: ["game_engine_iteration", "project_logger"]
+- **Trigger Reason**: "기존 선 결정이 `GameManager.startGame()` 고정값(0)으로 묶여 있어, 엔진 영향 최소화를 위해 단일 훅 기반의 규칙 주입 경로를 설계하고 변경 범위를 명확히 분리할 필요가 있었음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`rg`/`sed`로 `GameManager.startGame`, `GameView.startManualGame/restartManualGame`, `SimulatorBridge`, `GoStopCLI`, `RuleConfig`를 추적해 선 결정 호출 경로와 테스트 영향 지점을 확인함."
+- **Outcome**: "앱 첫 실행 1회 규칙을 UI 시작 경로에서만 주입하고, 엔진은 `startGame` 한 지점에서 optional 초기 선 오버라이드만 소비하는 최소 변경 설계안을 수립함."
+
+### [2026-03-03 21:28:20 KST] User Request: shake/bomb(x4) 관련 test scenario 존재 여부 확인
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Shake/Bomb(x4) 규칙을 검증하는 자동화 시나리오 유무를 파일/라인 기준으로 확인 요청이 있었음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`rg`와 `nl`로 `tests/test_agent/test_scenarios.py`에서 시나리오 정의/등록/핵심 assertion(`Shake/Bomb(x4)`) 라인을 확인함."
+- **Outcome**: "관련 시나리오가 존재함을 확인함: `scenario_verify_exponential_multipliers`(직접 `Shake/Bomb(x4)` assertion), `scenario_verify_bomb_as_shake_multiplier`, `scenario_verify_bomb_and_steal`, `scenario_verify_shake_multiplier_stacking`."
+
+### [2026-03-03 21:34:31 KST] User Request: 앱 첫 실행 1회 밤일낮장 선 결정 규칙 실제 구현
+- **Skills Planned**: ["game_engine_iteration", "project_logger"]
+- **Skills Used**: ["game_engine_iteration", "project_logger"]
+- **Trigger Reason**: "기존 테스트/브리지 경로 영향은 유지하면서, 앱 수동 시작 경로에만 1회성 규칙을 주입해야 했음."
+- **Files Touched**: ["GoStop/Models/RuleConfig.swift", "GoStop/Core/GameManager.swift", "GoStop/Views/GameView.swift", "rule.yaml", "GoStop/Resources/rule.yaml", "GoStopTests/GoStopTests.swift", "engine_iteration.md", "engine_skill_usage.md", "project_progress.md"]
+- **Validation**: "`xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator build CODE_SIGNING_ALLOWED=NO` 성공, `xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI -configuration Debug build CODE_SIGNING_ALLOWED=NO` 성공, `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_tests_build build-for-testing CODE_SIGNING_ALLOWED=NO` 성공, `xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI -configuration Debug -derivedDataPath build build CODE_SIGNING_ALLOWED=NO` 성공, `python3 tests/test_agent/test_scenarios.py 1` PASS(최신 `build/Build/Products/Debug/GoStopCLI`, modified 2026-03-03 21:35:51 KST)."
+- **Outcome**: "`startGame(initialTurnIndex:)` 확장으로 기본 동작(0번 플레이어 선)은 유지하고, `GameView.startManualGame`에서 첫 실행 1회만 `starter.night_day` 규칙(낮=높은 월, 밤=낮은 월)으로 선을 계산해 주입하도록 구현함."
+
+### [2026-03-03 21:35:42 KST] User Request: 폭탄 시 bombCount와 shakeCount 동시 증가 여부 확인
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "폭탄 수행 시 두 카운트가 함께 증가하는지 코드와 런타임 상태를 교차 확인할 필요가 있었음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "1) `GoStop/Core/GameManager.swift`의 `handleBombPlay`에서 `player.bombCount += 1`, `player.shakeCount += 1` 확인. 2) `tests/test_agent/main.py` 기반 CLI 재현 실행으로 폭탄 1회 직후 상태값 `bombCount=1 shakeCount=1` 출력 확인."
+- **Outcome**: "현재 구현에서 폭탄 실행 시 bombCount와 shakeCount는 동시에 1씩 증가함을 코드/실행 모두에서 확인함."
+
+### [2026-03-03 22:18:49 KST] User Request: 첫 테이블 뒷면 선택(서로 1장 선택 후 선 결정) 플로우 반영 전 계획 수립
+- **Skills Planned**: ["game_engine_iteration", "game_UI_iteration", "project_logger"]
+- **Skills Used**: ["game_engine_iteration", "game_UI_iteration", "project_logger"]
+- **Trigger Reason**: "기존 구현은 첫 실행 1회 선결정을 즉시 계산해 UI 체감이 부족했고, 사용자 요구는 '테이블 카드 뒷면 선택 → 선 결정 → 전체 오픈'의 명시적 프리게임 연출을 요구함."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`CardView`의 `isFaceUp` 지원, `TableAreaV2`의 현재 고정 `isFaceUp: true`, `GameView.overlayArea/startManualGame`, `GameManager` 시작 루틴을 코드 라인 기준으로 점검해 최소 침습 통합 포인트를 식별함."
+- **Outcome**: "수동 UI 시작 경로에 한정된 프리게임 상태머신(뒷면/선택/결과/전체오픈)을 추가하고, 엔진은 기존 `startGame(initialTurnIndex:)` 오버라이드 훅만 재사용하는 단계별 구현 계획을 수립함."
+
+### [2026-03-03 22:20:34 KST] User Request: 점수 계산을 shake-only 배수로 변경 + rule/test scenario 반영
+- **Skills Planned**: ["game_engine_iteration", "test-agent-sync", "project_logger"]
+- **Skills Used**: ["game_engine_iteration", "test-agent-sync", "project_logger"]
+- **Trigger Reason**: "스코어링 규칙(엔진) 변경과 룰 파일/테스트 에이전트 시나리오 동기화가 동시에 필요한 요청이었음."
+- **Files Touched**: ["GoStop/Core/PenaltySystem.swift", "GoStop/Core/GameManager.swift", "rule.yaml", "GoStop/Resources/rule.yaml", "tests/test_agent/rule.yaml", "tests/test_agent/test_scenarios.py", "engine_iteration.md", "engine_skill_usage.md", "project_progress.md"]
+- **Validation**: "1) `xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI -configuration Debug build CODE_SIGNING_ALLOWED=NO` 성공. 2) `xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI -configuration Debug -derivedDataPath build build CODE_SIGNING_ALLOWED=NO` 성공(기본 CLI 경로 갱신). 3) `python3 tests/test_agent/test_scenarios.py --mode cli 5 11 31 36` PASS. 4) `python3 tests/test_agent/test_scenarios.py --mode cli --executable /Users/najongseong/Library/Developer/Xcode/DerivedData/GoStop-avdznenwyzucxpcrysizkynptmfu/Build/Products/Debug/GoStopCLI 24` PASS."
+- **Outcome**: "폭탄은 더 이상 최종 배수에 영향을 주지 않도록 엔진을 변경하고(Shake only), 룰 주석/값과 관련 시나리오를 새 규칙에 맞게 동기화함."
+
+### [2026-03-03 22:32:01 KST] User Request: 바닥에 동일 화투 4장일 때 처리 확인
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "초기 바닥에 동일 월 4장이 깔릴 때의 실제 종료 규칙을 코드+실행으로 확인 요청이 있었음."
+- **Files Touched**: ["GoStop/Core/GameManager.swift", "tests/test_agent/test_scenarios.py", "GoStopCLI/main.swift", "project_progress.md"]
+- **Validation**: "1) `python3 tests/test_agent/test_scenarios.py --mode cli -k table_4_card_nagari` PASS. 2) `python3` TestAgent 재현(Seed sweep)으로 `rng_seed=326`에서 초기 테이블 월 분포 `{1:4, 4:1, 5:1, 6:2}` 확인 및 `gameState=ended`, `gameEndReason=nagari` 확인. 3) 같은 상태에서 `start_game` 호출 후에도 `ended/nagari` 유지 확인."
+- **Outcome**: "현재 구현은 초기 딜 직후 바닥에 동일 월 4장이 존재하면 즉시 `Nagari`로 종료하며(`GameManager.dealCards`), 게임 시작 액션으로 진행 상태로 전환되지 않음을 확인함."
+
+### [2026-03-03 22:37:17 KST] User Request: 첫 테이블 뒷면 선택(서로 1장 선택 후 선 결정) 플로우 구현 진행
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 계획안 이후 즉시 구현 진행을 요청했고, 기존 게임 로직 영향 최소화 상태에서 프리게임 UI 흐름(뒷면 선택/선결정/전체 공개) 완결성과 회귀 안정성을 검증해야 했음."
+- **Files Touched**: ["GoStop/Core/GameManager.swift", "GoStop/Views/GameAreaViews.swift", "GoStop/Views/GameView.swift", "project_progress.md"]
+- **Validation**: "1) `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator build CODE_SIGNING_ALLOWED=NO` 성공. 2) `xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI -configuration Debug build CODE_SIGNING_ALLOWED=NO` 성공. 3) `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_tests_build build-for-testing CODE_SIGNING_ALLOWED=NO` 성공. 4) `python3 tests/test_agent/test_scenarios.py 1` PASS."
+- **Outcome**: "앱 수동 시작의 첫 실행 1회에 한해 테이블 카드 뒷면 상태에서 플레이어 1장 선택, 상대 1장 선택, 밤일/낮장 선결정, 전체 테이블 공개 후 `startGame(initialTurnIndex:)`로 시작하는 흐름이 반영되었고, 기존 CLI/테스트 에이전트 경로 회귀는 확인됨."
+
+### [2026-03-03 22:36:10 KST] User Request: 점수를 파일로 누적 저장하고 현재 승리 점수를 사용자 정보 옆에 표시
+- **Skills Planned**: ["game_UI_iteration", "project_logger"]
+- **Skills Used**: ["game_UI_iteration", "project_logger"]
+- **Trigger Reason**: "라운드 단위 점수를 세션 간 누적하려면 영속 저장소와 UI 노출을 함께 연결해야 함."
+- **Files Touched**: ["GoStop/Core/GameManager.swift", "GoStop/Views/GameAreaViews.swift", "ui_design_document.md", "ui_iteration_log.md", "project_progress.md"]
+- **Validation**: "1) `swift build` 시도는 `Package.swift` 부재로 실패(프로젝트 구조상 정상). 2) `xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI -configuration Debug build CODE_SIGNING_ALLOWED=NO` 성공. 3) `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator build CODE_SIGNING_ALLOWED=NO` 성공. 4) `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -destination 'platform=iOS Simulator,name=iPhone 16' test CODE_SIGNING_ALLOWED=NO`는 기존 실패 테스트(`GoStopTests.testGameManagerForwardsNestedPlayerCapturedChanges`, `GoStopTests.testMatchingLogic`)로 실패."
+- **Outcome**: "`GameManager`에 누적 승점 파일 저장(`gostop_cumulative_win_scores.json`)과 승리 시점 반영(Stop/총통/fallback)을 추가했고, `GameAreaViews` 점수 패널에 사용자명 + `승리누적`을 함께 표시해 현재 승리 누적 점수가 사용자 정보 옆에서 보이도록 반영함."
+
+### [2026-03-03 22:35:50 KST] User Request: Nagari(무승부 종료)도 총통과 동일 방식으로 화면 출력
+- **Skills Planned**: ["gostop-ui-playability", "project_logger"]
+- **Skills Used**: ["gostop-ui-playability", "project_logger"]
+- **Trigger Reason**: "게임 종료 연출 UI 요청으로, 기존 총통 오버레이와 시각적으로 동일한 Nagari 종료 오버레이가 필요했음."
+- **Files Touched**: ["GoStop/Views/GameView.swift", "project_progress.md"]
+- **Validation**: "`swift build`는 Package.swift 부재로 실패(프로젝트 구조상 정상). `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator build CODE_SIGNING_ALLOWED=NO` 성공."
+- **Outcome**: "`gameState == .ended`에서 `gameEndReason == .nagari`인 경우, 총통과 동일한 블랙 딤드 배경/대형 타이틀/재시작 버튼 스타일의 오버레이를 표시하도록 `GameView.overlayArea`를 확장함."
+
+### [2026-03-03 22:36:36 KST] User Request: 빌드 버전이 있는 것 같은데 설정의 개발자 정보에 이 버전을 넣어줘
+- **Skills Planned**: ["game_UI_iteration", "project_logger"]
+- **Skills Used**: ["game_UI_iteration", "project_logger"]
+- **Trigger Reason**: "설정 메뉴의 '개발자 정보' 버튼이 더미 동작이라, 개발자 정보 팝업에 앱 버전/빌드 정보를 노출하는 UI 연결이 필요했음."
+- **Files Touched**: ["GoStop/Views/GameAreaViews.swift", "GoStop/Views/GameView.swift", "project_progress.md"]
+- **Validation**: "`/bin/zsh -lc 'set -o pipefail; xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO > /tmp/gostop_devinfo_build.log 2>&1; STATUS=$?; rg -n \"BUILD SUCCEEDED|BUILD FAILED|error:\" /tmp/gostop_devinfo_build.log | tail -n 30; exit $STATUS'` 실행 결과 `BUILD SUCCEEDED` 확인."
+- **Outcome**: "`SettingAreaV2`에 `onDeveloperInfoTapped` 콜백을 추가하고 `GameView`에서 `showingDeveloperInfo` 상태/오버레이를 연결함. 새 `DeveloperInfoView`에서 `Bundle.main.infoDictionary`의 `CFBundleShortVersionString`과 `CFBundleVersion`을 읽어 `앱 버전`으로 표시하도록 구현함."
+
+### [2026-03-03 22:37:30 KST] User Request: 특수 이벤트(싹쓸이/뻑/자뻑/자뻑 먹기/뻑 먹기/흔들기/폭탄) 팝업 표시 UI 추가
+- **Skills Planned**: ["gostop-ui-playability", "project_logger"]
+- **Skills Used**: ["gostop-ui-playability", "project_logger"]
+- **Trigger Reason**: "기존 게임 로직 변경 없이, 발생한 특수 이벤트를 플레이 중 즉시 인지할 수 있도록 UI 팝업 레이어를 추가해야 했음."
+- **Files Touched**: ["GoStop/Views/GameView.swift", "project_progress.md"]
+- **Validation**: "`xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator build CODE_SIGNING_ALLOWED=NO` 성공."
+- **Outcome**: "`GameManager.eventLogs`의 신규 로그를 `GameView`에서 감지해 싹쓸이/뻑(설사)/자뻑(자뻑 먹기)/뻑 먹기/흔들기/폭탄 이벤트를 상단 팝업 큐로 순차 표시하도록 구현했고, 재시작/로그 리셋 시 팝업 큐를 안전하게 정리해 기존 룰/엔진 로직 변경 없이 UI 레이어만 확장함."
+
+### [2026-03-03 22:45:57 KST] User Request: 오늘 수정 내용을 좀 보여줘
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "당일 작업 내역 확인 요청으로, 커밋 로그와 워킹트리 diff를 기준으로 수정 파일/핵심 변경사항을 집계해야 했음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`git status --short`, `git log --since='2026-03-03 00:00:00 +0900' --date=iso --pretty=format:'%h %ad %an %s'`, `git diff --stat`, `git diff --numstat` 실행으로 변경 파일/규모 확인."
+- **Outcome**: "오늘(2026-03-03 KST) 커밋은 없고, 워킹트리 기준 14개 파일(1232 insertions, 195 deletions) 수정 상태임을 확인했으며 기능 단위(선결정/점수배수/UI/테스트)로 요약 제공."
+
+### [2026-03-03 23:05:30 KST] User Request: 커밋 메시지 초안 생성해줘
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "현재 워킹트리 변경사항을 기반으로 단일 커밋 메시지(제목/본문) 초안을 요청받음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "직전 집계된 변경 요약(선결정 플로우, shake-only 배수, 점수 누적 저장/표시, 개발자 정보/이벤트 팝업, 테스트 보강)을 기준으로 메시지 일관성 검토."
+- **Outcome**: "한 번에 커밋 가능한 형태의 제목+본문 커밋 메시지 초안을 제공함."
+
+### [2026-03-03 22:52:04 KST] User Request: 다음 판은 이전 게임 승자가 선(先)으로 시작하도록 추가
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "기존 재시작 흐름은 항상 Player 1 선으로 고정되어 있어, 라운드 연속 진행 시 이전 판 승자 우선 규칙을 연결해야 했음."
+- **Files Touched**: ["GoStop/Core/GameManager.swift", "GoStop/Views/GameView.swift", "project_progress.md"]
+- **Validation**: "1) `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator build CODE_SIGNING_ALLOWED=NO` 성공. 2) `xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI -configuration Debug build CODE_SIGNING_ALLOWED=NO` 성공. 3) `xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI -configuration Debug -derivedDataPath build build CODE_SIGNING_ALLOWED=NO`로 테스트 에이전트 대상 바이너리 갱신 성공. 4) `python3 tests/test_agent/test_scenarios.py 1` PASS(실행 바이너리 modified `2026-03-03 22:52:47 KST`)."
+- **Outcome**: "`GameManager.previousRoundWinnerIndex()`를 추가해 이전 판 승자 인덱스를 제공하고, `GameView.restartManualGame()`에서 재시작 직전에 승자 인덱스를 캡처하여 `startGame(initialTurnIndex:)`로 전달하도록 변경해 다음 판 선을 이전 승자로 설정함(무승부/Nagari는 기존 기본 선 유지)."
+
+### [2026-03-03 22:54:03 KST] User Request: 특수 이벤트 팝업을 화면 중앙 글자-only 형태로 변경
+- **Skills Planned**: ["gostop-ui-playability", "project_logger"]
+- **Skills Used**: ["gostop-ui-playability", "project_logger"]
+- **Trigger Reason**: "상단 배너 팝업의 가시성이 낮아, 같은 이벤트를 중앙 고정 텍스트로 보여주는 UI 조정이 필요했음."
+- **Files Touched**: ["GoStop/Views/GameView.swift", "project_progress.md"]
+- **Validation**: "`xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator build CODE_SIGNING_ALLOWED=NO` 성공."
+- **Outcome**: "특수 이벤트 팝업을 화면 상단 배너에서 중앙 텍스트 전용 표시로 변경함. 배경 박스/아이콘을 제거하고 `title + detail`만 중앙에 표시되도록 조정해 게임 중 가시성을 높였으며, 이벤트 감지/큐 처리 로직은 그대로 유지함."
+
+### [2026-03-03 22:58:22 KST] User Request: player area의 Sort 버튼 기능 여부 확인
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "UI에 보이는 Sort 버튼이 현재 코드에서 실제 정렬 동작으로 연결되는지 확인 요청이 있었음."
+- **Files Touched**: ["GoStop/Views/GameAreaViews.swift", "GoStop/Core/PlayerHandSlotManager.swift", "GoStop/Resources/layout_hwatu.json", "GoStop/Views/GameView.swift", "project_progress.md"]
+- **Validation**: "`rg -n 'sort|Sort'`, `nl -ba GoStop/Views/GameAreaViews.swift`, `nl -ba GoStop/Core/PlayerHandSlotManager.swift`, `nl -ba GoStop/Resources/layout_hwatu.json`, `nl -ba GoStop/Views/GameView.swift`로 버튼 노출 조건/액션 연결/정렬 메서드 구현/슬롯 매니저 초기화 경로를 확인함."
+- **Outcome**: "Sort 버튼은 현재 기능이 연결되어 있음(`Button` -> `slotManager.sort()`). 다만 일반 수동 플레이에서는 hand sync 시 이미 월/타입 기준 자동 정렬이 적용되어 버튼을 눌러도 체감 변화가 거의 없을 수 있음."
+
+### [2026-03-03 23:00:05 KST] User Request: player area의 Sort 버튼 제거
+- **Skills Planned**: ["game_UI_iteration", "project_logger"]
+- **Skills Used**: ["game_UI_iteration", "project_logger"]
+- **Trigger Reason**: "이전 확인 결과 debug 성격의 Sort 버튼이 실제 UI에 노출되어 있어, 플레이 화면 단순화를 위해 제거 요청이 있었음."
+- **Files Touched**: ["GoStop/Views/GameAreaViews.swift", "ui_design_document.md", "ui_iteration_log.md", "project_progress.md"]
+- **Validation**: "`xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator build CODE_SIGNING_ALLOWED=NO` 성공."
+- **Outcome**: "PlayerAreaV2에서 Sort 버튼 렌더링/액션 블록을 제거해 player area에 해당 버튼이 더 이상 표시되지 않도록 반영함. 정렬 엔진 로직(`PlayerHandSlotManager.sort`)은 변경하지 않음."
+
+### [2026-03-03 22:58:57 KST] User Request: 누적 점수 텍스트 색상을 오렌지에서 빨강으로 변경
+- **Skills Planned**: ["game_UI_iteration", "project_logger"]
+- **Skills Used**: ["game_UI_iteration", "project_logger"]
+- **Trigger Reason**: "누적 점수 강조 텍스트가 배경 대비가 낮아 가독성 향상이 필요했음."
+- **Files Touched**: ["GoStop/Views/GameAreaViews.swift", "ui_design_document.md", "ui_iteration_log.md", "project_progress.md"]
+- **Validation**: "`xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator build CODE_SIGNING_ALLOWED=NO` 성공."
+- **Outcome**: "`ScoreViewV2`의 `승리누적` 컬러를 `.orange.opacity(0.95)`에서 `.red.opacity(0.95)`로 변경해 사용자 정보 옆 누적 점수가 더 잘 보이도록 조정함."

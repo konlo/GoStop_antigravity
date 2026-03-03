@@ -5,10 +5,20 @@ struct RuleConfig: Codable {
     var cards: CardsRule
     var scoring: ScoringRule
     var go_stop: GoStopRule
+    var starter: StarterRule?
     var penalties: PenaltiesRule
     var special_moves: SpecialMovesRule
     var nagari: NagariRule
     var endgame: EndgameRule
+}
+
+struct StarterRule: Codable {
+    var enabled: Bool
+    var mode: String
+    var first_launch_only: Bool
+    var day_start_hour: Int
+    var day_end_hour: Int
+    var description: String?
 }
 
 struct EndgameRule: Codable {

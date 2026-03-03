@@ -13,6 +13,7 @@ struct SettingAreaV2: View {
     let onRewindTapped: () -> Void
     let onSettingsTapped: () -> Void
     let onLogTapped: () -> Void
+    let onDeveloperInfoTapped: () -> Void
     
     var body: some View {
         if let settingConfig = config {
@@ -67,7 +68,7 @@ struct SettingAreaV2: View {
                             Button(action: onLogTapped) {
                                 Label("4. 화투 Log", systemImage: "list.bullet.rectangle")
                             }
-                            Button(action: { print("개발자 정보 tapped") }) {
+                            Button(action: onDeveloperInfoTapped) {
                                 Label("5. 개발자 정보", systemImage: "person.info")
                             }
                         } label: {
@@ -130,7 +131,14 @@ struct OpponentAreaV2: View {
             }
             
             if let scoreConfig = areaConfig.elements.score, gameManager.players.count > 1 {
-                ScoreViewV2(ctx: ctx, config: scoreConfig, score: gameManager.players[1].score)
+                let opponent = gameManager.players[1]
+                ScoreViewV2(
+                    ctx: ctx,
+                    config: scoreConfig,
+                    score: opponent.score,
+                    playerName: opponent.name,
+                    cumulativeWinScore: gameManager.cumulativeWinScore(for: opponent)
+                )
                     .position(x: frame.width * scoreConfig.x, y: frame.height * scoreConfig.y)
                     .zIndex(scoreConfig.zIndex)
             }
@@ -145,6 +153,8 @@ struct CenterAreaV2: View {
     @ObservedObject var gameManager: GameManager
     var tableSlotManager: TableSlotManager?
     @Binding var tableCardCenters: [String: CGPoint]
+    let tableCardFaceUpResolver: ((Card) -> Bool)?
+    let onTableCardTapped: ((Card) -> Void)?
     
     var body: some View {
         let areaConfig = ctx.config.areas.center
@@ -160,7 +170,17 @@ struct CenterAreaV2: View {
             
             // Table
             let tableConfig = areaConfig.elements.table
-            TableAreaV2(ctx: ctx, animationNamespace: animationNamespace, gameManager: gameManager, config: tableConfig, cards: gameManager.tableCards, slotManager: tableSlotManager, tableCardCenters: $tableCardCenters)
+            TableAreaV2(
+                ctx: ctx,
+                animationNamespace: animationNamespace,
+                gameManager: gameManager,
+                config: tableConfig,
+                cards: gameManager.tableCards,
+                slotManager: tableSlotManager,
+                tableCardCenters: $tableCardCenters,
+                tableCardFaceUpResolver: tableCardFaceUpResolver,
+                onTableCardTapped: onTableCardTapped
+            )
                 .position(x: frame.width * tableConfig.x, y: frame.height * tableConfig.y)
                 .zIndex(tableConfig.zIndex)
             
@@ -210,26 +230,17 @@ struct PlayerAreaV2: View {
             
             // Score (Player)
             if let scoreConfig = areaConfig.elements.score, let player = gameManager.players.first {
-                ScoreViewV2(ctx: ctx, config: scoreConfig, score: player.score)
+                ScoreViewV2(
+                    ctx: ctx,
+                    config: scoreConfig,
+                    score: player.score,
+                    playerName: player.name,
+                    cumulativeWinScore: gameManager.cumulativeWinScore(for: player)
+                )
                     .position(x: frame.width * scoreConfig.x, y: frame.height * scoreConfig.y)
                     .zIndex(scoreConfig.zIndex)
             }
             
-            // Debug Sort Button
-            if handConfig.sorting?.enabled == true && slotManager != nil {
-                Button(action: {
-                    slotManager?.sort()
-                }) {
-                    Text("Sort")
-                        .font(.custom("Courier", size: 10))
-                        .padding(6)
-                        .background(Color.blue.opacity(0.8))
-                        .foregroundColor(.white)
-                        .cornerRadius(6)
-                }
-                .position(x: frame.width * 0.92, y: frame.height * 0.08)
-                .zIndex(100)
-            }
         }
     }
 }
@@ -240,15 +251,48 @@ struct ScoreViewV2: View {
     let ctx: LayoutContext
     let config: ElementScoreConfig
     let score: Int
+    let playerName: String?
+    let cumulativeWinScore: Int?
+
+    init(
+        ctx: LayoutContext,
+        config: ElementScoreConfig,
+        score: Int,
+        playerName: String? = nil,
+        cumulativeWinScore: Int? = nil
+    ) {
+        self.ctx = ctx
+        self.config = config
+        self.score = score
+        self.playerName = playerName
+        self.cumulativeWinScore = cumulativeWinScore
+    }
     
     var body: some View {
         let prefix = config.textPrefix ?? "점수: "
-        Text("\(prefix)\(score)")
-            .font(.system(
-                size: (config.typography?.fontSizePt ?? 20) * ctx.globalScale,
-                weight: config.typography?.weightSwiftUI ?? .bold
-            ))
-            .foregroundColor(config.typography?.colorSwiftUI ?? .primary)
+        let scoreFontSize = (config.typography?.fontSizePt ?? 20) * ctx.globalScale
+        VStack(alignment: .leading, spacing: 3 * ctx.globalScale) {
+            if let playerName {
+                HStack(spacing: 6 * ctx.globalScale) {
+                    Text(playerName)
+                        .font(.system(size: max(11, scoreFontSize * 0.72), weight: .semibold))
+                        .foregroundColor(.black.opacity(0.85))
+                        .lineLimit(1)
+                    if let cumulativeWinScore {
+                        Text("승리누적 \(cumulativeWinScore)")
+                            .font(.system(size: max(10, scoreFontSize * 0.6), weight: .bold))
+                            .foregroundColor(.red.opacity(0.95))
+                            .lineLimit(1)
+                    }
+                }
+            }
+            Text("\(prefix)\(score)")
+                .font(.system(
+                    size: scoreFontSize,
+                    weight: config.typography?.weightSwiftUI ?? .bold
+                ))
+                .foregroundColor(config.typography?.colorSwiftUI ?? .primary)
+        }
             .padding(.horizontal, 12 * ctx.globalScale)
             .padding(.vertical, 6 * ctx.globalScale)
             .background(Color.white.opacity(config.backgroundOpacity ?? 0.8))
@@ -750,11 +794,22 @@ struct TableAreaV2: View {
     let cards: [Card]
     var slotManager: TableSlotManager?
     @Binding var tableCardCenters: [String: CGPoint]
+    let tableCardFaceUpResolver: ((Card) -> Bool)?
+    let onTableCardTapped: ((Card) -> Void)?
     
     var body: some View {
         Group {
             if config.mode == "fixedSlots12", let manager = slotManager {
-                TableFixedSlotsView(ctx: ctx, animationNamespace: animationNamespace, gameManager: gameManager, config: config, manager: manager, tableCardCenters: $tableCardCenters)
+                TableFixedSlotsView(
+                    ctx: ctx,
+                    animationNamespace: animationNamespace,
+                    gameManager: gameManager,
+                    config: config,
+                    manager: manager,
+                    tableCardCenters: $tableCardCenters,
+                    tableCardFaceUpResolver: tableCardFaceUpResolver,
+                    onTableCardTapped: onTableCardTapped
+                )
             } else {
                 legacyGrid
             }
@@ -791,9 +846,14 @@ struct TableAreaV2: View {
                         let isTarget = tableActsAsTarget && gameManager.hiddenInTargetCardIds.contains(card.id)
                         let isSourceCue = tableActsAsSource && gameManager.sourceCueCardIds.contains(card.id)
                         let isTargetCue = tableActsAsTarget && gameManager.targetCueCardIds.contains(card.id)
-                        CardView(card: card, isFaceUp: true, scale: config.scale, animationNamespace: disableMatchedGeometryForRoute ? nil : animationNamespace, isSource: !isTarget, isMoveSourceCue: isSourceCue, isMoveTargetCue: isTargetCue, sourceCueScaleMultiplier: tableToCapturedSourceCueScale, targetCueScaleMultiplier: deckToTableTargetCueScale)
+                        let isFaceUp = tableCardFaceUpResolver?(card) ?? true
+                        CardView(card: card, isFaceUp: isFaceUp, scale: config.scale, animationNamespace: disableMatchedGeometryForRoute ? nil : animationNamespace, isSource: !isTarget, isMoveSourceCue: isSourceCue, isMoveTargetCue: isTargetCue, sourceCueScaleMultiplier: tableToCapturedSourceCueScale, targetCueScaleMultiplier: deckToTableTargetCueScale)
                             .offset(y: CGFloat(i) * (cardH * (1.0 - config.grid.stackOverlapRatio))) 
                             .opacity(isHidden ? 0 : 1)
+                            .allowsHitTesting(!isHidden)
+                            .onTapGesture {
+                                onTableCardTapped?(card)
+                            }
                     }
                 }
                 .frame(width: cardW, height: cardH) // Fixed frame for stack base
@@ -809,6 +869,8 @@ struct TableFixedSlotsView: View {
     let config: ElementTableConfig
     @ObservedObject var manager: TableSlotManager
     @Binding var tableCardCenters: [String: CGPoint]
+    let tableCardFaceUpResolver: ((Card) -> Bool)?
+    let onTableCardTapped: ((Card) -> Void)?
     
     var body: some View {
         let cardW = ctx.cardSize.width * config.scale
@@ -859,10 +921,15 @@ struct TableFixedSlotsView: View {
                                       let isTarget = tableActsAsTarget && gameManager.hiddenInTargetCardIds.contains(card.id)
                                       let isSourceCue = tableActsAsSource && gameManager.sourceCueCardIds.contains(card.id)
                                       let isTargetCue = tableActsAsTarget && gameManager.targetCueCardIds.contains(card.id)
-                                      CardView(card: card, isFaceUp: true, scale: config.scale, animationNamespace: disableMatchedGeometryForRoute ? nil : animationNamespace, isSource: !isTarget, showDebugInfo: ctx.config.debug.player?.sortedOrderOverlay == true, isMoveSourceCue: isSourceCue, isMoveTargetCue: isTargetCue, sourceCueScaleMultiplier: tableToCapturedSourceCueScale, targetCueScaleMultiplier: deckToTableTargetCueScale)
+                                      let isFaceUp = tableCardFaceUpResolver?(card) ?? true
+                                      CardView(card: card, isFaceUp: isFaceUp, scale: config.scale, animationNamespace: disableMatchedGeometryForRoute ? nil : animationNamespace, isSource: !isTarget, showDebugInfo: ctx.config.debug.player?.sortedOrderOverlay == true, isMoveSourceCue: isSourceCue, isMoveTargetCue: isTargetCue, sourceCueScaleMultiplier: tableToCapturedSourceCueScale, targetCueScaleMultiplier: deckToTableTargetCueScale)
                                           .offset(x: xOff, y: yOff)
                                           .zIndex(Double(i))
                                           .opacity(isHidden ? 0 : 1)
+                                          .allowsHitTesting(!isHidden)
+                                          .onTapGesture {
+                                              onTableCardTapped?(card)
+                                          }
                                   }
                              }
                          } else {
