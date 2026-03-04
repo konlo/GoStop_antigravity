@@ -1,9 +1,10 @@
 # Project Progress Log
 
 ## Current Status
-- **Last Updated**: 2026-03-01
+- **Last Updated**: 2026-03-04
 - **Status**: In Progress
-- **Summary**: Implementing AI UX Monitor, enabling skill usage monitoring, and recording skill statistics snapshots.
+- **Summary**: Bomb/Shake 연동, 3뻑 즉시승리, 족보·쪽 이벤트 팝업 확장을 반영하고 관련 회귀 시나리오를 동기화한 상태.
+- **Next Session Focus**: 신규 이벤트 팝업(쪽/족보/3뻑) 및 폭탄 애니메이션 경로에 대한 시뮬레이터 시각 검증과 전체 시나리오 회귀 실행.
 
 ---
 
@@ -666,3 +667,203 @@
 - **Files Touched**: ["GoStop/Views/GameAreaViews.swift", "ui_design_document.md", "ui_iteration_log.md", "project_progress.md"]
 - **Validation**: "`xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator build CODE_SIGNING_ALLOWED=NO` 성공."
 - **Outcome**: "`ScoreViewV2`의 `승리누적` 컬러를 `.orange.opacity(0.95)`에서 `.red.opacity(0.95)`로 변경해 사용자 정보 옆 누적 점수가 더 잘 보이도록 조정함."
+
+### [2026-03-04 21:08:16 KST] User Request: 뻑 이후 피 상호 이동 반복 상태 코드 검토
+- **Skills Planned**: ["basic-code-review", "gostop-test-reliability", "project_logger"]
+- **Skills Used**: ["basic-code-review", "gostop-test-reliability", "project_logger"]
+- **Trigger Reason**: "뻑 처리 직후 게임 상태가 정상 종료되지 않고 captured->captured(피 이동) 상태가 반복 유지되는 증상 원인을 코드 경로 단위로 검토하기 위함."
+- **Files Touched**: ["GoStop/Core/GameManager.swift", "tests/test_agent/test_scenarios.py", "project_progress.md"]
+- **Validation**: "`GameManager`의 뻑/뻑먹기 플래그 설정·소비 경로(`performTableCapture`→`finalizeTurnAfterCapture`)와 턴 초기화 구간(`playTurn`)을 대조해 플래그 누수 여부 확인. Seolsa 관련 시나리오는 즉시 보너스만 검증하고 다음 턴 재발 여부는 검증하지 않는 테스트 공백 확인."
+- **Outcome**: "`isSeolsaEatFlag`/`isSelfSeolsaEatFlag`가 턴 시작 시 초기화되지 않아 한 번 켜지면 매 턴 피 이동이 재실행되는 근본 원인을 식별. 사용자 보고(뻑 이후 피 상호 이동 반복)와 코드 동작이 일치함."
+
+### [2026-03-04 21:10:48 KST] User Request: 설정 파일에서 빌드 버전을 하위 버전(빌드 날짜)으로 반영
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "요청 단위 작업 이력과 결과를 `project_progress.md`에 남기라는 저장 규칙이 있어 로그 기록을 수행함."
+- **Files Touched**: ["GoStop/Info.plist", "project_progress.md"]
+- **Validation**: "`plutil -lint GoStop/Info.plist` 실행 결과 OK 확인."
+- **Outcome**: "`CFBundleVersion`을 `1.0.20260304`로 변경해 빌드 버전에 하위 버전 형태의 빌드 날짜(YYYYMMDD)가 포함되도록 반영함."
+
+### [2026-03-04 21:12:17 KST] User Request: 뻑 반복 피 이동 버그 패치 + 회귀 시나리오 추가
+- **Skills Planned**: ["gostop-test-reliability", "add-bug-fix-scenario", "project_logger"]
+- **Skills Used**: ["gostop-test-reliability", "add-bug-fix-scenario", "project_logger"]
+- **Trigger Reason**: "뻑/뻑먹기 후 피 상호 이동 반복 재현 이슈를 코드로 수정하고 동일 유형 회귀를 테스트로 고정해야 함."
+- **Files Touched**: ["GoStop/Core/GameManager.swift", "tests/test_agent/test_scenarios.py", "project_progress.md"]
+- **Validation**: "1) `xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI -configuration Debug -derivedDataPath build build CODE_SIGNING_ALLOWED=NO` 성공. 2) `python3 tests/test_agent/test_scenarios.py --mode cli --filter seolsa_eat` 실행 결과 4개 시나리오(`scenario_verify_seolsa_eat`, `scenario_verify_self_seolsa_eat`, `scenario_verify_initial_seolsa_eat`, `scenario_bugfix_seolsa_eat_flag_reset_between_turns`) PASS."
+- **Outcome**: "`finalizeTurnAfterCapture`에서 SeolsaEat 플래그를 consume-once로 즉시 클리어하고 `playTurn` 시작 시에도 초기화해 턴 간 플래그 누수를 차단. 다음 턴 재전송(반복 피 이동)을 검증하는 회귀 시나리오를 추가해 재발 방지."
+
+### [2026-03-04 21:13:00 KST] User Request: 이벤트 팝업이 있을 때 게임 종료 화면이 나오는지 확인
+- **Skills Planned**: ["gostop-test-reliability", "project_logger"]
+- **Skills Used**: ["gostop-test-reliability", "project_logger"]
+- **Trigger Reason**: "특수 이벤트 팝업과 `gameState == .ended` 오버레이의 동시 노출 여부를 코드 경로 기준으로 검증해야 했음."
+- **Files Touched**: ["GoStop/Views/GameView.swift", "project_progress.md"]
+- **Validation**: "`rg -n 'specialEventPopup|gameState == \\.ended|Game Over' GoStop/Views/GameView.swift`, `nl -ba GoStop/Views/GameView.swift | sed -n '681,942p'`로 팝업 큐/표시 조건과 종료 오버레이 렌더 순서를 점검함."
+- **Outcome**: "현재 구현에서는 종료 상태에서도 `specialEventPopupOverlay()`가 항상 렌더되어, 이벤트 팝업 활성 시점에 게임 종료가 발생하면 종료 화면과 이벤트 팝업이 동시에 표시될 수 있음을 확인함."
+
+### [2026-03-04 21:13:09 KST] User Request: 폭탄을 수행하면 흔들기가 count가 되고 있는지 확인해줘
+- **Skills Planned**: ["gostop-test-reliability", "project_logger"]
+- **Skills Used**: ["gostop-test-reliability", "project_logger"]
+- **Trigger Reason**: "폭탄(Bomb) 수행 시 흔들기(shakeCount) 카운트가 오염되는지 규칙/런타임 검증이 필요함."
+- **Files Touched**: ["GoStop/Core/GameManager.swift", "GoStop/Core/PenaltySystem.swift", "tests/test_agent/test_scenarios.py", "project_progress.md"]
+- **Validation**: "`GameManager` 코드 확인(`respondToShake`, `handleBombPlay`)으로 shake/bomb 카운트 갱신 분리 여부 점검. `xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI -configuration Debug -derivedDataPath build build CODE_SIGNING_ALLOWED=NO` 성공 후, `python3 tests/test_agent/test_scenarios.py 5 36` 실행 결과 `scenario_verify_bomb_and_steal` PASS, `scenario_verify_bomb_as_shake_multiplier` PASS 재확인(실행 바이너리 modified `2026-03-04 21:14:09 KST`)."
+- **Outcome**: "폭탄 수행 시 `bombCount`만 증가하고 `shakeCount`는 증가하지 않음을 코드/시나리오 실행으로 확인."
+
+### [2026-03-04 21:16:03 KST] User Request: 폭탄 수행 시 shakeCount 증가 + shakeCount-only 배수 의도에 맞는지 project_progress.md 검토
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "과거 의사결정 기록(`project_progress.md`)만 기준으로 현재 구현 방향이 사용자 의도와 일치하는지 타임라인 교차 검토가 필요했음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`rg -n '폭탄|bomb|shake|multiplier|배수' project_progress.md`, `nl -ba project_progress.md | sed -n '500,572p'`, `nl -ba project_progress.md | sed -n '694,712p'`로 관련 엔트리(2026-03-03 21:25, 21:35, 22:20, 2026-03-04 21:13)를 라인 단위 대조."
+- **Outcome**: "로그 상으로는 2026-03-03 21:35 시점에 `폭탄 시 bombCount+shakeCount 동시 증가`가 확인되었으나, 같은 날 22:20 규칙 변경 이후 2026-03-04 21:13 검증 결과가 `bombCount만 증가`로 바뀌어 사용자 의도(폭탄 시 shakeCount 증가 유지)와 불일치 가능성이 확인됨."
+
+### [2026-03-04 21:19:25 KST] User Request: 폭탄은 shakecount를 올리되, 배수 계산은 shakecount만 사용
+- **Skills Planned**: ["game_engine_iteration", "test-agent-sync", "project_logger"]
+- **Skills Used**: ["game_engine_iteration", "test-agent-sync", "project_logger"]
+- **Trigger Reason**: "엔진 규칙(폭탄→shakeCount) 변경과 점수 계산 기준(shakeCount-only) 유지, 그리고 테스트 시나리오 동기화가 함께 필요한 요청이었음."
+- **Files Touched**: ["GoStop/Core/GameManager.swift", "GoStop/Core/PenaltySystem.swift", "tests/test_agent/test_scenarios.py", "engine_iteration.md", "engine_skill_usage.md", "project_progress.md"]
+- **Validation**: "1) `xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI -configuration Debug -derivedDataPath build build CODE_SIGNING_ALLOWED=NO` 성공. 2) `python3 tests/test_agent/test_scenarios.py 5 36` PASS(폭탄 턴 + bomb multiplier 분리 검증). 3) `python3 tests/test_agent/test_scenarios.py 24 31` PASS(shake 배수 누적/점수식 회귀 확인)."
+- **Outcome**: "`handleBombPlay`에서 폭탄 수행 시 `shakeCount`를 함께 +1 하도록 복원했고, `PenaltySystem`은 계속 `2^shakeCount`만 배수에 사용하도록 유지. bomb 회귀 시나리오 기대값을 새 규칙에 맞게 동기화 완료."
+
+### [2026-03-04 21:21:30 KST] User Request: 한 사람이 3번 뻑을 하면 게임이 종료되는 rule이 있는지 확인
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "현재 룰/엔진 구현에 '3뻑 즉종' 조건이 실제로 존재하는지 코드와 룰 설정 파일 기준으로 확인 요청이 있었음."
+- **Files Touched**: ["GoStop/Core/GameManager.swift", "GoStop/Models/RuleConfig.swift", "GoStop/Resources/rule.yaml", "rule.yaml", "tests/test_agent/rule.yaml", "project_progress.md"]
+- **Validation**: "`rg -n 'seolsa|뻑|endgame|GameEndReason|seolsaCount'`, `sed -n '560,760p' GoStop/Core/GameManager.swift`, `sed -n '1240,1425p' GoStop/Core/GameManager.swift`, `sed -n '1,260p' GoStop/Models/RuleConfig.swift`, `sed -n '120,190p' GoStop/Resources/rule.yaml`로 뻑 카운트 증가 지점/종료 조건/설정 키를 대조 확인."
+- **Outcome**: "현재 구현에는 한 플레이어 `seolsaCount`가 3회가 되면 게임을 종료하는 규칙이 없음. 뻑은 카운트 증가와(필요 시) 피 이동 처리만 하고, 종료는 `stop/maxScore/nagari/chongtong` 및 `endgame`의 bak/max score/max go 조건으로만 발생함."
+
+### [2026-03-04 21:28:59 KST] User Request: 한 사람이 뻑을 3번 하면 승리 조건 + 10점 승리 적용
+- **Skills Planned**: ["game_engine_iteration", "test-agent-sync", "project_logger"]
+- **Skills Used**: ["game_engine_iteration", "test-agent-sync", "project_logger"]
+- **Trigger Reason**: "기존 종료 규칙에 없는 3뻑 즉승 규칙을 엔진/룰 계약/시나리오까지 일관되게 확장해야 했음."
+- **Files Touched**: ["GoStop/Core/GameManager.swift", "GoStop/Models/RuleConfig.swift", "GoStop/Views/DebugEndgameSummaryView.swift", "GoStop/Resources/rule.yaml", "rule.yaml", "tests/test_agent/rule.yaml", "tests/test_agent/test_scenarios.py", "tests/test_agent/artifacts/test-agent-sync-report.md", "engine_iteration.md", "engine_skill_usage.md", "project_progress.md"]
+- **Validation**: "1) `xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI -configuration Debug -derivedDataPath build build CODE_SIGNING_ALLOWED=NO` 성공. 2) `python3 tests/test_agent/test_scenarios.py --mode cli --filter triple_seolsa` PASS. 3) `python3 tests/test_agent/test_scenarios.py --mode cli --filter seolsa` 실행 결과 6개 시나리오(`scenario_verify_seolsa`, `scenario_verify_triple_seolsa_instant_win`, `scenario_verify_seolsa_eat`, `scenario_verify_self_seolsa_eat`, `scenario_verify_initial_seolsa_eat`, `scenario_bugfix_seolsa_eat_flag_reset_between_turns`) PASS. 4) `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO` 성공."
+- **Outcome**: "`seolsaCount >= 3`일 때 즉시 종료(`gameEndReason=threeSeolsa`)하고 `finalScore=10`으로 승리 처리되도록 구현. 룰 계약에 `special_moves.seolsa.instant_win_count/instant_win_score`를 추가해 설정값(3/10)으로 관리하도록 했고, 회귀 시나리오 및 sync 리포트까지 동기화 완료."
+
+### [2026-03-04 22:13:17 KST] User Request: 3번 뻑 종료 원인 이벤트 팝업 표시 후 종료
+- **Skills Planned**: ["game_UI_iteration", "project_logger"]
+- **Skills Used**: ["game_UI_iteration", "project_logger"]
+- **Trigger Reason**: "3뻑 종료 시 일반 종료 화면보다 종료 원인(3뻑) 팝업을 먼저 노출해야 하는 UI 흐름 요구가 있었음."
+- **Files Touched**: ["GoStop/Views/GameView.swift", "ui_design_document.md", "ui_iteration_log.md", "project_progress.md"]
+- **Validation**: "`xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO` 성공."
+- **Outcome**: "`GameView`에 Triple Seolsa 종료 로그(`reached Triple Seolsa`) 전용 이벤트 팝업(`삼뻑 종료`)을 추가하고, `gameState == .ended && gameEndReason == .threeSeolsa`에서 팝업 active/queue가 남아 있는 동안 종료 오버레이를 지연 표시하도록 반영. 결과적으로 '3뻑 종료 원인 팝업 -> 종료 화면' 순서로 노출됨."
+
+### [2026-03-04 21:23:18 KST] User Request: 피가 하나도 없을 때 피박이 아닌지 rule 확인
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "0피(피 0장) 상태를 피박 예외로 취급하는 조건이 규칙/엔진에 존재하는지 코드와 시나리오 기준으로 확인 요청이 있었음."
+- **Files Touched**: ["GoStop/Core/PenaltySystem.swift", "GoStop/Core/GameManager.swift", "GoStop/Resources/rule.yaml", "tests/test_agent/test_scenarios.py", "project_progress.md"]
+- **Validation**: "1) `PenaltySystem`/`GameManager`에서 피박 조건 `winnerPi >= 10 && loserPi > 0 && loserPi < opponent_min_pi_safe` 확인. 2) 룰 주석에서 피박 대상이 1~7피임을 확인. 3) `python3 tests/test_agent/test_scenarios.py 32` 실행 결과 `scenario_verify_pibak_zero_pi_exception` PASS."
+- **Outcome**: "현재 구현에 0피 피박 예외 규칙이 명시되어 있으며, 테스트 시나리오로도 PASS 확인됨."
+
+### [2026-03-04 21:31:08 KST] User Request: 폭탄을 2번 3번 했을 때 정상 동작 확인용 test scenario 존재 여부 확인
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "폭탄 2회/3회 누적 동작을 직접 검증하는 회귀 시나리오가 현재 테스트 스위트에 포함돼 있는지 파일 기준으로 확인해야 했음."
+- **Files Touched**: ["tests/test_agent/test_scenarios.py", "GoStopTests/GoStopTests.swift", "project_progress.md"]
+- **Validation**: "`rg -n 'def scenario_.*bomb|bombCount|폭탄|Bomb' tests/test_agent/test_scenarios.py`, `rg -n 'bombCount\\s*==\\s*[23]' tests GoStopTests GoStop`, `sed -n '160,240p' tests/test_agent/test_scenarios.py`, `sed -n '1418,1525p' tests/test_agent/test_scenarios.py`, `sed -n '2168,2365p' tests/test_agent/test_scenarios.py`, `sed -n '3860,3955p' tests/test_agent/test_scenarios.py`, `sed -n '1,260p' GoStopTests/GoStopTests.swift`"
+- **Outcome**: "폭탄 관련 시나리오는 존재하지만(`scenario_verify_bomb_and_steal`, `scenario_verify_bomb_with_dummy_cards`, `scenario_verify_bomb_sweep`, `scenario_verify_bomb_as_shake_multiplier`, `scenario_verify_chrysanthemum_via_bomb`) 모두 단일 폭탄 동작 중심이며, `bombCount == 2` 또는 `bombCount == 3`을 직접 검증하는 전용 시나리오는 현재 없음."
+
+### [2026-03-04 22:15:04 KST] User Request: 폭탄 2/3회 시나리오 추가 + 점수 계산 검증
+- **Skills Planned**: ["add-bug-fix-scenario", "gostop-test-reliability", "project_logger"]
+- **Skills Used**: ["add-bug-fix-scenario", "gostop-test-reliability", "project_logger"]
+- **Trigger Reason**: "폭탄 누적 동작(2회/3회) 회귀 시나리오를 추가하고 shake 기반 배수 계산 회귀까지 함께 검증해야 했음."
+- **Files Touched**: ["tests/test_agent/test_scenarios.py", "project_progress.md"]
+- **Validation**: "1) `python3 -c \"import ast, pathlib; ast.parse(pathlib.Path('tests/test_agent/test_scenarios.py').read_text(encoding='utf-8')); print('AST_OK')\"` 통과. 2) `xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI -configuration Debug -derivedDataPath build build CODE_SIGNING_ALLOWED=NO` 성공. 3) `python3 tests/test_agent/test_scenarios.py --mode cli --filter double_bomb_count_and_score` PASS. 4) `python3 tests/test_agent/test_scenarios.py --mode cli --filter triple_bomb_count_and_score` PASS. 5) `python3 tests/test_agent/test_scenarios.py --mode cli 25 32 37` PASS(`scenario_verify_shake_multiplier_stacking`, `scenario_verify_score_formula`, `scenario_verify_bomb_as_shake_multiplier`)."
+- **Outcome**: "폭탄 2회/3회 전용 시나리오를 추가했고, 각 시나리오에서 `bombCount`/`shakeCount` 누적(2,3)과 점수식(`finalScore=4*2^shakeCount`, formula에 `Shake(x4/x8)` 포함, Bomb 전용 배수 항 없음)을 검증하도록 반영. 기존 점수 관련 회귀 시나리오도 함께 PASS 확인."
+
+### [2026-03-04 22:30:37 KST] User Request: 쪽에 대한 event pop이 있는지 확인 + 정상 동작 검증
+- **Skills Planned**: ["gostop-test-reliability", "project_logger"]
+- **Skills Used**: []
+- **Trigger Reason**: "쪽(Jjok) 이벤트의 로그/팝업 경로 존재 여부와 실제 발생 시 UI 노출 및 상태 반영이 정상인지 점검 요청."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "진행 중: 이벤트/팝업 코드 경로 검색 및 시나리오 기반 동작 검증 착수."
+- **Outcome**: "in progress"
+
+### [2026-03-04 22:32:07 KST] User Request: 쪽에 대한 event pop이 있는지 확인 + 정상 동작 검증 (결과)
+- **Skills Planned**: ["gostop-test-reliability", "project_logger"]
+- **Skills Used**: ["gostop-test-reliability", "project_logger"]
+- **Trigger Reason**: "쪽(Jjok) 이벤트가 엔진에서 발생하더라도 event pop 매핑 누락 시 UI에서 보이지 않을 수 있어, 로그-팝업 연결과 시나리오 PASS를 함께 확인해야 했음."
+- **Files Touched**: ["GoStop/Views/GameView.swift", "GoStop/Core/GameManager.swift", "tests/test_agent/test_scenarios.py", "project_progress.md"]
+- **Validation**: "1) `rg -n \"popup|eventLogs\" GoStop/Views/GameView.swift GoStop/Core/GameManager.swift`로 팝업 파이프라인 확인. 2) `python3 tests/test_agent/test_scenarios.py --mode cli 8` PASS (`scenario_verify_special_moves_suite` 내 Jjok subcase 포함). 3) 코드 라인 확인 결과 `GameManager`는 `triggered 쪽(Jjok)` 로그를 남기지만, `GameView.specialEventPopup(from:)`에는 해당 문자열 분기가 없음."
+- **Outcome**: "엔진의 쪽 규칙/카운트 동작은 정상(PASS)이나, 쪽 이벤트 전용 special event pop은 현재 미구현으로 UI 팝업 기준으로는 정상 동작 아님(미표시)."
+
+### [2026-03-04 22:33:33 KST] User Request: event pop이 있는 것들 목록 확인
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "현재 UI에서 실제로 매핑된 special event popup 목록을 코드 기준으로 정확히 전달하기 위함."
+- **Files Touched**: ["GoStop/Views/GameView.swift", "project_progress.md"]
+- **Validation**: "`nl -ba GoStop/Views/GameView.swift | sed -n '32,84p'`, `nl -ba GoStop/Views/GameView.swift | sed -n '705,763p'`로 `SpecialEventPopup.Kind` 및 로그 매핑 분기 확인."
+- **Outcome**: "현재 event pop 대상은 7종(삼뻑 종료, 흔들기, 폭탄, 싹쓸이, 뻑, 뻑 먹기, 자뻑)으로 확인."
+
+### [2026-03-04 22:30:55 KST] User Request: 지금 폭탄 사용할 때 애니메이션이 있는지 확인해줘
+- **Skills Planned**: ["gostop-ui-playability", "project_logger"]
+- **Skills Used**: ["gostop-ui-playability", "project_logger"]
+- **Trigger Reason**: "폭탄 사용 시 UI 모션(카드 이동/팝업/피 이동) 유무를 코드 경로와 시나리오 실행으로 확인해야 했음."
+- **Files Touched**: ["GoStop/Core/GameManager.swift", "GoStop/Views/GameView.swift", "GoStop/Core/AnimationManager.swift", "tests/test_agent/test_scenarios.py", "project_progress.md"]
+- **Validation**: "`rg -n --hidden -S 'bomb|폭탄|withAnimation|animation' GoStop GoStopCLI GoStopTests tests/test_agent`, `nl -ba GoStop/Core/GameManager.swift | sed -n '920,1155p'`, `nl -ba GoStop/Core/GameManager.swift | sed -n '1710,1905p'`, `nl -ba GoStop/Views/GameView.swift | sed -n '680,860p'`, `python3 tests/test_agent/test_scenarios.py --mode cli -k bomb_and_steal`(PASS)로 확인."
+- **Outcome**: "현재 구현에서 폭탄 4장 획득 자체는 `handleBombPlay`에서 즉시 커밋되어 애니메이션을 우회한다. 다만 폭탄 이벤트 팝업은 `withAnimation`(spring/easeOut)으로 표시되고, 폭탄 후 피 강탈은 `animatePenaltyPiTransfer`의 `captured->captured` 이동 애니메이션으로 실행된다."
+
+### [2026-03-04 22:34:40 KST] User Request: 쪽에 대한 event pop 추가
+- **Skills Planned**: ["gostop-ui-playability", "project_logger"]
+- **Skills Used**: []
+- **Trigger Reason**: "`triggered 쪽(Jjok)` 로그는 존재하지만 UI special event popup 매핑이 없어, `쪽` 이벤트도 동일한 pop 체계로 노출되도록 보강이 필요함."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "진행 중: `GameView.specialEventPopup(from:)` 및 `SpecialEventPopup.Kind` 확장 예정."
+- **Outcome**: "in progress"
+
+### [2026-03-04 22:35:37 KST] User Request: 쪽에 대한 event pop 추가 (결과)
+- **Skills Planned**: ["gostop-ui-playability", "project_logger"]
+- **Skills Used**: ["gostop-ui-playability", "project_logger"]
+- **Trigger Reason**: "기존 special event popup 파이프라인을 유지하면서 `쪽` 이벤트를 동일한 방식으로 노출하기 위해 enum/매핑 분기만 최소 수정."
+- **Files Touched**: ["GoStop/Views/GameView.swift", "project_progress.md"]
+- **Validation**: "1) `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO` 성공(BUILD SUCCEEDED). 2) `python3 tests/test_agent/test_scenarios.py --mode cli 8` PASS (`scenario_verify_special_moves_suite`, Jjok subcase 포함)."
+- **Outcome**: "`GameView.SpecialEventPopup.Kind`에 `jjok` 케이스를 추가하고, `specialEventPopup(from:)`에서 `triggered 쪽(Jjok)` 로그를 `쪽` 팝업으로 매핑하도록 반영 완료."
+
+### [2026-03-04 22:37:12 KST] User Request: 청단, 홍단, 고도리, 구사 event pop 추가
+- **Skills Planned**: ["gostop-ui-playability", "project_logger"]
+- **Skills Used**: []
+- **Trigger Reason**: "족보 보너스(청단/홍단/고도리/구사) 발생 시 로그 기반 special event pop을 추가해 이벤트 인지성을 높여달라는 요청."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "진행 중: 엔진 로그 문구 확인 후 `GameView.specialEventPopup(from:)` 매핑 확장 예정."
+- **Outcome**: "in progress"
+
+### [2026-03-04 22:40:51 KST] User Request: 청단, 홍단, 고도리, 구사 event pop 추가 (결과)
+- **Skills Planned**: ["gostop-ui-playability", "project_logger"]
+- **Skills Used**: ["gostop-ui-playability", "project_logger"]
+- **Trigger Reason**: "기존 pop 파이프라인(`eventLogs -> specialEventPopup`)을 유지하면서 족보 이벤트를 안정적으로 노출하려면, 점수 갱신 시점에 족보 달성 로그를 생성하고 UI 매핑을 확장해야 했음."
+- **Files Touched**: ["GoStop/Core/GameManager.swift", "GoStop/Views/GameView.swift", "project_progress.md"]
+- **Validation**: "1) `xcodebuild -project /Users/najongseong/git_repository/GoStop_antigravity/GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO` 성공(BUILD SUCCEEDED, 권한 상승 실행). 2) `python3 tests/test_agent/test_scenarios.py --mode cli 4` PASS(`scenario_verify_scoring_suite`). 3) `python3 tests/test_agent/test_scenarios.py --mode cli 8` PASS(`scenario_verify_special_moves_suite`)."
+- **Outcome**: "`GameManager`에 점수 갱신 시 족보 달성 전이(청단/홍단/고도리/구사) 감지를 추가하고, 신규 달성 시 `triggered ...` 이벤트 로그를 생성하도록 반영. `GameView`는 해당 로그를 각각의 이벤트 팝업으로 매핑하도록 확장 완료."
+
+### [2026-03-04 22:36:57 KST] User Request: 먹방 조건이 뭐야
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "질문한 '먹방' 용어가 현재 코드/룰에 존재하는지 확인하고, 근접 규칙(뻑 먹기/자뻑)의 실제 발동 조건을 엔진 기준으로 정확히 안내해야 했음."
+- **Files Touched**: ["GoStop/Core/GameManager.swift", "GoStop/Resources/rule.yaml", "tests/test_agent/test_scenarios.py", "project_progress.md"]
+- **Validation**: "`rg -n \"먹방|Seolsa Eat|seolsa\"`, `sed -n '896,1165p' GoStop/Core/GameManager.swift`, `sed -n '1680,1765p' GoStop/Core/GameManager.swift`, `sed -n '120,170p' GoStop/Resources/rule.yaml`, `sed -n '2480,2650p' tests/test_agent/test_scenarios.py`로 발동/보상 조건 확인."
+- **Outcome**: "코드상 '먹방' 용어는 없고, 유사 이벤트는 '뻑 먹기(Seolsa Eat)'로 확인됨. 같은 월 카드 3장이 바닥에 있는 상태에서 같은 월 카드로 4장을 먹으면 발동하며, 일반 뻑 먹기는 상대 피 1장, 자뻑은 상대 피 2장을 가져가도록 안내."
+
+### [2026-03-04 22:39:37 KST] User Request: 멍박 조건 설명
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "멍박 발동 조건을 단순 임계치뿐 아니라 현재 룰의 Bak 적용 제한(Stop/Go), 자박 상쇄, 피 이동 여부까지 포함해 정확히 설명해야 했음."
+- **Files Touched**: ["GoStop/Resources/rule.yaml", "GoStop/Core/PenaltySystem.swift", "GoStop/Core/GameManager.swift", "tests/test_agent/test_scenarios.py", "project_progress.md"]
+- **Validation**: "`rg -n \"mungbak|isMungbak\"`, `nl -ba GoStop/Resources/rule.yaml | sed -n '74,100p'`, `nl -ba GoStop/Core/PenaltySystem.swift | sed -n '59,120p'`, `nl -ba GoStop/Core/GameManager.swift | sed -n '1470,1552p'`, `nl -ba tests/test_agent/test_scenarios.py | sed -n '3745,3779p'`로 조건/경계값/적용 시점 확인."
+- **Outcome**: "현재 멍박은 동물패 7장 이상일 때 성립(6장은 미성립)하며 기본 설정은 x2 배수. 다만 Stop 승리 시 상대가 Go를 하지 않았으면 Bak 전체(멍박 포함) 미적용, 자박(패자 점수 7점 이상) 조건에서는 멍박 배수가 상쇄됨. 필요 시 룰값을 `pi_transfer`/`both`로 바꾸면 종료 시 피 이동도 가능."
+
+### [2026-03-04 22:38:49 KST] User Request: 폭탄할 때 손 3장 동시 바닥 이동 후 4장 획득패 진입 애니메이션 구현
+- **Skills Planned**: ["gostop-ui-playability", "game_engine_iteration", "project_logger"]
+- **Skills Used**: ["gostop-ui-playability", "game_engine_iteration", "project_logger"]
+- **Trigger Reason**: "폭탄(Bomb) 처리의 즉시 커밋 경로를 기존 모션 파이프라인(`hand->table`, `table->captured`) 기반으로 전환해 연출 요구를 반영해야 했음."
+- **Files Touched**: ["GoStop/Core/GameManager.swift", "project_progress.md"]
+- **Validation**: "1) `xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI -configuration Debug -derivedDataPath build build CODE_SIGNING_ALLOWED=NO` 성공. 2) `python3 tests/test_agent/test_scenarios.py --mode cli -k bomb_and_steal` PASS. 3) `python3 tests/test_agent/test_scenarios.py --mode cli 19 35 37 48` PASS(폭탄 더미/싹쓸이/점수배수/국진 연계 회귀)."
+- **Outcome**: "`handleBombPlay`를 즉시 캡처 커밋에서 애니메이션 시퀀스로 교체하여, 폭탄 시 손패 3장이 동시에 바닥으로 이동한 뒤 4장이 획득패로 이동하도록 구현. 선커밋 카드의 중복 캡처를 막기 위해 table->captured 완료 후 `turnPlayPhaseCaptured`를 국진(9월 열끗) defer 카드만 유지하도록 정리함."
+
+### [2026-03-04 22:46:28 KST] User Request: 오늘 변경 내용 정리해서 저장해줘
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "금일 작업 트리 변경사항을 영역별로 정리해 재확인 가능한 요약 산출물을 저장하고, 같은 내역을 진행 로그에 남기기 위함."
+- **Files Touched**: ["test_artifacts/daily_wrapup_2026-03-04.md", "project_progress.md"]
+- **Validation**: "`git diff --stat`, `git diff --name-only`, `git log --since='today 00:00'`, `project_progress.md`의 2026-03-04 로그 엔트리 검토를 기반으로 요약 정확도를 점검."
+- **Outcome**: "오늘 변경 요약을 `test_artifacts/daily_wrapup_2026-03-04.md`로 저장하고, 요청 처리 내역을 `project_progress.md`에 기록 완료."

@@ -140,7 +140,8 @@ struct PenaltySystem {
         }
         
         // 5. Shake Multiplier (흔듦)
-        // Rule: Only declared shakes contribute to exponential score multiplier.
+        // Rule: Final multiplier is defined by shakeCount only.
+        // Bomb does not have its own multiplier term (bombCount is ignored here).
         // Formula: 2^shakeCount
         let shakeCount = winner.shakeCount
         if shakeCount > 0 {

@@ -17,6 +17,7 @@ enum GameEndReason: String, Codable {
     case maxScore
     case nagari
     case chongtong
+    case threeSeolsa
 }
 
 struct UXEvent: Codable {
@@ -196,6 +197,7 @@ class GameManager: ObservableObject {
     @Published var eventLogs: [String] = []
     @Published var uxEventLogs: [UXEvent] = []
     private var stateHistory: [[String: AnyCodable]] = []
+    private var scoreEventKindsByPlayer: [String: Set<String>] = [:]
     
     private var playerChangeCancellables: [AnyCancellable] = []
     private let cumulativeWinScoreStore = CumulativeWinScoreStore.shared
@@ -267,6 +269,57 @@ class GameManager: ObservableObject {
         }
     }
 
+    private func updateScoreAndEmitScoreEvents(for player: Player) {
+        let scoreItems = ScoringSystem.calculateScoreDetail(for: player)
+        player.score = scoreItems.reduce(0) { $0 + $1.points }
+        emitScoreEventsIfNeeded(for: player, scoreItems: scoreItems)
+    }
+
+    private func emitScoreEventsIfNeeded(for player: Player, scoreItems: [ScoreItem]) {
+        let playerKey = player.id.uuidString
+        let currentKinds = detectedScoreEventKinds(from: scoreItems)
+        let previousKinds = scoreEventKindsByPlayer[playerKey] ?? []
+        let newlyAdded = currentKinds.subtracting(previousKinds)
+
+        let orderedKinds = ["cheongdan", "hongdan", "godori", "gusa"]
+        for kind in orderedKinds where newlyAdded.contains(kind) {
+            switch kind {
+            case "cheongdan":
+                gLog("\(player.name) triggered 청단(Cheongdan)")
+            case "hongdan":
+                gLog("\(player.name) triggered 홍단(Hongdan)")
+            case "godori":
+                gLog("\(player.name) triggered 고도리(Godori)")
+            case "gusa":
+                gLog("\(player.name) triggered 구사(Gusa)")
+            default:
+                break
+            }
+        }
+
+        scoreEventKindsByPlayer[playerKey] = currentKinds
+    }
+
+    private func detectedScoreEventKinds(from scoreItems: [ScoreItem]) -> Set<String> {
+        var kinds: Set<String> = []
+        for item in scoreItems {
+            let name = item.name
+            if name.contains("청단") || name.contains("Blue Ribbons") {
+                kinds.insert("cheongdan")
+            }
+            if name.contains("홍단") || name.contains("Red Ribbons") {
+                kinds.insert("hongdan")
+            }
+            if name.contains("고도리") || name.contains("Godori") {
+                kinds.insert("godori")
+            }
+            if (name.contains("열끗") || name.contains("Animals")), let count = item.count, count >= 9 {
+                kinds.insert("gusa")
+            }
+        }
+        return kinds
+    }
+
     func cumulativeWinScore(for player: Player) -> Int {
         cumulativeWinScores[player.name, default: 0]
     }
@@ -315,6 +368,7 @@ class GameManager: ObservableObject {
         self.eventLogs = []
         self.uxEventLogs.removeAll()
         self.stateHistory = []
+        self.scoreEventKindsByPlayer = [:]
         self.deck.reset(seed: seed)
         self.monthOwners = [:]
         self.seolsaMonths = [:]
@@ -585,7 +639,7 @@ class GameManager: ObservableObject {
         pendingChrysanthemumCard = nil
         gameState = .playing
         
-        player.score = ScoringSystem.calculateScore(for: player)
+        updateScoreAndEmitScoreEvents(for: player)
         
         finalizeTurnAfterCapture(player: player)
     }
@@ -597,6 +651,13 @@ class GameManager: ObservableObject {
             fallbackEndTurn(player: player)
             return
         }
+
+        // One-turn flags: consume once at turn finalization and clear immediately
+        // so they never leak into the next turn.
+        let didSeolsaEat = isSeolsaEatFlag
+        let didSelfSeolsaEat = isSelfSeolsaEatFlag
+        isSeolsaEatFlag = false
+        isSelfSeolsaEatFlag = false
         
         if turnIsBomb {
             gLog("\(player.name) triggered 폭탄(Bomb)")
@@ -622,12 +683,12 @@ class GameManager: ObservableObject {
              }
              seolsaMonths[month] = player
         }
-        if isSeolsaEatFlag && rules.special_moves.seolsaEat.enabled {
+        if didSeolsaEat && rules.special_moves.seolsaEat.enabled {
             player.seolsaEatCount += 1
             gLog("\(player.name) triggered 뻑 먹기(Seolsa Eat)")
             stealPi(from: opponent, to: player, count: rules.special_moves.seolsaEat.steal_pi_count, reason: "뻑 먹기(Seolsa Eat)")
         }
-        if isSelfSeolsaEatFlag && rules.special_moves.seolsaEat.enabled {
+        if didSelfSeolsaEat && rules.special_moves.seolsaEat.enabled {
             player.seolsaEatCount += 1
             gLog("\(player.name) triggered 자뻑(Self Seolsa Eat)")
             stealPi(from: opponent, to: player, count: rules.special_moves.seolsaEat.self_eat_steal_pi_count, reason: "자뻑(Self Seolsa Eat)")
@@ -799,7 +860,7 @@ class GameManager: ObservableObject {
             self.hiddenInTargetCardIds.formUnion(cardIds)
 
             player.capture(cards: filtered)
-            player.score = ScoringSystem.calculateScore(for: player)
+            updateScoreAndEmitScoreEvents(for: player)
         }
         currentMovingCards = filtered
         movingCardsScale = 0.86
@@ -914,6 +975,8 @@ class GameManager: ObservableObject {
         turnIsTtadak = false
         turnIsJjok = false
         turnIsSeolsa = false
+        isSeolsaEatFlag = false
+        isSelfSeolsaEatFlag = false
         turnPlayPhaseCaptured = []
         turnDrawPhaseCaptured = []
         turnPlayedCard = nil
@@ -1043,16 +1106,25 @@ class GameManager: ObservableObject {
     private func handleBombPlay(player: Player, month: Month, handMatches: [Card], tableMatches: [Card], rules: RuleConfig) {
         turnIsBomb = true
         gLog("\(player.name) triggered BOMB!")
-        for mCard in handMatches {
-            if let played = player.play(card: mCard) {
-                turnPlayPhaseCaptured.append(played)
-            }
+        guard let tableTarget = tableMatches.first else {
+            gLog("ERROR: Bomb triggered without a matching table target.")
+            proceedToDrawPhase(player: player, rules: rules)
+            return
         }
-        if let target = tableMatches.first, let index = tableCards.firstIndex(of: target) {
-            tableCards.remove(at: index)
-            turnPlayPhaseCaptured.append(target)
-        }
+
+        let bombHandCards = handMatches
+        let bombHandCardIds = Set(bombHandCards.map { $0.id })
+        let bombHandCardIdsJoined = bombHandCards.map { $0.id }.joined(separator: ",")
+        let bombCapturedCards = bombHandCards + [tableTarget]
+        turnPlayPhaseCaptured = bombCapturedCards
+        turnPlayPhaseResultingTable = nil
+        turnDrawPhaseBaseTable = nil
+        monthOwners.removeValue(forKey: month.rawValue)
+        seolsaMonths.removeValue(forKey: month.rawValue)
+
         player.bombCount += 1
+        // Rule: Bomb counts as a shake event for multiplier tracking via shakeCount.
+        player.shakeCount += 1
         
         for _ in 0..<rules.special_moves.bomb.dummy_card_count {
             let dummy = Card(month: .none, type: .dummy, imageIndex: 0)
@@ -1060,17 +1132,99 @@ class GameManager: ObservableObject {
             player.dummyCardCount += 1
         }
 
-        // Bomb captures bypass the animated capture path, so commit them immediately.
-        let committedBombCaptures = turnPlayPhaseCaptured.filter { !($0.month == .sep && $0.type == .animal) }
-        let deferredBombCaptures = turnPlayPhaseCaptured.filter { $0.month == .sep && $0.type == .animal }
-        if !committedBombCaptures.isEmpty {
-            player.capture(cards: committedBombCaptures)
-            player.score = ScoringSystem.calculateScore(for: player)
+        let handToTableMotion = AnimationManager.shared.motionPlan(source: "hand", target: "table")
+
+        let finalizeBombHandToTable: () -> Void = {
+            self.runAfterAnimationDelay(handToTableMotion.delay) {
+                self.addUXEvent(
+                    type: "moveEnd",
+                    data: [
+                        "cardIds": bombHandCardIdsJoined,
+                        "target": "table"
+                    ]
+                )
+                self.hiddenInTargetCardIds.subtract(bombHandCardIds)
+                self.showTargetCue(for: bombHandCards)
+                self.clearMoveContextAfterCue(expectedSource: "hand", expectedTarget: "table")
+
+                let animateBombCapture: () -> Void = {
+                    self.animateTableToCaptured(cards: bombCapturedCards, player: player) {
+                        // Bomb play captures are already committed through animated table->captured path.
+                        // Keep only deferred special cards (e.g. Chrysanthemum) for end-of-turn choice flow.
+                        self.turnPlayPhaseCaptured = bombCapturedCards.filter { $0.month == .sep && $0.type == .animal }
+                        self.proceedToDrawPhase(player: player, rules: rules)
+                    }
+                }
+
+                let matchPause = AnimationManager.shared.config.match_pause_duration
+                if matchPause > 0 {
+                    self.runAfterAnimationDelay(matchPause) {
+                        animateBombCapture()
+                    }
+                } else {
+                    animateBombCapture()
+                }
+            }
         }
-        // Keep deferred special cards (e.g., Chrysanthemum) so finalizeTurnState can open role choice.
-        turnPlayPhaseCaptured = deferredBombCaptures
-        
-        proceedToDrawPhase(player: player, rules: rules)
+
+        let startBombHandToTableMove: () -> Void = {
+            if let moveAnimation = handToTableMotion.animation {
+                // Animated mode: mount hidden target cards first for matched-geometry transition.
+                for bombCard in bombHandCards where !self.tableCards.contains(where: { $0.id == bombCard.id }) {
+                    self.tableCards.append(bombCard)
+                }
+                self.hiddenInTargetCardIds.formUnion(bombHandCardIds)
+                self.setMoveContext(source: "hand", target: "table")
+                self.showSourceCue(for: bombHandCards, holdBeforeMove: false)
+
+                self.addUXEvent(
+                    type: "moveStart",
+                    data: [
+                        "cardIds": bombHandCardIdsJoined,
+                        "source": "hand",
+                        "target": "table"
+                    ]
+                )
+                self.takeSnapshot()
+
+                withAnimation(moveAnimation) {
+                    player.hand.removeAll { bombHandCardIds.contains($0.id) }
+                }
+                finalizeBombHandToTable()
+            } else {
+                // Instant mode: briefly cue selected cards before instant relocation.
+                self.setMoveContext(source: "hand", target: "table")
+                self.showSourceCue(for: bombHandCards, holdBeforeMove: true) {
+                    player.hand.removeAll { bombHandCardIds.contains($0.id) }
+                    for bombCard in bombHandCards where !self.tableCards.contains(where: { $0.id == bombCard.id }) {
+                        self.tableCards.append(bombCard)
+                    }
+                    self.addUXEvent(
+                        type: "moveStart",
+                        data: [
+                            "cardIds": bombHandCardIdsJoined,
+                            "source": "hand",
+                            "target": "table"
+                        ]
+                    )
+                    self.takeSnapshot()
+                    finalizeBombHandToTable()
+                }
+            }
+        }
+
+        // Briefly reveal one of opponent's bomb cards before throw for readability.
+        let revealDelay = player.isComputer ? AnimationManager.shared.config.opponent_preplay_reveal_duration : 0
+        self.opponentPreplayRevealCardId = player.isComputer ? bombHandCards.first?.id : nil
+        if revealDelay > 0 {
+            self.runAfterAnimationDelay(revealDelay) {
+                self.opponentPreplayRevealCardId = nil
+                startBombHandToTableMove()
+            }
+        } else {
+            self.opponentPreplayRevealCardId = nil
+            startBombHandToTableMove()
+        }
     }
 
     private func proceedToDrawPhase(player: Player, rules: RuleConfig) {
@@ -1160,7 +1314,7 @@ class GameManager: ObservableObject {
                         self.pendingCaptureDrawnCard = drawnCard
                         self.pendingCaptureOptions = drawLogicalTable.filter { $0.month == drawnCard.month }
                         self.gameState = .choosingCapture
-                        player.score = ScoringSystem.calculateScore(for: player)
+                        self.updateScoreAndEmitScoreEvents(for: player)
                         self.maybeScheduleInternalComputerAction()
                     }
                 }
@@ -1231,7 +1385,7 @@ class GameManager: ObservableObject {
                     var updatedCard = chrysCard
                     updatedCard.selectedRole = defaultRole
                     player.capture(cards: [updatedCard])
-                    player.score = ScoringSystem.calculateScore(for: player)
+                    updateScoreAndEmitScoreEvents(for: player)
                 } else {
                     pendingChrysanthemumCard = chrysCard
                     gameState = .choosingChrysanthemumRole
@@ -1267,8 +1421,8 @@ class GameManager: ObservableObject {
         let opponentIndex = (currentTurnIndex + 1) % players.count
         let opponent = players[opponentIndex]
         resolveBakPiTransfers(winner: player, loser: opponent, rules: rules)
-        player.score = ScoringSystem.calculateScore(for: player)
-        opponent.score = ScoringSystem.calculateScore(for: opponent)
+        updateScoreAndEmitScoreEvents(for: player)
+        updateScoreAndEmitScoreEvents(for: opponent)
         let result = PenaltySystem.calculatePenalties(winner: player, loser: opponent, rules: rules)
         gLog("\(player.name) calls STOP (\(reason)) and wins! Final Score: \(result.finalScore)")
         opponent.money -= result.finalScore * 100
@@ -1276,6 +1430,32 @@ class GameManager: ObservableObject {
         recordWinScore(points: result.finalScore, for: player)
         self.gameEndReason = reason
         self.lastPenaltyResult = result
+        self.gameWinner = player
+        self.gameLoser = opponent
+        settleResidualCardsIfHandsEmpty()
+        gameState = .ended
+    }
+
+    private func resolveThreeSeolsaWin(player: Player, opponent: Player, requiredCount: Int, score: Int) {
+        let winScore = max(score, 0)
+        player.score = winScore
+        updateScoreAndEmitScoreEvents(for: opponent)
+
+        opponent.money -= winScore * 100
+        player.money += winScore * 100
+        recordWinScore(points: winScore, for: player)
+
+        self.gameEndReason = .threeSeolsa
+        self.lastPenaltyResult = PenaltySystem.PenaltyResult(
+            finalScore: winScore,
+            isGwangbak: false,
+            isPibak: false,
+            isGobak: false,
+            isMungbak: false,
+            isJabak: false,
+            isYeokbak: false,
+            scoreFormula: "Three Seolsa Rule (\(requiredCount) Seolsa) = \(winScore)"
+        )
         self.gameWinner = player
         self.gameLoser = opponent
         settleResidualCardsIfHandsEmpty()
@@ -1337,6 +1517,21 @@ class GameManager: ObservableObject {
     func checkEndgameConditions(player: Player, opponent: Player, rules: RuleConfig, isAfterGo: Bool) -> Bool {
         let endgame = rules.endgame
         let bak = PenaltySystem.calculatePenalties(winner: player, loser: opponent, rules: rules)
+        let seolsaRule = rules.special_moves.seolsa
+
+        // 0. Triple Seolsa (3뻑) Instant Win
+        let seolsaInstantWinCount = seolsaRule.instant_win_count ?? 0
+        if seolsaRule.enabled, seolsaInstantWinCount > 0, player.seolsaCount >= seolsaInstantWinCount {
+            let seolsaInstantWinScore = seolsaRule.instant_win_score ?? 10
+            gLog("\(player.name) reached Triple Seolsa (\(player.seolsaCount)) and wins immediately with \(seolsaInstantWinScore) points.")
+            resolveThreeSeolsaWin(
+                player: player,
+                opponent: opponent,
+                requiredCount: seolsaInstantWinCount,
+                score: seolsaInstantWinScore
+            )
+            return true
+        }
 
         // 1. Instant End on Bak Check if enabled
         let instantEnd = endgame.instant_end_on_bak
@@ -1821,8 +2016,8 @@ class GameManager: ObservableObject {
 
         if !selectedCards.isEmpty {
             animatePenaltyPiTransfer(cards: selectedCards, from: from, to: to, reason: reason)
-            from.score = ScoringSystem.calculateScore(for: from)
-            to.score = ScoringSystem.calculateScore(for: to)
+            updateScoreAndEmitScoreEvents(for: from)
+            updateScoreAndEmitScoreEvents(for: to)
             let stolenCardsText = selectedCards.map { card in
                 let typeText = card.type == .doubleJunk ? "쌍피" : "피"
                 return "\(card.month.rawValue)월 \(typeText)"

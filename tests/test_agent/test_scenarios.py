@@ -206,9 +206,10 @@ def scenario_verify_bomb_and_steal(agent: TestAgent):
     # Sweep didn't trigger because drawn card stayed on table.
     assert len(player["capturedCards"]) == 5, f"Expected 5 captured cards (4 bomb + 1 stolen), got {len(player['capturedCards'])}"
     
-    # Bomb should increase bombCount only (no implicit shake multiplier source).
+    # Bomb should increase both bombCount and shakeCount.
+    # Multiplier logic still relies only on shakeCount (not bombCount directly).
     assert player["bombCount"] == 1, f"Expected bombCount 1, got {player['bombCount']}"
-    assert player["shakeCount"] == 0, f"Expected shakeCount 0 on bomb-only turn, got {player['shakeCount']}"
+    assert player["shakeCount"] == 1, f"Expected shakeCount 1 on bomb turn, got {player['shakeCount']}"
     
     logger.info("Bomb and Steal verification passed!")
 
@@ -1604,6 +1605,64 @@ def scenario_verify_seolsa(agent: TestAgent):
     logger.info("Seolsa verification passed!")
 
 
+def scenario_verify_triple_seolsa_instant_win(agent: TestAgent):
+    """
+    Scenario: Verifies triple Seolsa (3뻑) instant win rule.
+    Rule: If a player reaches 3 Seolsa, the round ends immediately with fixed finalScore=10.
+    """
+    logger.info("Setting up Scenario: Verify Triple Seolsa Instant Win")
+    agent.send_user_action("start_game")
+
+    agent.set_condition({
+        "currentTurnIndex": 0,
+        "mock_hand": [{"month": 7, "type": "ribbon"}],
+        "mock_table": [{"month": 7, "type": "junk"}],
+        "mock_deck": [{"month": 7, "type": "animal"}],
+        "mock_gameState": "playing",
+        "player0_data": {
+            "isComputer": False,
+            "seolsaCount": 2
+        },
+        "player1_data": {
+            "isComputer": False
+        }
+    })
+
+    pre_state = agent.get_all_information()
+    p0_money_before = pre_state["players"][0]["money"]
+    p1_money_before = pre_state["players"][1]["money"]
+
+    agent.send_user_action("play_card", {"month": 7, "type": "ribbon"})
+    state = agent.get_all_information()
+
+    assert state["gameState"] == "ended", f"Expected ended state, got {state['gameState']}"
+    assert state.get("gameEndReason") == "threeSeolsa", (
+        f"Expected gameEndReason='threeSeolsa', got {state.get('gameEndReason')}"
+    )
+
+    p0 = state["players"][0]
+    p1 = state["players"][1]
+    assert p0["seolsaCount"] == 3, f"Expected player0 seolsaCount=3, got {p0['seolsaCount']}"
+
+    penalty = state.get("penaltyResult")
+    assert penalty is not None, "Expected penaltyResult for triple Seolsa ended state."
+    assert penalty.get("finalScore") == 10, (
+        f"Expected triple Seolsa finalScore=10, got {penalty.get('finalScore')}"
+    )
+    assert "Three Seolsa Rule" in penalty.get("scoreFormula", ""), (
+        f"Expected triple Seolsa formula, got {penalty.get('scoreFormula')}"
+    )
+
+    assert p0["money"] == p0_money_before + 1000, (
+        f"Winner money mismatch: expected {p0_money_before + 1000}, got {p0['money']}"
+    )
+    assert p1["money"] == p1_money_before - 1000, (
+        f"Loser money mismatch: expected {p1_money_before - 1000}, got {p1['money']}"
+    )
+
+    logger.info("Triple Seolsa instant-win verification passed!")
+
+
 def scenario_verify_go_bonuses(agent: TestAgent):
     """
     Scenario: Verifies Go bonus scoring (rule.yaml > go_stop > go_bonuses).
@@ -2292,6 +2351,133 @@ def scenario_verify_bomb_as_shake_multiplier(agent: TestAgent):
 
     logger.info("Bomb no-multiplier rule verified. PASS")
 
+def _run_forced_multi_bomb_and_verify_score(agent: TestAgent, bomb_months: list[int]):
+    """
+    Execute Bomb turns repeatedly with deterministic mocked turns, then verify end-game score.
+    Contract:
+    - Bomb increments both bombCount and shakeCount.
+    - Final multiplier still comes from shakeCount only (2^shakeCount).
+    """
+    assert bomb_months, "bomb_months must not be empty"
+
+    def run_single_bomb_turn(month: int, filler_month: int, draw_month: int):
+        agent.set_condition({
+            "clear_deck": True,
+            "mock_gameState": "playing",
+            "currentTurnIndex": 0,
+            "mock_hand": [
+                {"month": month, "type": "junk"},
+                {"month": month, "type": "junk"},
+                {"month": month, "type": "junk"},
+                {"month": filler_month, "type": "junk"},
+            ],
+            "mock_table": [
+                {"month": month, "type": "junk"},
+            ],
+            "mock_deck": [
+                {"month": draw_month, "type": "junk"},
+            ],
+            "player0_data": {"isComputer": False},
+            "player1_data": {"isComputer": False},
+        })
+
+        handle_potential_shake(agent)
+        agent.send_user_action("play_card", {"month": month, "type": "junk"})
+
+        deadline = time.time() + 3.0
+        state = agent.get_all_information()
+        while state.get("currentTurnIndex") == 0 and time.time() < deadline:
+            if state.get("gameState") == "ended":
+                break
+            time.sleep(0.05)
+            state = agent.get_all_information()
+
+        if state.get("currentTurnIndex") == 0 and state.get("gameState") != "ended":
+            raise AssertionError(f"Bomb turn did not finish in time for month={month}. state={state.get('gameState')}")
+
+        return state
+
+    # Run each forced bomb turn and verify cumulative counters.
+    for idx, month in enumerate(bomb_months, start=1):
+        filler_month = ((month + 4 - 1) % 12) + 1
+        draw_month = ((month + 7 - 1) % 12) + 1
+        state = run_single_bomb_turn(month, filler_month, draw_month)
+        player = state["players"][0]
+        assert player.get("bombCount", 0) == idx, (
+            f"Expected bombCount={idx} after bomb #{idx}, got {player.get('bombCount')}"
+        )
+        assert player.get("shakeCount", 0) == idx, (
+            f"Expected shakeCount={idx} after bomb #{idx}, got {player.get('shakeCount')}"
+        )
+
+    # Base score=4 (10 Pi + Red Ribbons). Keep loser at 8 Pi and 0 Go to avoid Bak side multipliers.
+    winner_cards = (
+        [{"month": m, "type": "junk"} for m in range(1, 11)] +
+        [{"month": 1, "type": "ribbon"}, {"month": 2, "type": "ribbon"}, {"month": 3, "type": "ribbon"}]
+    )
+    loser_cards = [{"month": m, "type": "junk"} for m in range(1, 9)]
+
+    agent.set_condition({
+        "mock_gameState": "askingGoStop",
+        "currentTurnIndex": 0,
+        "player0_data": {
+            "capturedCards": winner_cards,
+            "goCount": 0,
+            "isComputer": False,
+        },
+        "player1_data": {
+            "capturedCards": loser_cards,
+            "goCount": 0,
+            "isComputer": False,
+        }
+    })
+
+    agent.send_user_action("respond_go_stop", {"isGo": False})
+    end_state = agent.get_all_information()
+    penalty = end_state.get("penaltyResult", {})
+    expected_bombs = len(bomb_months)
+    expected_score = 4 * (2 ** expected_bombs)
+
+    assert penalty.get("finalScore") == expected_score, (
+        f"Expected finalScore={expected_score} after {expected_bombs} bombs, got {penalty.get('finalScore')}"
+    )
+    formula = penalty.get("scoreFormula", "")
+    assert f"Shake(x{2 ** expected_bombs})" in formula, (
+        f"Expected shake multiplier term in formula for {expected_bombs} bombs, got: {formula}"
+    )
+    assert "Bomb" not in formula and "bomb" not in formula, (
+        f"Bomb should not appear as dedicated score multiplier term, got formula: {formula}"
+    )
+    assert penalty.get("isGwangbak") is False and penalty.get("isPibak") is False and penalty.get("isMungbak") is False and penalty.get("isGobak") is False, (
+        f"Unexpected extra bak multipliers in penaltyResult: {penalty}"
+    )
+
+
+def scenario_verify_double_bomb_count_and_score(agent: TestAgent):
+    """
+    Scenario: Execute Bomb twice and verify:
+    - bombCount=2
+    - shakeCount=2
+    - final score uses Shake(x4) only
+    """
+    logger.info("Running Double Bomb count/score verification...")
+    agent.send_user_action("start_game")
+    _run_forced_multi_bomb_and_verify_score(agent, [1, 2])
+    logger.info("Double Bomb count/score verification passed!")
+
+
+def scenario_verify_triple_bomb_count_and_score(agent: TestAgent):
+    """
+    Scenario: Execute Bomb three times and verify:
+    - bombCount=3
+    - shakeCount=3
+    - final score uses Shake(x8) only
+    """
+    logger.info("Running Triple Bomb count/score verification...")
+    agent.send_user_action("start_game")
+    _run_forced_multi_bomb_and_verify_score(agent, [1, 2, 3])
+    logger.info("Triple Bomb count/score verification passed!")
+
 def scenario_verify_seolsa_eat(agent):
     """
     Verifies that playing a match and drawing a match for the same month creates a Seolsa (뻑),
@@ -2456,6 +2642,87 @@ def scenario_verify_initial_seolsa_eat(agent):
         raise AssertionError(f"BUG: Player 1 should have 5 cards total (4 captured + 1 stolen). Got {len(p1['capturedCards'])}.")
         
     logger.info("ASSERTION SUCCESS: Initial Seolsa Eat (바닥 뻑 먹기) bonus verified.")
+
+
+def scenario_bugfix_seolsa_eat_flag_reset_between_turns(agent: TestAgent):
+    """
+    Regression test for Seolsa Eat flag leakage.
+    Bug: Seolsa Eat flag stayed true into the next turn and repeatedly transferred Pi.
+    Fix: Consume-and-clear Seolsa Eat flags at turn finalization and reset at turn start.
+    """
+    logger.info("Setting up Scenario: Regression - Seolsa Eat flag reset between turns")
+
+    agent.send_user_action("start_game")
+
+    agent.set_condition({
+        "mock_deck": [{"month": 8, "type": "animal"}, {"month": 12, "type": "junk"}],
+        "mock_table": [
+            {"month": 1, "type": "junk"},
+            {"month": 1, "type": "ribbon"},
+            {"month": 1, "type": "bright"},
+            {"month": 10, "type": "bright"},
+        ],
+        "mock_gameState": "playing",
+        "currentTurnIndex": 0,
+        "player0_data": {
+            "name": "Player 1",
+            "isComputer": False,
+            "hand": [{"month": 1, "type": "junk"}, {"month": 5, "type": "junk"}],
+            "capturedCards": []
+        },
+        "player1_data": {
+            "name": "Computer",
+            "isComputer": False,
+            "hand": [{"month": 2, "type": "bright"}, {"month": 6, "type": "animal"}],
+            "capturedCards": [
+                {"month": 3, "type": "junk"},
+                {"month": 4, "type": "junk"},
+                {"month": 5, "type": "junk"},
+            ]
+        }
+    })
+
+    # Turn 1: Player 1 triggers initial Seolsa Eat.
+    agent.send_user_action("play_card", {"month": 1, "type": "junk"})
+    state = agent.get_all_information()
+
+    p1 = state["players"][0]
+    comp = state["players"][1]
+
+    assert p1.get("seolsaEatCount", 0) == 1, f"Expected Player 1 seolsaEatCount 1, got {p1.get('seolsaEatCount', 0)}"
+    assert len(p1["capturedCards"]) == 5, f"Expected Player 1 capturedCards 5 after initial Seolsa Eat, got {len(p1['capturedCards'])}"
+    assert len(comp["capturedCards"]) == 2, f"Expected Computer capturedCards 2 after initial Seolsa Eat, got {len(comp['capturedCards'])}"
+    assert state.get("currentTurnIndex") == 1, f"Expected turn to pass to Computer, got currentTurnIndex={state.get('currentTurnIndex')}"
+
+    p1_captured_after_turn1 = len(p1["capturedCards"])
+    comp_captured_after_turn1 = len(comp["capturedCards"])
+    comp_seolsa_eat_after_turn1 = comp.get("seolsaEatCount", 0)
+
+    # Turn 2: Computer performs a non-matching play/draw.
+    # If Seolsa flags leak, this turn incorrectly steals Pi again.
+    agent.send_user_action("play_card", {"month": 2, "type": "bright"})
+    state = agent.get_all_information()
+
+    p1_after = state["players"][0]
+    comp_after = state["players"][1]
+
+    assert comp_after.get("seolsaEatCount", 0) == comp_seolsa_eat_after_turn1, (
+        f"Seolsa Eat flag leaked: Computer seolsaEatCount changed "
+        f"{comp_seolsa_eat_after_turn1} -> {comp_after.get('seolsaEatCount', 0)}"
+    )
+    assert len(p1_after["capturedCards"]) == p1_captured_after_turn1, (
+        f"Seolsa Eat flag leaked: Player 1 capturedCards changed "
+        f"{p1_captured_after_turn1} -> {len(p1_after['capturedCards'])}"
+    )
+    assert len(comp_after["capturedCards"]) == comp_captured_after_turn1, (
+        f"Seolsa Eat flag leaked: Computer capturedCards changed "
+        f"{comp_captured_after_turn1} -> {len(comp_after['capturedCards'])}"
+    )
+    assert state.get("currentTurnIndex") == 0, (
+        f"Expected turn to pass back to Player 1 after Computer turn, got currentTurnIndex={state.get('currentTurnIndex')}"
+    )
+
+    logger.info("ASSERTION SUCCESS: Seolsa Eat flags do not leak into next turn.")
 
 
 def scenario_verify_missing_dec_card(agent: TestAgent):
@@ -3755,6 +4022,7 @@ def main():
         scenario_verify_conditional_double_pi,
         scenario_verify_special_moves_suite,
         scenario_verify_seolsa,
+        scenario_verify_triple_seolsa_instant_win,
         scenario_verify_mungdda_combos,
         scenario_verify_endgame_conditions,
         scenario_verify_initial_shake,
@@ -3782,9 +4050,12 @@ def main():
         scenario_verify_bomb_sweep,
         scenario_verify_capture_choice,
         scenario_verify_bomb_as_shake_multiplier,
+        scenario_verify_double_bomb_count_and_score,
+        scenario_verify_triple_bomb_count_and_score,
         scenario_verify_seolsa_eat,
         scenario_verify_self_seolsa_eat,
         scenario_verify_initial_seolsa_eat,
+        scenario_bugfix_seolsa_eat_flag_reset_between_turns,
         scenario_verify_missing_dec_card,
         scenario_verify_chrysanthemum_as_animal,
         scenario_verify_chrysanthemum_as_double_pi,

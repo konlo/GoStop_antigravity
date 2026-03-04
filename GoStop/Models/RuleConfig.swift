@@ -93,6 +93,8 @@ struct JjokRule: Codable {
 struct SeolsaRule: Codable {
     var enabled: Bool
     var penalty_pi_count: Int
+    var instant_win_count: Int?
+    var instant_win_score: Int?
     var description: String?
 }
 

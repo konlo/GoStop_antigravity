@@ -54,6 +54,7 @@ struct DebugEndgameSummaryView: View {
         case .maxScore: return "Game Ended Due to Max Round Score Reached"
         case .nagari: return "Game Ended in Nagari (Deck Empty)"
         case .chongtong: return "Game Ended by Chongtong (4 of a Month)"
+        case .threeSeolsa: return "Game Ended by Triple Seolsa (3 Bbeuk)"
         }
     }
     

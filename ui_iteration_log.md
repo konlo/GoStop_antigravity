@@ -299,3 +299,19 @@
 **Validation:**
 - [x] Logic is clean of UI code.
 - [x] `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator build CODE_SIGNING_ALLOWED=NO` succeeds.
+
+---
+## [2026-03-04 22:12] Iteration Log: 3뻑 종료 이벤트 팝업 선노출
+
+**Trigger:** 3뻑 종료 시 종료 원인 이벤트 팝업을 먼저 노출한 뒤 게임 종료 화면을 보이도록 UX 요청.
+**Scope:** Visual Only
+
+**Changes:**
+- Modified `GoStop/Views/GameView.swift`:
+  - Added `tripleSeolsaEnd` special-popup kind and mapping for `reached Triple Seolsa` log.
+  - Added ended-overlay deferral gate for `.threeSeolsa` while popup is active/queued.
+- Updated `ui_design_document.md` with Triple Seolsa popup gating behavior.
+
+**Validation:**
+- [x] Logic is clean of UI code.
+- [x] `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO` succeeds.

@@ -32,9 +32,15 @@ struct GameView: View {
     private struct SpecialEventPopup: Identifiable {
         enum Kind {
             case sweep
+            case jjok
+            case cheongdan
+            case hongdan
+            case godori
+            case gusa
             case seolsa
             case seolsaEat
             case selfSeolsaEat
+            case tripleSeolsaEnd
             case shake
             case bomb
         }
@@ -48,12 +54,24 @@ struct GameView: View {
             switch kind {
             case .sweep:
                 return .yellow
+            case .jjok:
+                return .indigo
+            case .cheongdan:
+                return .blue
+            case .hongdan:
+                return .red
+            case .godori:
+                return .green
+            case .gusa:
+                return .teal
             case .seolsa:
                 return .pink
             case .seolsaEat:
                 return .orange
             case .selfSeolsaEat:
                 return .red
+            case .tripleSeolsaEnd:
+                return .mint
             case .shake:
                 return .cyan
             case .bomb:
@@ -65,12 +83,24 @@ struct GameView: View {
             switch kind {
             case .sweep:
                 return "wind"
+            case .jjok:
+                return "sparkles"
+            case .cheongdan:
+                return "tag.fill"
+            case .hongdan:
+                return "tag.circle.fill"
+            case .godori:
+                return "bird.fill"
+            case .gusa:
+                return "9.circle.fill"
             case .seolsa:
                 return "exclamationmark.triangle.fill"
             case .seolsaEat:
                 return "hand.thumbsup.fill"
             case .selfSeolsaEat:
                 return "flame.fill"
+            case .tripleSeolsaEnd:
+                return "trophy.fill"
             case .shake:
                 return "waveform.path.ecg"
             case .bomb:
@@ -698,6 +728,14 @@ struct GameView: View {
     }
 
     private func specialEventPopup(from log: String) -> SpecialEventPopup? {
+        if log.contains("reached Triple Seolsa") {
+            let actor = actorName(in: log, marker: " reached") ?? "플레이어"
+            return SpecialEventPopup(
+                kind: .tripleSeolsaEnd,
+                title: "삼뻑 종료",
+                detail: "\(actor)이(가) 3뻑으로 라운드를 종료했습니다."
+            )
+        }
         if log.contains("declared SHAKE for month") {
             let actor = actorName(in: log, marker: " declared") ?? "플레이어"
             return SpecialEventPopup(
@@ -720,6 +758,46 @@ struct GameView: View {
                 kind: .sweep,
                 title: "싹쓸이",
                 detail: "\(actor)이(가) 테이블을 싹쓸이했습니다."
+            )
+        }
+        if log.contains("triggered 쪽(Jjok)") {
+            let actor = actorName(in: log, marker: " triggered") ?? "플레이어"
+            return SpecialEventPopup(
+                kind: .jjok,
+                title: "쪽",
+                detail: "\(actor)이(가) 쪽을 달성했습니다."
+            )
+        }
+        if log.contains("triggered 청단(Cheongdan)") {
+            let actor = actorName(in: log, marker: " triggered") ?? "플레이어"
+            return SpecialEventPopup(
+                kind: .cheongdan,
+                title: "청단",
+                detail: "\(actor)이(가) 청단을 달성했습니다."
+            )
+        }
+        if log.contains("triggered 홍단(Hongdan)") {
+            let actor = actorName(in: log, marker: " triggered") ?? "플레이어"
+            return SpecialEventPopup(
+                kind: .hongdan,
+                title: "홍단",
+                detail: "\(actor)이(가) 홍단을 달성했습니다."
+            )
+        }
+        if log.contains("triggered 고도리(Godori)") {
+            let actor = actorName(in: log, marker: " triggered") ?? "플레이어"
+            return SpecialEventPopup(
+                kind: .godori,
+                title: "고도리",
+                detail: "\(actor)이(가) 고도리를 달성했습니다."
+            )
+        }
+        if log.contains("triggered 구사(Gusa)") {
+            let actor = actorName(in: log, marker: " triggered") ?? "플레이어"
+            return SpecialEventPopup(
+                kind: .gusa,
+                title: "구사",
+                detail: "\(actor)이(가) 구사를 달성했습니다."
             )
         }
         if log.contains("triggered 뻑(Seolsa)") {
@@ -795,6 +873,12 @@ struct GameView: View {
         specialEventPopupQueue.removeAll()
     }
 
+    private var shouldDeferEndedOverlayForTripleSeolsaPopup: Bool {
+        guard gameManager.gameState == .ended else { return false }
+        guard gameManager.gameEndReason == .threeSeolsa else { return false }
+        return activeSpecialEventPopup != nil || !specialEventPopupQueue.isEmpty
+    }
+
     private func resyncSlotManagers() {
         if let hand = gameManager.players.first?.hand {
             playerHandSlotManager?.sync(with: hand, compactToFront: !gameManager.isAutomationBusy)
@@ -819,6 +903,11 @@ struct GameView: View {
                     })
                 }
             } else if gameManager.gameState == .ended {
+                if shouldDeferEndedOverlayForTripleSeolsaPopup {
+                    Color.clear
+                        .ignoresSafeArea()
+                        .allowsHitTesting(false)
+                } else
                 if gameManager.gameEndReason == .chongtong {
                     ZStack {
                         Color.black.opacity(0.6).ignoresSafeArea()

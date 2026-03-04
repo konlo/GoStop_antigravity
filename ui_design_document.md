@@ -41,3 +41,17 @@
 ### Architectural Constraints
 - UI-only change in `Views`.
 - No changes to game rules or engine behavior in `Core`.
+
+## 2026-03-04 Update: Triple Seolsa End Popup Gating
+
+### Goal
+- When a round ends by triple Seolsa (3뻑), show an explicit end-cause event popup first, then reveal the game-ended overlay.
+
+### Layout/Interaction Decision
+- Add a dedicated special-event popup mapping for the engine log line containing `reached Triple Seolsa`.
+- During `gameState == .ended` with `gameEndReason == .threeSeolsa`, defer ended overlay rendering while special-event popup is active or queued.
+- Keep existing special popup queue animation/duration pipeline unchanged.
+
+### Architectural Constraints
+- UI-only handling in `GameView`.
+- No rule/engine state transition logic moved into SwiftUI layout layer.

@@ -115,6 +115,8 @@ special_moves:
   seolsa:
     enabled: true
     penalty_pi_count: 0
+    instant_win_count: 3
+    instant_win_score: 10
     description: "Play and draw matching cards but making it a triple, leaving them on table (no automatic Pi transfer penalty)"
   mungbak_pi_threshold: 5 # threshold for Mung-dda condition
   mungdda:
