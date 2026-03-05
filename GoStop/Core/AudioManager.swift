@@ -5,10 +5,13 @@ class AudioManager {
     static let shared = AudioManager()
     private var backgroundMusicPlayer: AVAudioPlayer?
     private var effectPlayers: [AVAudioPlayer] = []
+    private var isAudioSessionConfigured = false
     
     private init() {}
     
     func startBackgroundMusic() {
+        configureAudioSessionIfNeeded()
+
         guard let url = Bundle.main.url(forResource: "Pixel_Paradise_Groove", withExtension: "mp3") else {
             print("AudioManager: Could not find Pixel_Paradise_Groove.mp3")
             return
@@ -56,6 +59,8 @@ class AudioManager {
     }
 
     private func playEffect(resource: String, fileExtension: String, volume: Float) {
+        configureAudioSessionIfNeeded()
+
         guard let url = Bundle.main.url(forResource: resource, withExtension: fileExtension) else {
             print("AudioManager: Could not find \(resource).\(fileExtension)")
             return
@@ -73,6 +78,20 @@ class AudioManager {
             }
         } catch {
             print("AudioManager: Could not play effect \(resource).\(fileExtension) - \(error.localizedDescription)")
+        }
+    }
+
+    private func configureAudioSessionIfNeeded() {
+        guard !isAudioSessionConfigured else { return }
+
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playback, mode: .default)
+            try session.setActive(true)
+            isAudioSessionConfigured = true
+            print("AudioManager: AVAudioSession configured as playback")
+        } catch {
+            print("AudioManager: Could not configure AVAudioSession - \(error.localizedDescription)")
         }
     }
 }
