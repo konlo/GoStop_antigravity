@@ -281,70 +281,92 @@ struct NagariRule: Codable {
 class RuleLoader {
     static let shared = RuleLoader()
     private(set) var config: RuleConfig?
-    private var lastLoadedPath: String?
 
-    
     private init() {
         loadRules()
     }
     
     func loadRules() {
+        if let storedConfig = ConfigurationStore.shared.ruleConfig() {
+            self.config = storedConfig
+            FileHandle.standardError.write("Loading rules from: \(ConfigurationStore.shared.configurationPath)\n".data(using: .utf8)!)
+            gLog("Successfully loaded RuleConfig from configuration.yaml.")
+            return
+        }
+
+        guard let (legacyConfig, legacyPath) = loadLegacyRules() else {
+            let workingDir = FileManager.default.currentDirectoryPath
+            FileHandle.standardError.write(
+                "FAILED to locate configuration.yaml and legacy rule.yaml. Checked configuration(\(ConfigurationStore.shared.configurationPath)), bundle, currentDir(\(workingDir)), and execDir. Executable was: \(CommandLine.arguments[0])\n"
+                    .data(using: .utf8)!
+            )
+            return
+        }
+
+        self.config = legacyConfig
+        FileHandle.standardError.write("Loading rules from legacy file: \(legacyPath)\n".data(using: .utf8)!)
+
+        if ConfigurationStore.shared.setRuleConfig(legacyConfig) {
+            FileHandle.standardError.write("Migrated rules to: \(ConfigurationStore.shared.configurationPath)\n".data(using: .utf8)!)
+        } else {
+            FileHandle.standardError.write("WARNING: Failed to migrate rules to \(ConfigurationStore.shared.configurationPath)\n".data(using: .utf8)!)
+        }
+        gLog("Successfully loaded RuleConfig.")
+    }
+
+    private func loadLegacyRules() -> (RuleConfig, String)? {
+        let fileManager = FileManager.default
         let filename = "rule.yaml"
         var url = Bundle.main.url(forResource: "rule", withExtension: "yaml")
-        
-        // If not found in bundle, try local directory (for CLI)
+
         if url == nil {
-            let localPath = FileManager.default.currentDirectoryPath + "/" + filename
-            if FileManager.default.fileExists(atPath: localPath) {
+            let localPath = fileManager.currentDirectoryPath + "/" + filename
+            if fileManager.fileExists(atPath: localPath) {
                 url = URL(fileURLWithPath: localPath)
             }
         }
-        
-        // Try one more: adjacent to executable
+
         if url == nil {
             let executableURL = URL(fileURLWithPath: CommandLine.arguments[0])
             let executableDir = executableURL.deletingLastPathComponent()
             let adjacentPath = executableDir.appendingPathComponent(filename).path
-            if FileManager.default.fileExists(atPath: adjacentPath) {
+            if fileManager.fileExists(atPath: adjacentPath) {
                 url = URL(fileURLWithPath: adjacentPath)
             }
         }
 
-        guard let targetUrl = url else {
-            let workingDir = FileManager.default.currentDirectoryPath
-            FileHandle.standardError.write("FAILED to locate rule.yaml. Checked bundle, currentDir(\(workingDir)), and execDir. Executable was: \(CommandLine.arguments[0])\n".data(using: .utf8)!)
-            return
+        guard let targetURL = url else {
+            return nil
         }
-        
-        FileHandle.standardError.write("Loading rules from: \(targetUrl.path)\n".data(using: .utf8)!)
-        self.lastLoadedPath = targetUrl.path
 
-        
         do {
-            let data = try Data(contentsOf: targetUrl)
-            if let yamlString = String(data: data, encoding: .utf8) {
-                let decoder = YAMLDecoder()
-                config = try decoder.decode(RuleConfig.self, from: yamlString)
-                gLog("Successfully loaded RuleConfig.")
+            let data = try Data(contentsOf: targetURL)
+            guard let yamlString = String(data: data, encoding: .utf8) else {
+                return nil
             }
+            let decoder = YAMLDecoder()
+            let decoded = try decoder.decode(RuleConfig.self, from: yamlString)
+            return (decoded, targetURL.path)
         } catch {
-            let errMsg = "Error parsing rule.yaml: \(error)"
+            let errMsg = "Error parsing legacy rule.yaml: \(error)"
             FileHandle.standardError.write("\(errMsg)\n".data(using: .utf8)!)
             gLog("CRITICAL: \(errMsg)")
+            return nil
         }
     }
+
+    func updateRules(_ updatedConfig: RuleConfig) {
+        self.config = updatedConfig
+        saveRules()
+    }
     
-    /// Saves current rules back to the file it was loaded from
+    /// Saves current rules to configuration.yaml.
     func saveRules() {
         guard let config = self.config else { return }
-        let encoder = YAMLEncoder()
-        do {
-            let yamlString = try encoder.encode(config)
-            let path = lastLoadedPath ?? (FileManager.default.currentDirectoryPath + "/rule.yaml")
-            try yamlString.write(toFile: path, atomically: true, encoding: .utf8)
-            fputs("RuleLoader: Saved rules to \(path)\n", stderr)
-        } catch {
-            fputs("RuleLoader: Error saving rules: \(error)\n", stderr)
+        if ConfigurationStore.shared.setRuleConfig(config) {
+            fputs("RuleLoader: Saved rules to \(ConfigurationStore.shared.configurationPath)\n", stderr)
+        } else {
+            fputs("RuleLoader: Error saving rules to \(ConfigurationStore.shared.configurationPath)\n", stderr)
         }
     }
 }

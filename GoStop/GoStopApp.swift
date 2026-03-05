@@ -3,7 +3,7 @@ import SwiftUI
 @main
 struct GoStopApp: App {
     init() {
-        // Start background music only when enabled in animation.yaml
+        // Start background music only when enabled in configuration.yaml
         if AnimationManager.shared.config.background_music_enabled {
             AudioManager.shared.startBackgroundMusic()
         } else {

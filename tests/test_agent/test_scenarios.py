@@ -338,6 +338,104 @@ def wait_for_game_state(agent: TestAgent, expected_state: str, timeout_sec: floa
     )
 
 
+def scenario_bugfix_end_summary_deferred_until_special_event_popups_clear(agent: TestAgent):
+    """
+    Bug: End summary could appear while special event popups were still being shown.
+    Fix: Defer ended overlay until all special event popups are fully drained.
+    """
+    logger.info("Running bugfix scenario: end summary deferred until special event popups clear...")
+
+    if agent.connection_mode != "socket":
+        logger.info("SKIPPED: requires socket mode UI probe fields. PASS")
+        return
+
+    agent.set_condition({
+        "mock_gameState": "ended",
+        "mock_game_end_reason": "stop",
+        "mock_event_logs": [],
+        "player0_data": {"isComputer": False},
+        "player1_data": {"isComputer": False},
+    })
+
+    agent.set_condition({
+        "mock_gameState": "ended",
+        "mock_game_end_reason": "stop",
+        "mock_event_logs": [
+            "Player 1 triggered 따닥(Ttadak)",
+            "Player 1 triggered 쪽(Jjok)",
+            "Player 1 triggered BOMB!"
+        ],
+        "player0_data": {"isComputer": False},
+        "player1_data": {"isComputer": False},
+    })
+
+    initial_state = wait_for_game_state(agent, "ended", timeout_sec=2.0, poll_sec=0.05)
+    required_probe_keys = [
+        "uiActiveSpecialEventPopupTitle",
+        "uiPendingSpecialEventPopupCount",
+        "uiIsEndSummaryDeferredBySpecialEvents",
+    ]
+    missing_keys = [k for k in required_probe_keys if k not in initial_state]
+    assert not missing_keys, (
+        f"Missing UI probe keys in socket state: {missing_keys}. "
+        f"State keys: {sorted(initial_state.keys())}"
+    )
+
+    observe_deadline = time.time() + 2.5
+    saw_deferred = False
+    saw_popup_activity = False
+    last_state = initial_state
+    while time.time() < observe_deadline:
+        state = agent.get_all_information()
+        last_state = state
+        deferred = bool(state.get("uiIsEndSummaryDeferredBySpecialEvents", False))
+        pending_count = int(state.get("uiPendingSpecialEventPopupCount", 0) or 0)
+        active_title = state.get("uiActiveSpecialEventPopupTitle")
+
+        saw_deferred = saw_deferred or deferred
+        saw_popup_activity = saw_popup_activity or bool(active_title) or pending_count > 0
+        if deferred and (bool(active_title) or pending_count > 0):
+            break
+        time.sleep(0.08)
+
+    assert saw_deferred, (
+        f"Expected end summary deferral while popup is active/queued, but deferred flag was never true. "
+        f"Last state: {last_state}"
+    )
+    assert saw_popup_activity, (
+        f"Expected popup activity for injected event logs, but no active/pending popup observed. "
+        f"Last state: {last_state}"
+    )
+
+    drain_deadline = time.time() + 8.0
+    drained_state = None
+    while time.time() < drain_deadline:
+        state = agent.get_all_information()
+        drained_state = state
+        pending_count = int(state.get("uiPendingSpecialEventPopupCount", 0) or 0)
+        active_title = state.get("uiActiveSpecialEventPopupTitle")
+        deferred = bool(state.get("uiIsEndSummaryDeferredBySpecialEvents", False))
+
+        if pending_count == 0 and not active_title and not deferred:
+            break
+        time.sleep(0.12)
+
+    assert drained_state is not None, "Failed to observe post-popup state."
+    assert int(drained_state.get("uiPendingSpecialEventPopupCount", -1) or 0) == 0, (
+        f"Popup queue should be empty after drain, got {drained_state.get('uiPendingSpecialEventPopupCount')}. "
+        f"State: {drained_state}"
+    )
+    assert not drained_state.get("uiActiveSpecialEventPopupTitle"), (
+        f"Active popup should be nil after drain, got {drained_state.get('uiActiveSpecialEventPopupTitle')}. "
+        f"State: {drained_state}"
+    )
+    assert drained_state.get("uiIsEndSummaryDeferredBySpecialEvents") is False, (
+        f"End summary deferral should be false after popup drain. State: {drained_state}"
+    )
+
+    logger.info("Bugfix verification passed: end summary waits until all special event popups disappear.")
+
+
 def _assert_player_captured_cards_visible(state: dict, player_index: int, expected_cards: list[tuple[int, str]]):
     """
     expected_cards: [(month, type), ...] that must be present in capturedCards and must not remain hidden.
@@ -1428,12 +1526,286 @@ def scenario_verify_monthly_pair_integrity(agent: TestAgent):
         step_count += 1
 
     assert False, f"Game did not end within {max_steps} steps. Potential infinite loop or stuck state."
-        
+
+def _read_dummy_card_count_from_repo_settings(default_count=1):
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.normpath(os.path.join(script_dir, "../../configuration.yaml"))
+    legacy_rule_path = os.path.normpath(os.path.join(script_dir, "../../rule.yaml"))
+
+    def parse_configuration_yaml(path):
+        in_rule = False
+        in_special_moves = False
+        in_bomb = False
+
+        with open(path, "r", encoding="utf-8") as f:
+            for raw in f:
+                no_comment = raw.split("#", 1)[0].rstrip("\n")
+                if not no_comment.strip():
+                    continue
+
+                stripped = no_comment.lstrip(" ")
+                indent = len(no_comment) - len(stripped)
+
+                if indent == 0:
+                    in_rule = stripped == "rule:"
+                    in_special_moves = False
+                    in_bomb = False
+                    continue
+
+                if not in_rule:
+                    continue
+
+                if indent == 2 and stripped == "special_moves:":
+                    in_special_moves = True
+                    in_bomb = False
+                    continue
+
+                if indent <= 2 and stripped.endswith(":") and stripped != "special_moves:":
+                    in_special_moves = False
+                    in_bomb = False
+                    continue
+
+                if not in_special_moves:
+                    continue
+
+                if indent == 4 and stripped == "bomb:":
+                    in_bomb = True
+                    continue
+
+                if indent <= 4 and stripped.endswith(":") and stripped != "bomb:":
+                    in_bomb = False
+                    continue
+
+                if in_bomb and stripped.startswith("dummy_card_count:"):
+                    return int(stripped.split(":", 1)[1].strip())
+
+        return None
+
+    def parse_legacy_rule_yaml(path):
+        with open(path, "r", encoding="utf-8") as f:
+            for raw in f:
+                line = raw.split("#", 1)[0].strip()
+                if line.startswith("dummy_card_count:"):
+                    return int(line.split(":", 1)[1].strip())
+        return None
+
+    try:
+        if os.path.exists(config_path):
+            parsed = parse_configuration_yaml(config_path)
+            if parsed is not None:
+                return parsed
+
+        if os.path.exists(legacy_rule_path):
+            parsed = parse_legacy_rule_yaml(legacy_rule_path)
+            if parsed is not None:
+                return parsed
+    except Exception as e:
+        logger.warning(
+            f"Could not parse dummy_card_count from configuration.yaml/rule.yaml, using fallback={default_count}: {e}"
+        )
+
+    return default_count
+
+def _read_animation_delay_from_configuration_yaml(default_value=None):
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.normpath(os.path.join(script_dir, "../../configuration.yaml"))
+    if not os.path.exists(config_path):
+        return default_value
+
+    try:
+        in_animation = False
+        with open(config_path, "r", encoding="utf-8") as f:
+            for raw in f:
+                no_comment = raw.split("#", 1)[0].rstrip("\n")
+                if not no_comment.strip():
+                    continue
+
+                stripped = no_comment.lstrip(" ")
+                indent = len(no_comment) - len(stripped)
+
+                if indent == 0:
+                    in_animation = stripped == "animation:"
+                    continue
+
+                if not in_animation:
+                    continue
+
+                if indent <= 2 and stripped.endswith(":") and not stripped.startswith("opponent_action_delay:"):
+                    in_animation = False
+                    continue
+
+                if indent == 2 and stripped.startswith("opponent_action_delay:"):
+                    return float(stripped.split(":", 1)[1].strip())
+    except Exception as e:
+        logger.warning(f"Could not parse animation.opponent_action_delay from configuration.yaml: {e}")
+
+    return default_value
+
+def _get_persistence_probe_config(agent: TestAgent) -> dict:
+    response = agent.send_user_action("get_persistence_probe_config")
+    assert response.get("status") == "ok", f"get_persistence_probe_config failed: {response}"
+    data = response.get("data")
+    assert isinstance(data, dict), f"Probe response missing data dictionary: {response}"
+    return data
+
+def _set_persistence_probe_config(
+    agent: TestAgent,
+    *,
+    rule_dummy_card_count: int = None,
+    animation_opponent_action_delay: float = None,
+    first_launch_starter_applied: bool = None
+) -> dict:
+    payload = {}
+    if rule_dummy_card_count is not None:
+        payload["rule_dummy_card_count"] = int(rule_dummy_card_count)
+    if animation_opponent_action_delay is not None:
+        payload["animation_opponent_action_delay"] = float(animation_opponent_action_delay)
+    if first_launch_starter_applied is not None:
+        payload["first_launch_starter_applied"] = bool(first_launch_starter_applied)
+    assert payload, "No persistence probe values provided."
+
+    response = agent.send_user_action("set_persistence_probe_config", payload)
+    assert response.get("status") == "ok", f"set_persistence_probe_config failed: {response}"
+    data = response.get("data")
+    assert isinstance(data, dict), f"Probe set response missing data dictionary: {response}"
+    return data
+
+def scenario_verify_configuration_yaml_persistence_after_app_restart(agent: TestAgent):
+    """
+    Scenario: Verify configuration.yaml persistence across app restart.
+
+    Flow:
+      - Read current persisted configuration snapshot.
+      - Update rule/animation/app flag through bridge save path.
+      - Terminate and relaunch app (CLI mode) and verify values are preserved.
+      - Restore original values so subsequent scenarios are not polluted.
+    """
+    logger.info("Running configuration.yaml persistence after app restart verification...")
+
+    original = _get_persistence_probe_config(agent)
+    assert str(original.get("configuration_path", "")).endswith("configuration.yaml"), (
+        f"Configuration path should target configuration.yaml, got {original.get('configuration_path')}"
+    )
+
+    original_dummy = int(original.get("rule_dummy_card_count", 1))
+    original_delay = float(original.get("animation_opponent_action_delay", 1.0))
+    original_first_launch = bool(original.get("first_launch_starter_applied", False))
+
+    updated_dummy = original_dummy + 1 if original_dummy < 9 else max(0, original_dummy - 1)
+    updated_delay = 2.4 if abs(original_delay - 2.4) > 1e-6 else 1.6
+    updated_first_launch = not original_first_launch
+
+    def assert_probe_matches(
+        probe: dict,
+        expected_dummy: int,
+        expected_first_launch: bool,
+        context: str,
+        expected_delay: float = None
+    ):
+        assert int(probe.get("rule_dummy_card_count", -1)) == int(expected_dummy), (
+            f"{context}: dummy_card_count mismatch. expected={expected_dummy}, got={probe.get('rule_dummy_card_count')}"
+        )
+        if expected_delay is not None:
+            observed_delay = float(probe.get("animation_opponent_action_delay", -1))
+            assert abs(observed_delay - float(expected_delay)) <= 1e-6, (
+                f"{context}: opponent_action_delay mismatch. expected={expected_delay}, got={observed_delay}"
+            )
+        assert bool(probe.get("first_launch_starter_applied", False)) == bool(expected_first_launch), (
+            f"{context}: first_launch_starter_applied mismatch. expected={expected_first_launch}, got={probe.get('first_launch_starter_applied')}"
+        )
+
+    try:
+        changed = _set_persistence_probe_config(
+            agent,
+            rule_dummy_card_count=updated_dummy,
+            animation_opponent_action_delay=updated_delay,
+            first_launch_starter_applied=updated_first_launch
+        )
+        assert_probe_matches(
+            changed,
+            updated_dummy,
+            updated_first_launch,
+            "after set",
+            expected_delay=updated_delay
+        )
+
+        if agent.connection_mode == "cli":
+            old_pid = agent.process.pid if agent.process else None
+            agent.stop_app()
+            time.sleep(0.2)
+            agent.start_app()
+            assert agent.process is not None, "App process should be relaunched in CLI mode."
+            if old_pid is not None:
+                assert agent.process.pid != old_pid, (
+                    f"Expected new CLI process after restart. old_pid={old_pid}, new_pid={agent.process.pid}"
+                )
+        else:
+            # Socket mode is externally managed; use in-app restart to keep scenario executable.
+            agent.send_user_action("click_restart_button")
+
+        after_restart = _get_persistence_probe_config(agent)
+        if agent.connection_mode == "cli":
+            assert_probe_matches(after_restart, updated_dummy, updated_first_launch, "after restart")
+            persisted_delay = _read_animation_delay_from_configuration_yaml(default_value=None)
+            assert persisted_delay is not None, "Failed to read animation.opponent_action_delay from configuration.yaml"
+            assert abs(float(persisted_delay) - float(updated_delay)) <= 1e-6, (
+                f"after restart(file): opponent_action_delay mismatch. expected={updated_delay}, got={persisted_delay}"
+            )
+        else:
+            assert_probe_matches(
+                after_restart,
+                updated_dummy,
+                updated_first_launch,
+                "after restart",
+                expected_delay=updated_delay
+            )
+    finally:
+        if agent.connection_mode == "cli" and agent.process is None:
+            agent.start_app()
+
+        restored = _set_persistence_probe_config(
+            agent,
+            rule_dummy_card_count=original_dummy,
+            animation_opponent_action_delay=original_delay,
+            first_launch_starter_applied=original_first_launch
+        )
+        assert_probe_matches(
+            restored,
+            original_dummy,
+            original_first_launch,
+            "after restore set",
+            expected_delay=original_delay
+        )
+
+        if agent.connection_mode == "cli":
+            agent.stop_app()
+            time.sleep(0.2)
+            agent.start_app()
+        else:
+            agent.send_user_action("click_restart_button")
+
+        reloaded = _get_persistence_probe_config(agent)
+        if agent.connection_mode == "cli":
+            assert_probe_matches(reloaded, original_dummy, original_first_launch, "after restore restart")
+            restored_delay = _read_animation_delay_from_configuration_yaml(default_value=None)
+            assert restored_delay is not None, "Failed to read animation.opponent_action_delay from configuration.yaml after restore"
+            assert abs(float(restored_delay) - float(original_delay)) <= 1e-6, (
+                f"after restore restart(file): opponent_action_delay mismatch. expected={original_delay}, got={restored_delay}"
+            )
+        else:
+            assert_probe_matches(
+                reloaded,
+                original_dummy,
+                original_first_launch,
+                "after restore restart",
+                expected_delay=original_delay
+            )
+
 def scenario_verify_bomb_with_dummy_cards(agent: TestAgent):
     """
     Scenario: Verifies dummy (도탄) card behavior after a Bomb (폭탄).
     
-    RULE (rule.yaml > bomb.dummy_card_count / dummy_cards_disappear_on_play):
+    RULE (configuration.yaml > rule.special_moves.bomb.dummy_card_count / dummy_cards_disappear_on_play):
       - After a bomb, the bomber receives `dummy_card_count` dummy cards (config-driven)
       - Dummy cards are held in hand until played
       - When played, they VANISH instantly — never placed on the table/floor
@@ -1441,19 +1813,8 @@ def scenario_verify_bomb_with_dummy_cards(agent: TestAgent):
     """
     logger.info("Running Bomb with Dummy Cards verification...")
 
-    # Read configured dummy count from rule.yaml so the test follows current rules.
-    expected_dummy_count = 1
-    try:
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        rule_path = os.path.normpath(os.path.join(script_dir, "../../rule.yaml"))
-        with open(rule_path, "r", encoding="utf-8") as f:
-            for raw in f:
-                line = raw.split("#", 1)[0].strip()
-                if line.startswith("dummy_card_count:"):
-                    expected_dummy_count = int(line.split(":", 1)[1].strip())
-                    break
-    except Exception as e:
-        logger.warning(f"Could not parse dummy_card_count from rule.yaml, using fallback={expected_dummy_count}: {e}")
+    # Read configured dummy count so the test follows the persisted game configuration.
+    expected_dummy_count = _read_dummy_card_count_from_repo_settings(default_count=1)
     
     agent.send_user_action("start_game")
     
@@ -4032,6 +4393,7 @@ def main():
         scenario_verify_card_integrity_full_game,
         scenario_verify_monthly_pair_integrity,
         scenario_verify_bomb_with_dummy_cards,
+        scenario_verify_configuration_yaml_persistence_after_app_restart,
         scenario_verify_go_bonuses,
         scenario_verify_nagari,
         scenario_verify_no_residual_cards_when_hands_empty,
@@ -4056,6 +4418,7 @@ def main():
         scenario_verify_self_seolsa_eat,
         scenario_verify_initial_seolsa_eat,
         scenario_bugfix_seolsa_eat_flag_reset_between_turns,
+        scenario_bugfix_end_summary_deferred_until_special_event_popups_clear,
         scenario_verify_missing_dec_card,
         scenario_verify_chrysanthemum_as_animal,
         scenario_verify_chrysanthemum_as_double_pi,

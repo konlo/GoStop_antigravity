@@ -205,6 +205,80 @@ class SimulatorBridge {
                     self.gameManager.respondToChrysanthemumChoice(role: role)
                     self.sendSimpleResponse(status: "action executed", action: action, connection: connection)
                 }
+
+            case "get_persistence_probe_config":
+                DispatchQueue.main.async {
+                    self.sendJSONResponse(
+                        payload: [
+                            "status": "ok",
+                            "action": action,
+                            "data": self.persistenceProbeData()
+                        ],
+                        connection: connection
+                    )
+                }
+
+            case "set_persistence_probe_config":
+                guard let dataDict = json["data"] as? [String: Any] else {
+                    sendErrorResponse(message: "Missing data for set_persistence_probe_config", connection: connection)
+                    return
+                }
+
+                DispatchQueue.main.async {
+                    var didChange = false
+
+                    if dataDict["rule_dummy_card_count"] != nil {
+                        guard var rules = RuleLoader.shared.config else {
+                            self.sendErrorResponse(message: "Rule config is not loaded", connection: connection)
+                            return
+                        }
+                        if let dummyCardCount = dataDict["rule_dummy_card_count"] as? Int {
+                            rules.special_moves.bomb.dummy_card_count = max(0, dummyCardCount)
+                            RuleLoader.shared.updateRules(rules)
+                            didChange = true
+                        }
+                    }
+
+                    if let rawDelay = dataDict["animation_opponent_action_delay"] {
+                        let parsedDelay: Double?
+                        if let delay = rawDelay as? Double {
+                            parsedDelay = delay
+                        } else if let delay = rawDelay as? Int {
+                            parsedDelay = Double(delay)
+                        } else if let delay = rawDelay as? NSNumber {
+                            parsedDelay = delay.doubleValue
+                        } else {
+                            parsedDelay = nil
+                        }
+
+                        if let parsedDelay {
+                            var nextConfig = AnimationManager.shared.config
+                            nextConfig.opponent_action_delay = max(0.0, parsedDelay)
+                            AnimationManager.shared.config = nextConfig
+                            AnimationManager.shared.saveConfig()
+                            didChange = true
+                        }
+                    }
+
+                    if let isApplied = dataDict["first_launch_starter_applied"] as? Bool {
+                        _ = ConfigurationStore.shared.setFirstLaunchStarterApplied(isApplied)
+                        didChange = true
+                    }
+
+                    guard didChange else {
+                        self.sendErrorResponse(message: "No supported persistence probe keys provided", connection: connection)
+                        return
+                    }
+
+                    self.sendJSONResponse(
+                        payload: [
+                            "status": "ok",
+                            "action": action,
+                            "data": self.persistenceProbeData()
+                        ],
+                        connection: connection
+                    )
+                }
                 
             case "click_restart_button":
                 DispatchQueue.main.async {
@@ -337,6 +411,14 @@ class SimulatorBridge {
                         default: break
                         }
                     }
+
+                    if let mockEndReason = data["mock_game_end_reason"] as? String {
+                        self.gameManager.gameEndReason = GameEndReason(rawValue: mockEndReason)
+                    }
+
+                    if let mockEventLogs = data["mock_event_logs"] as? [String] {
+                        self.gameManager.eventLogs = mockEventLogs
+                    }
                     
                     if let mockCaptured = data["mock_captured_cards"] as? [[String: Any]] {
                          let player = self.gameManager.players[0]
@@ -456,6 +538,14 @@ class SimulatorBridge {
             connection.send(content: finalData, completion: .contentProcessed({ _ in }))
         }
     }
+
+    private func sendJSONResponse(payload: [String: Any], connection: NWConnection) {
+        if let data = try? JSONSerialization.data(withJSONObject: payload) {
+            var finalData = data
+            finalData.append("\n".data(using: .utf8)!)
+            connection.send(content: finalData, completion: .contentProcessed({ _ in }))
+        }
+    }
     
     private func sendErrorResponse(message: String, connection: NWConnection) {
         let resp = ["status": "error", "message": message]
@@ -464,6 +554,15 @@ class SimulatorBridge {
             finalData.append("\n".data(using: .utf8)!)
             connection.send(content: finalData, completion: .contentProcessed({ _ in }))
         }
+    }
+
+    private func persistenceProbeData() -> [String: Any] {
+        [
+            "rule_dummy_card_count": RuleLoader.shared.config?.special_moves.bomb.dummy_card_count ?? -1,
+            "animation_opponent_action_delay": AnimationManager.shared.config.opponent_action_delay,
+            "first_launch_starter_applied": ConfigurationStore.shared.firstLaunchStarterApplied(),
+            "configuration_path": ConfigurationStore.shared.configurationPath
+        ]
     }
 
     private func enqueueStateResponse(connection: NWConnection?) {

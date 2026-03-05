@@ -1,4 +1,122 @@
 import Foundation
+import Yams
+
+struct AppRuntimeConfiguration: Codable {
+    var first_launch_starter_applied: Bool = false
+}
+
+struct AppConfiguration: Codable {
+    var version: Int = 1
+    var rule: RuleConfig?
+    var animation: AnimationConfig?
+    var app: AppRuntimeConfiguration = AppRuntimeConfiguration()
+}
+
+final class ConfigurationStore {
+    static let shared = ConfigurationStore()
+
+    private static let fileName = "configuration.yaml"
+    private let fileManager: FileManager
+    private let encoder = YAMLEncoder()
+    private let decoder = YAMLDecoder()
+    private let fileURL: URL
+    private var cachedConfiguration: AppConfiguration
+
+    private init(fileManager: FileManager = .default) {
+        self.fileManager = fileManager
+        self.fileURL = Self.resolveFileURL(fileManager: fileManager)
+        self.cachedConfiguration = AppConfiguration()
+        self.cachedConfiguration = loadFromDisk()
+    }
+
+    var configurationPath: String {
+        fileURL.path
+    }
+
+    func ruleConfig() -> RuleConfig? {
+        cachedConfiguration.rule
+    }
+
+    @discardableResult
+    func setRuleConfig(_ config: RuleConfig) -> Bool {
+        cachedConfiguration.rule = config
+        return persistToDisk()
+    }
+
+    func animationConfig() -> AnimationConfig? {
+        cachedConfiguration.animation
+    }
+
+    @discardableResult
+    func setAnimationConfig(_ config: AnimationConfig) -> Bool {
+        cachedConfiguration.animation = config
+        return persistToDisk()
+    }
+
+    func firstLaunchStarterApplied() -> Bool {
+        cachedConfiguration.app.first_launch_starter_applied
+    }
+
+    @discardableResult
+    func setFirstLaunchStarterApplied(_ isApplied: Bool) -> Bool {
+        cachedConfiguration.app.first_launch_starter_applied = isApplied
+        return persistToDisk()
+    }
+
+    private func loadFromDisk() -> AppConfiguration {
+        guard fileManager.fileExists(atPath: fileURL.path) else {
+            return AppConfiguration()
+        }
+
+        do {
+            let yamlString = try String(contentsOf: fileURL, encoding: .utf8)
+            if yamlString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return AppConfiguration()
+            }
+            return try decoder.decode(AppConfiguration.self, from: yamlString)
+        } catch {
+            fputs("ConfigurationStore: Failed to parse \(fileURL.path): \(error)\n", stderr)
+            return AppConfiguration()
+        }
+    }
+
+    @discardableResult
+    private func persistToDisk() -> Bool {
+        do {
+            let directoryURL = fileURL.deletingLastPathComponent()
+            if !fileManager.fileExists(atPath: directoryURL.path) {
+                try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+            }
+
+            let yamlString = try encoder.encode(cachedConfiguration)
+            try yamlString.write(to: fileURL, atomically: true, encoding: .utf8)
+            return true
+        } catch {
+            fputs("ConfigurationStore: Failed to persist \(fileURL.path): \(error)\n", stderr)
+            return false
+        }
+    }
+
+    private static func resolveFileURL(fileManager: FileManager) -> URL {
+        if let overridePath = ProcessInfo.processInfo.environment["GOSTOP_CONFIGURATION_PATH"],
+           !overridePath.isEmpty {
+            return URL(fileURLWithPath: overridePath)
+        }
+
+        let currentDirectoryURL = URL(fileURLWithPath: fileManager.currentDirectoryPath, isDirectory: true)
+        let currentDirectoryFileURL = currentDirectoryURL.appendingPathComponent(fileName)
+        if fileManager.fileExists(atPath: currentDirectoryFileURL.path) ||
+            fileManager.isWritableFile(atPath: currentDirectoryURL.path) {
+            return currentDirectoryFileURL
+        }
+
+        if let documentsDirectory = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first {
+            return documentsDirectory.appendingPathComponent(fileName)
+        }
+
+        return currentDirectoryFileURL
+    }
+}
 
 class ConfigManager: ObservableObject {
     static let shared = ConfigManager()

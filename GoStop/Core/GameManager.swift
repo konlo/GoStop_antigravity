@@ -196,6 +196,9 @@ class GameManager: ObservableObject {
     // Event Logs for inspection
     @Published var eventLogs: [String] = []
     @Published var uxEventLogs: [UXEvent] = []
+    @Published var uiActiveSpecialEventPopupTitle: String? = nil
+    @Published var uiPendingSpecialEventPopupCount: Int = 0
+    @Published var uiIsEndSummaryDeferredBySpecialEvents: Bool = false
     private var stateHistory: [[String: AnyCodable]] = []
     private var scoreEventKindsByPlayer: [String: Set<String>] = [:]
     
@@ -267,6 +270,16 @@ class GameManager: ObservableObject {
         if self.uxEventLogs.count > 200 {
             self.uxEventLogs.removeFirst()
         }
+    }
+
+    func updateSpecialEventOverlayProbe(
+        activePopupTitle: String?,
+        pendingQueueCount: Int,
+        isEndSummaryDeferred: Bool
+    ) {
+        uiActiveSpecialEventPopupTitle = activePopupTitle
+        uiPendingSpecialEventPopupCount = max(0, pendingQueueCount)
+        uiIsEndSummaryDeferredBySpecialEvents = isEndSummaryDeferred
     }
 
     private func updateScoreAndEmitScoreEvents(for player: Player) {
@@ -367,6 +380,9 @@ class GameManager: ObservableObject {
         self.chongtongTiming = nil
         self.eventLogs = []
         self.uxEventLogs.removeAll()
+        self.uiActiveSpecialEventPopupTitle = nil
+        self.uiPendingSpecialEventPopupCount = 0
+        self.uiIsEndSummaryDeferredBySpecialEvents = false
         self.stateHistory = []
         self.scoreEventKindsByPlayer = [:]
         self.deck.reset(seed: seed)
@@ -1015,9 +1031,14 @@ class GameManager: ObservableObject {
                             
                             // Check capture logically
                             self.addUXEvent(type: "moveEnd", data: ["cardId": pCard.id, "target": "table"])
-                            self.showTargetCue(for: [pCard])
+                            let captureResolution = self.performTableCaptureLogical(for: pCard, player: player)
+                            let isMatchAtTable: Bool = {
+                                guard let captureResolution = captureResolution else { return true }
+                                return !captureResolution.captured.isEmpty
+                            }()
+                            self.showTargetCue(for: [pCard], tableImpactMatched: isMatchAtTable)
 
-                            if let captureResolution = self.performTableCaptureLogical(for: pCard, player: player) {
+                            if let captureResolution = captureResolution {
                                 let captured = captureResolution.captured
                                 let resultingTable = captureResolution.resultingTable
                                 self.turnPlayPhaseCaptured = captured
@@ -1144,7 +1165,7 @@ class GameManager: ObservableObject {
                     ]
                 )
                 self.hiddenInTargetCardIds.subtract(bombHandCardIds)
-                self.showTargetCue(for: bombHandCards)
+                self.showTargetCue(for: bombHandCards, tableImpactMatched: true)
                 self.clearMoveContextAfterCue(expectedSource: "hand", expectedTarget: "table")
 
                 let animateBombCapture: () -> Void = {
@@ -1264,7 +1285,6 @@ class GameManager: ObservableObject {
                     self.penaltyMoveProgress = 0
                     self.hiddenInSourceCardIds.remove(drawnCard.id)
                     self.hiddenInTargetCardIds.remove(drawnCard.id)
-                    self.showTargetCue(for: [drawnCard])
                     self.clearMoveContextAfterCue(expectedSource: "deck", expectedTarget: "table")
 
                     let sameMonthInLogicalTable = logicalTableBeforeDraw.filter { $0.month == drawnCard.month }
@@ -1273,6 +1293,7 @@ class GameManager: ObservableObject {
                         sameMonthInLogicalTable.isEmpty
 
                     if isSeolsa {
+                        self.showTargetCue(for: [drawnCard], tableImpactMatched: false)
                         self.turnIsSeolsa = true
                         gLog("SEOLSA!")
                         self.turnPlayPhaseCaptured = []
@@ -1284,7 +1305,14 @@ class GameManager: ObservableObject {
                     }
 
                     var drawLogicalTable = logicalTableBeforeDraw
-                    if let captured = self.performTableCapture(for: drawnCard, on: &drawLogicalTable, player: player) {
+                    let drawCapture = self.performTableCapture(for: drawnCard, on: &drawLogicalTable, player: player)
+                    let isMatchAtTable: Bool = {
+                        guard let drawCapture = drawCapture else { return true }
+                        return !drawCapture.isEmpty
+                    }()
+                    self.showTargetCue(for: [drawnCard], tableImpactMatched: isMatchAtTable)
+
+                    if let captured = drawCapture {
                         self.turnDrawPhaseCaptured = captured
                         self.handleDrawCaptured(drawnCard: drawnCard, player: player)
                         self.turnDrawPhaseBaseTable = nil
@@ -1685,9 +1713,15 @@ class GameManager: ObservableObject {
         }
     }
 
-    private func showTargetCue(for cards: [Card], durationOverride: Double? = nil) {
+    private func showTargetCue(for cards: [Card], durationOverride: Double? = nil, tableImpactMatched: Bool? = nil) {
         let ids = Set(cards.map { $0.id })
         guard !ids.isEmpty else { return }
+        let shouldPlayTableImpactSound =
+            currentMoveTargetZone == "table" &&
+            (currentMoveSourceZone == "hand" || currentMoveSourceZone == "deck")
+        if shouldPlayTableImpactSound {
+            AudioManager.shared.playHwatuTableImpactEffect(isMatch: tableImpactMatched ?? true)
+        }
         let generation = automationDelayGeneration
         let holdDuration = max(0, durationOverride ?? moveCueDuration)
         targetCueCardIds.formUnion(ids)
@@ -2072,6 +2106,9 @@ extension GameManager {
         state["capturedMoveSourcePlayerId"] = AnyCodable(capturedMoveSourcePlayerId as Any)
         state["capturedMoveTargetPlayerId"] = AnyCodable(capturedMoveTargetPlayerId as Any)
         state["opponentPreplayRevealCardId"] = AnyCodable(opponentPreplayRevealCardId as Any)
+        state["uiActiveSpecialEventPopupTitle"] = AnyCodable(uiActiveSpecialEventPopupTitle as Any)
+        state["uiPendingSpecialEventPopupCount"] = AnyCodable(uiPendingSpecialEventPopupCount)
+        state["uiIsEndSummaryDeferredBySpecialEvents"] = AnyCodable(uiIsEndSummaryDeferredBySpecialEvents)
         state["players"] = AnyCodable(players.map { player in
             var playerDict = player.serialize()
             playerDict["scoreItems"] = AnyCodable(ScoringSystem.calculateScoreDetail(for: player))

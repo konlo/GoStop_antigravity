@@ -12,7 +12,7 @@ struct RuleSettingsView: View {
             VStack(spacing: 0) {
                 // Header
                 HStack {
-                    Text("게임 규칙 설정 (rule.yaml)")
+                    Text("게임 규칙 설정 (configuration.yaml)")
                         .font(.headline)
                         .foregroundColor(.white)
                     Spacer()
@@ -28,7 +28,7 @@ struct RuleSettingsView: View {
                 if let config = configManager.ruleConfig {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 20) {
-                            settingsSection(title: "오디오 (Audio / animation.yaml)", content: audioSettings())
+                            settingsSection(title: "오디오 (Audio / configuration.yaml)", content: audioSettings())
                             settingsSection(title: "점수 계산 (Scoring)", content: scoringSettings(config: config))
                             settingsSection(title: "패널티 (Penalties)", content: penaltySettings(config: config))
                             settingsSection(title: "특수 동작 (Special Moves)", content: specialMoveSettings(config: config))
@@ -45,7 +45,11 @@ struct RuleSettingsView: View {
                 // Save/Close Button
                 Button(action: { 
                     animationManager.saveConfig()
-                    RuleLoader.shared.saveRules()
+                    if let updatedRules = configManager.ruleConfig {
+                        RuleLoader.shared.updateRules(updatedRules)
+                    } else {
+                        RuleLoader.shared.saveRules()
+                    }
                     isPresented = false 
                 }) {
                     Text("확인")
@@ -132,7 +136,7 @@ struct RuleSettingsView: View {
             }
 
             HStack {
-                Text("기본값은 animation.yaml 설정 사용")
+                Text("기본값은 configuration.yaml 설정 사용")
                     .font(.caption)
                     .foregroundColor(.white.opacity(0.6))
                 Spacer()

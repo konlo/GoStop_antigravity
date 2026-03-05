@@ -867,3 +867,179 @@
 - **Files Touched**: ["test_artifacts/daily_wrapup_2026-03-04.md", "project_progress.md"]
 - **Validation**: "`git diff --stat`, `git diff --name-only`, `git log --since='today 00:00'`, `project_progress.md`의 2026-03-04 로그 엔트리 검토를 기반으로 요약 정확도를 점검."
 - **Outcome**: "오늘 변경 요약을 `test_artifacts/daily_wrapup_2026-03-04.md`로 저장하고, 요청 처리 내역을 `project_progress.md`에 기록 완료."
+
+### [2026-03-05 22:22:54 KST] User Request: 이벤트 팝업 나오는 것들 일단 한번 보여줘
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "`GameView.specialEventPopup(from:)` 기준으로 실제 노출되는 이벤트 팝업 종류를 정확히 추출해 전달하기 위함."
+- **Files Touched**: ["GoStop/Views/GameView.swift", "project_progress.md"]
+- **Validation**: "`rg -n \"specialEventPopup|SpecialEventPopup|eventLogs\" GoStop/Views/GameView.swift`, `nl -ba GoStop/Views/GameView.swift | sed -n '730,828p'`, `nl -ba GoStop/Views/GameView.swift | sed -n '32,80p'`, `nl -ba GoStop/Views/GameView.swift | sed -n '1011,1031p'`로 매핑/종류/표시 오버레이 확인."
+- **Outcome**: "현재 이벤트 팝업은 12종(삼뻑 종료, 흔들기, 폭탄, 싹쓸이, 쪽, 청단, 홍단, 고도리, 구사, 뻑, 뻑 먹기, 자뻑)으로 확인."
+
+### [2026-03-05 22:30:22 KST] User Request: 따닥에 대한 이벤트 팝업 추가
+- **Skills Planned**: ["gostop-ui-playability", "project_logger"]
+- **Skills Used**: ["gostop-ui-playability", "project_logger"]
+- **Trigger Reason**: "엔진에서 이미 생성되는 `triggered 따닥(Ttadak)` 이벤트 로그를 기존 special event popup 파이프라인으로 연결해 UI 인지성을 높이기 위함."
+- **Files Touched**: ["GoStop/Views/GameView.swift", "project_progress.md"]
+- **Validation**: "1) `xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI -configuration Debug -derivedDataPath build build CODE_SIGNING_ALLOWED=NO` 성공(BUILD SUCCEEDED). 2) `python3 tests/test_agent/test_scenarios.py --mode cli 8` PASS. 3) `python3 tests/test_agent/test_scenarios.py --mode cli 56` PASS."
+- **Outcome**: "`SpecialEventPopup.Kind`에 `ttadak` 케이스를 추가하고, 색상/아이콘 및 `specialEventPopup(from:)`의 `triggered 따닥(Ttadak)` 로그 매핑을 반영하여 따닥 이벤트 팝업 노출을 구현 완료."
+
+### [2026-03-05 22:23:38 KST] User Request: 설정파일의 설정 값을 저장하는 데이타 파일이 있는지 확인해줘
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "설정 화면에서 변경한 값이 어떤 경로로 영속화되는지(파일 저장/별도 데이터 파일/기타) 코드 기준으로 정확히 확인해야 했음."
+- **Files Touched**: ["GoStop/Views/RuleSettingsView.swift", "GoStop/Core/AnimationManager.swift", "GoStop/Models/RuleConfig.swift", "GoStop/Core/ConfigManager.swift", "GoStop/Core/GameManager.swift", "GoStop/Views/GameView.swift", "project_progress.md"]
+- **Validation**: "`rg -n --hidden --glob '!.git' -e 'UserDefaults|Settings|Config|configuration|plist|json|defaults' GoStop GoStopCLI GoStopTests tests`, `rg -n \"write\\(toFile:|write\\(to:|UserDefaults\\.standard\\.set|saveConfig\\(|saveRules\\(\" GoStop GoStopCLI`, `find . -maxdepth 4 -type f \\( -name 'animation.yaml' -o -name 'rule.yaml' -o -name 'layout_hwatu.json' -o -name 'gostop_cumulative_win_scores.json' -o -name '*.sqlite' -o -name '*.db' \\)`로 저장 코드/실제 파일 존재 여부 확인."
+- **Outcome**: "별도 설정 데이터 전용 파일은 없고, 설정값은 주로 `animation.yaml`/`rule.yaml` 원본 파일에 직접 저장된다. 추가 영속화는 첫 실행 플래그(`UserDefaults`)와 누적 승점 파일(`gostop_cumulative_win_scores.json`, 문서 디렉토리)만 확인."
+
+### [2026-03-05 22:24:20 KST] User Request: 이벤트 팝업이 나오는 중에 게임 종료 summary가 나올 수 있는지 확인
+- **Skills Planned**: ["gostop-ui-playability", "project_logger"]
+- **Skills Used**: []
+- **Trigger Reason**: "게임 종료 summary 표시 타이밍이 special event popup 소거 이후인지 확인하기 위해 `GameView` 오버레이 조건과 큐 처리 흐름 점검이 필요함."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "진행 중: `GoStop/Views/GameView.swift`의 `overlayArea`, `specialEventPopupQueue`, `gameOverSummary` 표시 조건 추적."
+- **Outcome**: "in progress"
+
+### [2026-03-05 22:25:24 KST] User Request: 이벤트 팝업이 나오는 중에 게임 종료 summary가 나올 수 있는지 확인 (결과)
+- **Skills Planned**: ["gostop-ui-playability", "project_logger"]
+- **Skills Used**: ["gostop-ui-playability", "project_logger"]
+- **Trigger Reason**: "`overlayArea` 종료 분기와 `specialEventPopupOverlay()` 배치 순서를 함께 확인해, 종료 summary 지연 조건이 특정 이벤트에만 적용되는지 검증해야 했음."
+- **Files Touched**: ["GoStop/Views/GameView.swift", "GoStop/Core/GameManager.swift", "project_progress.md"]
+- **Validation**: "`nl -ba GoStop/Views/GameView.swift | sed -n '716,1044p'`, `nl -ba GoStop/Core/GameManager.swift | sed -n '647,719p'`, `nl -ba GoStop/Core/GameManager.swift | sed -n '1517,1562p'`로 이벤트 로그 생성 시점/종료 상태 전환/오버레이 조건 확인."
+- **Outcome**: "현재 구현은 `threeSeolsa` 종료일 때만 summary를 팝업 큐 소진 후 지연(`shouldDeferEndedOverlayForTripleSeolsaPopup`)하며, 그 외 종료 사유에서는 이벤트 팝업과 게임 종료 summary가 동시에 노출될 수 있음."
+
+### [2026-03-05 22:30:21 KST] User Request: 모든 이벤트 팝업이 사라진 다음에 종료 summary 표시
+- **Skills Planned**: ["gostop-ui-playability", "project_logger"]
+- **Skills Used**: []
+- **Trigger Reason**: "종료 오버레이 지연 조건을 `threeSeolsa` 한정에서 전체 special event popup 큐 기준으로 확장해야 함."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "진행 중: `GoStop/Views/GameView.swift`의 ended overlay 분기와 popup active/queue 상태 조건 수정 예정."
+- **Outcome**: "in progress"
+
+### [2026-03-05 22:31:30 KST] User Request: 모든 이벤트 팝업이 사라진 다음에 종료 summary 표시 (결과)
+- **Skills Planned**: ["gostop-ui-playability", "project_logger"]
+- **Skills Used**: ["gostop-ui-playability", "project_logger"]
+- **Trigger Reason**: "종료 화면 지연 조건을 이벤트 종류별 예외가 아닌 `active popup + queue` 상태 기반으로 통일해, 모든 이벤트 팝업 소거 후 summary 노출을 보장하기 위함."
+- **Files Touched**: ["GoStop/Views/GameView.swift", "project_progress.md"]
+- **Validation**: "1) `rg -n \"shouldDeferEndedOverlayFor\" GoStop/Views/GameView.swift`로 참조/정의 일치 확인. 2) `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO` 및 `xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI -configuration Debug -derivedDataPath /tmp/gostop_cli_build build CODE_SIGNING_ALLOWED=NO`는 환경의 CoreSimulator(simdiskimaged) 장애로 실패."
+- **Outcome**: "`shouldDeferEndedOverlayForSpecialEventPopups`로 조건을 일반화하여, 게임 상태가 ended일 때 이벤트 팝업이 활성/대기 중이면 종료 summary를 지연하도록 반영 완료."
+
+### [2026-03-05 22:59:40 KST] User Request: 시뮬레이터 실검증 + 해당 회귀 test scenario 추가
+- **Skills Planned**: ["gostop-ui-playability", "add-bug-fix-scenario", "project_logger"]
+- **Skills Used**: []
+- **Trigger Reason**: "수정된 종료 summary 지연 동작을 실제 시뮬레이터에서 확인하고, 동일 이슈 재발을 막는 회귀 시나리오를 테스트 에이전트에 추가해야 함."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "진행 중: CoreSimulator 상태 복구 후 socket 기반 재현/검증 및 `tests/test_agent/test_scenarios.py` 회귀 시나리오 추가."
+- **Outcome**: "in progress"
+
+### [2026-03-05 23:07:02 KST] User Request: 시뮬레이터 실검증 + 해당 회귀 test scenario 추가 (결과)
+- **Skills Planned**: ["gostop-ui-playability", "add-bug-fix-scenario", "project_logger"]
+- **Skills Used**: ["gostop-ui-playability", "add-bug-fix-scenario", "project_logger"]
+- **Trigger Reason**: "시뮬레이터 socket 검증에서 UI 계층(`GameView` state) 관측값이 필요해 `get_state`에 popup/summary 지연 probe를 노출하고, 해당 신호를 검증하는 bugfix 회귀 시나리오를 추가함."
+- **Files Touched**: ["GoStop/Core/GameManager.swift", "GoStop/Core/SimulatorBridge.swift", "GoStop/Views/GameView.swift", "tests/test_agent/test_scenarios.py", "project_progress.md"]
+- **Validation**: "1) `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO` 성공(권한 상승). 2) `/bin/zsh -lc \"... xcrun simctl launch ...; nc -vz 127.0.0.1 8080\"`로 시뮬레이터 앱 재기동/브리지 연결 확인. 3) `python3 tests/test_agent/test_scenarios.py --mode socket -k scenario_bugfix_end_summary_deferred_until_special_event_popups_clear` PASS. 4) `xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI -configuration Debug -derivedDataPath /tmp/gostop_cli_build build CODE_SIGNING_ALLOWED=NO` 성공(권한 상승). 5) `python3 - <<'PY' ... ast.parse(test_scenarios.py) ... PY` AST_OK."
+- **Outcome**: "시뮬레이터 실검증에서 `ended` 상태에서도 이벤트 팝업 큐가 남아 있으면 summary 지연 플래그가 true로 유지되고, 큐 소진 후 false로 내려가며 PASS 확인. 신규 회귀 시나리오 `scenario_bugfix_end_summary_deferred_until_special_event_popups_clear`를 등록해 재발 방지."
+
+### [2026-03-05 22:36:51 KST] User Request: 바닥 매칭 cue에 맞춘 카드 충돌 사운드 추가 가능 여부 검토
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "현재 매칭 cue와 이동 파이프라인 타이밍(`showTargetCue`, `moveEnd`)에 사운드 훅을 걸 수 있는지, 그리고 리소스 번들링 이슈가 있는지 코드 기준으로 확인해야 했음."
+- **Files Touched**: ["GoStop/Core/GameManager.swift", "GoStop/Core/AudioManager.swift", "GoStop/Views/GameView.swift", "GoStop/Views/GameAreaViews.swift", "GoStop/Views/CardView.swift", "GoStop/Core/AnimationManager.swift", "GoStop/Views/RuleSettingsView.swift", "GoStop.xcodeproj/project.pbxproj", "animation.yaml", "project_progress.md"]
+- **Validation**: "`rg -n \"showTargetCue|targetCueCardIds|moveEnd|AudioManager|AVAudio|card_match\"`, `nl -ba GoStop/Core/GameManager.swift | sed -n '980,1365p'`, `nl -ba GoStop/Core/GameManager.swift | sed -n '1644,1715p'`, `nl -ba GoStop/Core/AudioManager.swift`, `nl -ba GoStop/Views/GameView.swift | sed -n '160,170p'`, `nl -ba GoStop.xcodeproj/project.pbxproj | sed -n '335,355p'`, `find GoStop -maxdepth 3 -type f \\( -iname '*.wav' -o -iname '*.mp3' \\)`로 훅 포인트/오디오 구현 범위/리소스 포함 상태 점검."
+- **Outcome**: "구현 가능. 다만 현재는 BGM 재생만 구현되어 있고 SFX API는 없음. 또한 `card_match.wav` 등 효과음 파일은 리포지토리에 존재하지만 현재 Xcode Resources Build Phase에 포함되지 않아 번들 로드 실패 가능성이 있어, SFX 추가 시 AudioManager 확장 + 리소스 포함 설정을 함께 반영해야 함."
+
+### [2026-03-05 22:43:41 KST] User Request: hwatu_card_hit.wav를 cue 타이밍에 맞춰 재생되도록 구현
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: []
+- **Trigger Reason**: "효과음 파일 교체 요청에 따라 cue 타이밍의 사운드 트리거 추가, AudioManager 효과음 API 확장, Xcode 리소스 포함 설정이 필요함."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "진행 중: `GoStop/Core/AudioManager.swift`, `GoStop/Core/GameManager.swift`, `GoStop.xcodeproj/project.pbxproj` 수정 예정."
+- **Outcome**: "in progress"
+
+### [2026-03-05 22:45:48 KST] User Request: hwatu_card_hit.wav를 cue 타이밍에 맞춰 재생되도록 구현 (결과)
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "바닥 cue 시점과 충돌 SFX를 동일 타이밍으로 맞추기 위해 오디오 API 추가와 cue 함수 연결, 리소스 번들 포함을 함께 반영해야 했음."
+- **Files Touched**: ["GoStop/Core/AudioManager.swift", "GoStop/Core/GameManager.swift", "GoStop.xcodeproj/project.pbxproj", "project_progress.md"]
+- **Validation**: "1) `set -o pipefail; xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI -configuration Debug -derivedDataPath /tmp/gostop_cli_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n \"error:|warning:|BUILD SUCCEEDED|BUILD FAILED\"` 결과 `BUILD SUCCEEDED`. 2) `rg --files GoStop/Resources`로 `hwatu_card_hit.wav` 존재 확인. 3) `nl -ba GoStop/Core/GameManager.swift | sed -n '1688,1700p'`로 cue 시점 호출 확인."
+- **Outcome**: "`showTargetCue`에서 `hand/deck -> table` cue 시점에 `AudioManager.shared.playHwatuCardHitEffect()`를 호출하도록 구현했고, `AudioManager`에 효과음 재생 경로를 추가했으며, `hwatu_card_hit.wav`를 Xcode Resources Build Phase(GoStop/GoStopCLI)에 포함하도록 반영 완료."
+
+### [2026-03-05 22:54:15 KST] User Request: 매칭/비매칭을 서로 다른 효과음(hwatu_card_hit.wav / hwatu_blanket_puck.wav)으로 구분
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: []
+- **Trigger Reason**: "매칭 여부를 `performTableCapture` 결과로 정확히 분기해 cue 타이밍 사운드를 이원화하고, 신규 wav 리소스를 번들에 포함해야 했음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "진행 중: `GoStop/Core/GameManager.swift`, `GoStop/Core/AudioManager.swift`, `GoStop.xcodeproj/project.pbxproj` 수정 및 CLI 빌드 확인 예정."
+- **Outcome**: "in progress"
+
+### [2026-03-05 22:54:29 KST] User Request: 매칭/비매칭을 서로 다른 효과음(hwatu_card_hit.wav / hwatu_blanket_puck.wav)으로 구분 (결과)
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "`showTargetCue` 단일 훅에서 매칭 여부를 구분하려면 기존 무조건 재생 로직을 `performTableCaptureLogical/performTableCapture` 결과 기반으로 재구성해야 했고, `hwatu_blanket_puck.wav`를 런타임 번들에 포함해야 했음."
+- **Files Touched**: ["GoStop/Core/AudioManager.swift", "GoStop/Core/GameManager.swift", "GoStop.xcodeproj/project.pbxproj", "project_progress.md"]
+- **Validation**: "1) `set -o pipefail; xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI -configuration Debug -derivedDataPath /tmp/gostop_cli_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n \"error:|warning:|BUILD SUCCEEDED|BUILD FAILED\"` 결과 `BUILD SUCCEEDED`. 2) `find GoStop/Resources -maxdepth 1 -type f -name 'hwatu_blanket_puck.wav' -o -name 'hwatu_card_hit.wav'`로 두 wav 파일 존재 확인."
+- **Outcome**: "바닥 target cue(`hand/deck -> table`)에서 매칭 시 `hwatu_card_hit.wav`, 비매칭 시 `hwatu_blanket_puck.wav`가 재생되도록 분기 구현 완료. 매칭 판단은 `performTableCapture` 결과 기준(`nil` 또는 captured>0 = 매칭, 빈 배열 = 비매칭)으로 반영했고, 신규 `hwatu_blanket_puck.wav`를 GoStop/GoStopCLI 리소스 빌드 단계에 추가."
+
+### [2026-03-05 22:37:44 KST] User Request: 설정/나가기 버튼이 언제든지 최상단에서 사용 가능한지 사전 검토
+- **Skills Planned**: ["basic-code-review", "project_logger"]
+- **Skills Used**: []
+- **Trigger Reason**: "`설정/나가기` 버튼의 항상-접근 가능 요구에 대해 현재 화면 계층(zIndex/overlay/hit-testing)에서 가림/비활성 가능성을 코드 리뷰 방식으로 먼저 점검해야 했음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "진행 중: `GoStop/Views/GameView.swift`, `GoStop/Views/GameAreaViews.swift`, `GoStop/Core/LayoutContext.swift`, `GoStop/Views/RuleSettingsView.swift`의 오버레이/레이어 우선순위/프레임 계산 검토."
+- **Outcome**: "in progress"
+
+### [2026-03-05 22:38:27 KST] User Request: 설정/나가기 버튼이 언제든지 최상단에서 사용 가능한지 사전 검토 (결과)
+- **Skills Planned**: ["basic-code-review", "project_logger"]
+- **Skills Used**: ["basic-code-review", "project_logger"]
+- **Trigger Reason**: "`SettingAreaV2`의 배치/`zIndex`와 `overlayArea` 및 전역 오버레이의 hit-testing 동작을 교차 검토해, 버튼 상시 접근 요구 충족 여부를 판단해야 했음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`rg -n \"showingSettings|overlayArea|zIndex|allowsHitTesting|Color.black.opacity|settingFrame|SettingAreaV2\" GoStop/Views/GameView.swift GoStop/Views/GameAreaViews.swift GoStop/Core/LayoutContext.swift`, `nl -ba GoStop/Views/GameView.swift | sed -n '191,357p'`, `nl -ba GoStop/Views/GameView.swift | sed -n '905,1019p'`, `nl -ba GoStop/Views/GameView.swift | sed -n '1244,1537p'`, `nl -ba GoStop/Views/GameAreaViews.swift | sed -n '7,88p'`."
+- **Outcome**: "`설정/나가기` 버튼은 현재 상시 최상단이 아님. `SettingAreaV2`가 `.zIndex(0)`이고, `overlayArea`/이동카드 오버레이가 `.zIndex(200+)`로 올라와 상태별로 버튼이 가려지거나 입력이 차단될 수 있음을 확인."
+
+### [2026-03-05 22:44:00 KST] User Request: 설정/나가기 버튼을 Go/Stop·Shake·Capture 모달 중에도 언제든지 사용 가능하게 보장
+- **Skills Planned**: ["gostop-ui-playability", "project_logger"]
+- **Skills Used**: []
+- **Trigger Reason**: "필수 결정 모달이 떠도 상단 컨트롤이 항상 눌려야 하므로, 기존 `SettingAreaV2`를 전역 최상위 인터랙션 레이어로 재배치해야 함."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "진행 중: `GoStop/Views/GameView.swift`의 `zIndex`/overlay 계층 재구성 및 빌드 검증 예정."
+- **Outcome**: "in progress"
+
+### [2026-03-05 22:45:12 KST] User Request: 설정/나가기 버튼을 Go/Stop·Shake·Capture 모달 중에도 언제든지 사용 가능하게 보장 (결과)
+- **Skills Planned**: ["gostop-ui-playability", "project_logger"]
+- **Skills Used**: ["gostop-ui-playability", "project_logger"]
+- **Trigger Reason**: "필수 결정 모달(`Go/Stop`, `Shake`, `Capture`)을 포함한 전체 오버레이 위에서도 설정/나가기가 동작하도록 상단 컨트롤의 렌더 계층을 전역 최상위로 고정해야 했음."
+- **Files Touched**: ["GoStop/Views/GameView.swift", "project_progress.md"]
+- **Validation**: "`xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n \"error:|warning:|BUILD SUCCEEDED|BUILD FAILED\"` 실행 결과 `BUILD SUCCEEDED` 확인."
+- **Outcome**: "`SettingAreaV2`를 `gameAreas` 내부(`zIndex 0`)에서 제거하고, `mainGameContent`의 최상위 레이어(`zIndex 2000`)로 분리한 `topControlsArea`로 재배치하여 필수 결정 모달 중에도 설정/나가기 버튼을 항상 노출·사용 가능하게 반영."
+
+### [2026-03-05 22:40:23 KST] User Request: 모든 설정 파일은 게임 종료 후에 다시 시작할 때 그 상태를 유지할 수 있도록 설정 내용을 configuration.yaml 파일으로 관리
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "분산된 설정 저장 경로(rule/animation/UserDefaults)를 단일 `configuration.yaml`로 통합하고 재시작 후 유지되도록 로더/저장 흐름을 실제 엔진 경로에 맞춰 교체해야 했음."
+- **Files Touched**: ["GoStop/Core/ConfigManager.swift", "GoStop/Models/RuleConfig.swift", "GoStop/Core/AnimationManager.swift", "GoStop/Views/RuleSettingsView.swift", "GoStop/Views/GameView.swift", "GoStop/GoStopApp.swift", "tests/test_agent/test_scenarios.py", "configuration.yaml", "project_progress.md"]
+- **Validation**: "1) `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO -quiet` 성공. 2) `xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI -configuration Debug -derivedDataPath /tmp/gostop_cli_build build CODE_SIGNING_ALLOWED=NO -quiet` 성공. 3) `python3 - <<'PY' ... ast.parse('tests/test_agent/test_scenarios.py') ... PY`로 테스트 스크립트 문법 확인(OK)."
+- **Outcome**: "`ConfigurationStore`를 추가해 `configuration.yaml` 단일 파일에 `rule`, `animation`, `app.first_launch_starter_applied`를 저장하도록 통합. `RuleLoader`/`AnimationManager`는 `configuration.yaml` 우선 로드하고 기존 `rule.yaml`/`animation.yaml`은 최초 마이그레이션 소스로만 사용. 설정 화면 저장 시 실제 엔진 룰까지 동기화되며, 첫 실행 스타터 플래그도 UserDefaults 대신 `configuration.yaml`에 영속화되도록 반영."
+
+### [2026-03-05 22:49:39 KST] User Request: 이와 관련된 test scenario도 추가가 필요해. 이때 app를 종료하고 다시 수행하는 것도 넣어야할 것 같아
+- **Skills Planned**: ["add-bug-fix-scenario", "project_logger"]
+- **Skills Used**: ["add-bug-fix-scenario", "project_logger"]
+- **Trigger Reason**: "`configuration.yaml` 통합 변경에 대한 회귀 검증으로, 설정 저장 후 앱 재시작 시 값이 유지되는지 자동 시나리오(프로세스 종료/재실행 포함)를 추가해야 했음."
+- **Files Touched**: ["GoStopCLI/main.swift", "GoStop/Core/SimulatorBridge.swift", "tests/test_agent/test_scenarios.py", "project_progress.md"]
+- **Validation**: "1) `xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI -configuration Debug -derivedDataPath /tmp/gostop_cli_build build CODE_SIGNING_ALLOWED=NO -quiet` 성공. 2) `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO -quiet` 성공. 3) `python3 - <<'PY' ... ast.parse('tests/test_agent/test_scenarios.py') ... PY` 성공. 4) `python3 tests/test_agent/test_scenarios.py --mode cli --executable /tmp/gostop_cli_build/Build/Products/Debug/GoStopCLI -k configuration_yaml_persistence_after_app_restart` PASS."
+- **Outcome**: "신규 시나리오 `scenario_verify_configuration_yaml_persistence_after_app_restart`를 추가해 설정 변경→앱 종료/재실행→유지 확인→원복까지 자동 검증하도록 반영. 이를 위해 브리지에 `get_persistence_probe_config`/`set_persistence_probe_config` 액션을 추가해 rule/animation/app 플래그 저장 경로를 테스트에서 직접 검증 가능하게 확장."
+
+### [2026-03-05 23:16:01 KST] User Request: 오늘 내용 wrap up 해줘.
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "금일(2026-03-05) 작업 내역을 기록 기반으로 묶어 빠르게 재확인할 수 있는 wrap-up 산출물이 필요했음."
+- **Files Touched**: ["test_artifacts/daily_wrapup_2026-03-05.md", "project_progress.md"]
+- **Validation**: "`rg -n \"^### \\[2026-03-05\" project_progress.md`, `tail -n 220 project_progress.md`, `git status --short`로 금일 로그/변경 범위를 교차 확인하고 요약 정확도를 점검."
+- **Outcome**: "오늘 작업 핵심(이벤트 팝업/종료 summary 지연, 설정 영속화 통합, 상단 컨트롤 접근성, cue 타이밍 SFX 분기, 회귀 시나리오 추가)을 `test_artifacts/daily_wrapup_2026-03-05.md`로 정리 완료."
+
+### [2026-03-05 23:17:51 KST] User Request: commit 내용 작성해줘
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "현재 워크트리 변경 범위를 기반으로 실제 반영 내용을 빠짐없이 담은 커밋 메시지(제목/본문) 초안이 필요했음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`git status --short`, `git diff --stat`로 변경 파일/규모를 확인해 메시지 범위 일치 여부 점검."
+- **Outcome**: "설정 영속화 통합, 이벤트 팝업/종료 summary 지연, 상단 컨트롤 레이어 보장, cue 타이밍 효과음 분기, 회귀 시나리오 확장을 포함한 커밋 메시지 초안을 제공."

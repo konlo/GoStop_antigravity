@@ -102,6 +102,61 @@ class CLIEngine {
             gameManager.respondToChrysanthemumChoice(role: role)
             return ["status": "action executed", "action": "respond_to_chrysanthemum_choice"]
 
+        case "get_persistence_probe_config":
+            return [
+                "status": "ok",
+                "action": request.action,
+                "data": persistenceProbeData()
+            ]
+
+        case "set_persistence_probe_config":
+            guard let data = request.data else {
+                return ["status": "error", "message": "Missing data for set_persistence_probe_config"]
+            }
+
+            var didChange = false
+
+            if var rules = RuleLoader.shared.config,
+               let dummyCardCount = data["rule_dummy_card_count"]?.value as? Int {
+                rules.special_moves.bomb.dummy_card_count = max(0, dummyCardCount)
+                RuleLoader.shared.updateRules(rules)
+                didChange = true
+            }
+
+            if let rawDelay = data["animation_opponent_action_delay"]?.value {
+                var parsedDelay: Double?
+                if let delay = rawDelay as? Double {
+                    parsedDelay = delay
+                } else if let delay = rawDelay as? Int {
+                    parsedDelay = Double(delay)
+                } else if let delay = rawDelay as? NSNumber {
+                    parsedDelay = delay.doubleValue
+                }
+
+                if let parsedDelay {
+                    var nextConfig = AnimationManager.shared.config
+                    nextConfig.opponent_action_delay = max(0.0, parsedDelay)
+                    AnimationManager.shared.config = nextConfig
+                    AnimationManager.shared.saveConfig()
+                    didChange = true
+                }
+            }
+
+            if let isApplied = data["first_launch_starter_applied"]?.value as? Bool {
+                _ = ConfigurationStore.shared.setFirstLaunchStarterApplied(isApplied)
+                didChange = true
+            }
+
+            guard didChange else {
+                return ["status": "error", "message": "No supported persistence probe keys provided"]
+            }
+
+            return [
+                "status": "ok",
+                "action": request.action,
+                "data": persistenceProbeData()
+            ]
+
         case "set_condition":
             if let data = request.data {
                 if let scenario = data["mock_scenario"]?.value as? String, scenario == "game_over" {
@@ -410,6 +465,15 @@ class CLIEngine {
         }
         
         return dict
+    }
+
+    private func persistenceProbeData() -> [String: Any] {
+        [
+            "rule_dummy_card_count": RuleLoader.shared.config?.special_moves.bomb.dummy_card_count ?? -1,
+            "animation_opponent_action_delay": AnimationManager.shared.config.opponent_action_delay,
+            "first_launch_starter_applied": ConfigurationStore.shared.firstLaunchStarterApplied(),
+            "configuration_path": ConfigurationStore.shared.configurationPath
+        ]
     }
 }
 

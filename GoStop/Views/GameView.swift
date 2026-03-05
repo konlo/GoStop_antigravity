@@ -1,8 +1,6 @@
 import SwiftUI
 
 struct GameView: View {
-    private static let firstLaunchStarterAppliedKey = "gostop.firstLaunchNightDayStarterApplied"
-
     private enum StarterSelectionPhase {
         case playerPick
         case resolving
@@ -32,6 +30,7 @@ struct GameView: View {
     private struct SpecialEventPopup: Identifiable {
         enum Kind {
             case sweep
+            case ttadak
             case jjok
             case cheongdan
             case hongdan
@@ -54,6 +53,8 @@ struct GameView: View {
             switch kind {
             case .sweep:
                 return .yellow
+            case .ttadak:
+                return .orange
             case .jjok:
                 return .indigo
             case .cheongdan:
@@ -83,6 +84,8 @@ struct GameView: View {
             switch kind {
             case .sweep:
                 return "wind"
+            case .ttadak:
+                return "sparkle.magnifyingglass"
             case .jjok:
                 return "sparkles"
             case .cheongdan:
@@ -164,6 +167,15 @@ struct GameView: View {
         .onChange(of: gameManager.eventLogs.count) { _ in
             processNewSpecialEventLogs()
         }
+        .onChange(of: gameManager.gameState) { _ in
+            syncSpecialEventOverlayProbe()
+        }
+        .onChange(of: activeSpecialEventPopup?.id) { _ in
+            syncSpecialEventOverlayProbe()
+        }
+        .onChange(of: specialEventPopupQueue.count) { _ in
+            syncSpecialEventOverlayProbe()
+        }
         .onChange(of: gameManager.players.map { $0.id.uuidString }.joined(separator: ",")) { _ in
             // Player IDs can rotate on restart/condition-set; clear stale geometry keys.
             tableCardCenters.removeAll()
@@ -232,6 +244,12 @@ struct GameView: View {
             // Keep rewind HUD as the top-most interactive layer in debug mode.
             moveRouteHUD(safeArea: safeArea)
                 .zIndex(1000)
+
+            // Always-available top controls (settings/exit/log/debug) above all overlays.
+            if let ctx = layoutContext {
+                topControlsArea(ctx: ctx, safeArea: safeArea)
+                    .zIndex(2000)
+            }
         }
         .coordinateSpace(name: "GameSpace")
         .alert("재시작 확인", isPresented: $showingRestartAlert) {
@@ -241,6 +259,25 @@ struct GameView: View {
             }
         } message: {
             Text("게임을 다시 시작하시겠습니까?")
+        }
+    }
+
+    @ViewBuilder
+    private func topControlsArea(ctx: LayoutContext, safeArea: EdgeInsets) -> some View {
+        if let settingFrame = ctx.areaFrames[.setting], settingFrame.height > 0 {
+            SettingAreaV2(
+                ctx: ctx,
+                config: ctx.config.areas.setting,
+                onExitTapped: { showingRestartAlert = true },
+                showRewindButton: isLevel3DebugMode,
+                canRewind: canStartRewind,
+                onRewindTapped: triggerRewindPlayback,
+                onSettingsTapped: { showingSettings = true },
+                onLogTapped: { showingEventLog.toggle() },
+                onDeveloperInfoTapped: { showingDeveloperInfo = true }
+            )
+            .frame(width: settingFrame.width, height: settingFrame.height)
+            .position(x: safeArea.leading + settingFrame.midX, y: safeArea.top + settingFrame.midY)
         }
     }
 
@@ -262,24 +299,6 @@ struct GameView: View {
         let playerZ: Double = tableToPlayerCapture ? 8 : (isCapturedTransfer && sourceOwnerId == playerOwnerId ? 6 : 3)
         let centerZ: Double = isTableToCaptured ? 7 : 1
 
-        // 0. Setting Area
-        if let settingFrame = ctx.areaFrames[.setting], settingFrame.height > 0 {
-            SettingAreaV2(
-                ctx: ctx,
-                config: ctx.config.areas.setting,
-                onExitTapped: { showingRestartAlert = true },
-                showRewindButton: isLevel3DebugMode,
-                canRewind: canStartRewind,
-                onRewindTapped: triggerRewindPlayback,
-                onSettingsTapped: { showingSettings = true },
-                onLogTapped: { showingEventLog.toggle() },
-                onDeveloperInfoTapped: { showingDeveloperInfo = true }
-            )
-            .frame(width: settingFrame.width, height: settingFrame.height)
-            .position(x: safeArea.leading + settingFrame.midX, y: safeArea.top + settingFrame.midY)
-            .zIndex(0)
-        }
-        
         // 1. Opponent Area
         let opponentFrame = ctx.frame(for: .opponent)
         if isCapturedTransfer || isTableToCaptured {
@@ -372,6 +391,7 @@ struct GameView: View {
             self.tableSlotManager = TableSlotManager(config: configV2)
             self.resyncSlotManagers()
         }
+        syncSpecialEventOverlayProbe()
         updateLatestRewindSnapshot()
     }
 
@@ -760,6 +780,14 @@ struct GameView: View {
                 detail: "\(actor)이(가) 테이블을 싹쓸이했습니다."
             )
         }
+        if log.contains("triggered 따닥(Ttadak)") {
+            let actor = actorName(in: log, marker: " triggered") ?? "플레이어"
+            return SpecialEventPopup(
+                kind: .ttadak,
+                title: "따닥",
+                detail: "\(actor)이(가) 따닥을 달성했습니다."
+            )
+        }
         if log.contains("triggered 쪽(Jjok)") {
             let actor = actorName(in: log, marker: " triggered") ?? "플레이어"
             return SpecialEventPopup(
@@ -873,10 +901,17 @@ struct GameView: View {
         specialEventPopupQueue.removeAll()
     }
 
-    private var shouldDeferEndedOverlayForTripleSeolsaPopup: Bool {
+    private var shouldDeferEndedOverlayForSpecialEventPopups: Bool {
         guard gameManager.gameState == .ended else { return false }
-        guard gameManager.gameEndReason == .threeSeolsa else { return false }
         return activeSpecialEventPopup != nil || !specialEventPopupQueue.isEmpty
+    }
+
+    private func syncSpecialEventOverlayProbe() {
+        gameManager.updateSpecialEventOverlayProbe(
+            activePopupTitle: activeSpecialEventPopup?.title,
+            pendingQueueCount: specialEventPopupQueue.count,
+            isEndSummaryDeferred: shouldDeferEndedOverlayForSpecialEventPopups
+        )
     }
 
     private func resyncSlotManagers() {
@@ -903,7 +938,7 @@ struct GameView: View {
                     })
                 }
             } else if gameManager.gameState == .ended {
-                if shouldDeferEndedOverlayForTripleSeolsaPopup {
+                if shouldDeferEndedOverlayForSpecialEventPopups {
                     Color.clear
                         .ignoresSafeArea()
                         .allowsHitTesting(false)
@@ -1087,7 +1122,7 @@ struct GameView: View {
             return nil
         }
         if starterRule.first_launch_only &&
-            UserDefaults.standard.bool(forKey: Self.firstLaunchStarterAppliedKey) {
+            ConfigurationStore.shared.firstLaunchStarterApplied() {
             return nil
         }
         return starterRule
@@ -1123,7 +1158,7 @@ struct GameView: View {
 
     private func finalizeStarterSelection(starterIndex: Int, rule: StarterRule) {
         if rule.first_launch_only {
-            UserDefaults.standard.set(true, forKey: Self.firstLaunchStarterAppliedKey)
+            _ = ConfigurationStore.shared.setFirstLaunchStarterApplied(true)
         }
         resetStarterSelectionState()
         gameManager.startGame(initialTurnIndex: starterIndex)

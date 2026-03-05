@@ -3,7 +3,8 @@ import AVFoundation
 
 class AudioManager {
     static let shared = AudioManager()
-    private var audioPlayer: AVAudioPlayer?
+    private var backgroundMusicPlayer: AVAudioPlayer?
+    private var effectPlayers: [AVAudioPlayer] = []
     
     private init() {}
     
@@ -14,10 +15,10 @@ class AudioManager {
         }
         
         do {
-            audioPlayer = try AVAudioPlayer(contentsOf: url)
-            audioPlayer?.numberOfLoops = -1 // Infinite loop
-            audioPlayer?.prepareToPlay()
-            audioPlayer?.play()
+            backgroundMusicPlayer = try AVAudioPlayer(contentsOf: url)
+            backgroundMusicPlayer?.numberOfLoops = -1 // Infinite loop
+            backgroundMusicPlayer?.prepareToPlay()
+            backgroundMusicPlayer?.play()
             print("AudioManager: Started background music")
         } catch {
             print("AudioManager: Could not play audio file - \(error.localizedDescription)")
@@ -25,16 +26,53 @@ class AudioManager {
     }
     
     func stopBackgroundMusic() {
-        audioPlayer?.stop()
+        backgroundMusicPlayer?.stop()
     }
     
     func toggleMusic() {
-        if let player = audioPlayer {
+        if let player = backgroundMusicPlayer {
             if player.isPlaying {
                 player.pause()
             } else {
                 player.play()
             }
+        }
+    }
+
+    func playHwatuCardHitEffect() {
+        playEffect(resource: "hwatu_card_hit", fileExtension: "wav", volume: 1.0)
+    }
+
+    func playHwatuBlanketPuckEffect() {
+        playEffect(resource: "hwatu_blanket_puck", fileExtension: "wav", volume: 1.0)
+    }
+
+    func playHwatuTableImpactEffect(isMatch: Bool) {
+        if isMatch {
+            playHwatuCardHitEffect()
+        } else {
+            playHwatuBlanketPuckEffect()
+        }
+    }
+
+    private func playEffect(resource: String, fileExtension: String, volume: Float) {
+        guard let url = Bundle.main.url(forResource: resource, withExtension: fileExtension) else {
+            print("AudioManager: Could not find \(resource).\(fileExtension)")
+            return
+        }
+
+        do {
+            effectPlayers.removeAll { !$0.isPlaying }
+            let player = try AVAudioPlayer(contentsOf: url)
+            player.volume = volume
+            player.prepareToPlay()
+            player.play()
+            effectPlayers.append(player)
+            if effectPlayers.count > 12 {
+                effectPlayers.removeFirst(effectPlayers.count - 12)
+            }
+        } catch {
+            print("AudioManager: Could not play effect \(resource).\(fileExtension) - \(error.localizedDescription)")
         }
     }
 }

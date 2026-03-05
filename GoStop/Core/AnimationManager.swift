@@ -2,7 +2,7 @@ import Foundation
 import SwiftUI
 import Yams
 
-/// Configuration for card animations, loaded from animation.yaml
+/// Configuration for card animations, loaded from configuration.yaml
 struct AnimationConfig: Codable {
     var card_move_duration: Double = 0.4
     var card_move_delay_per_item: Double = 0.05
@@ -34,12 +34,11 @@ struct AnimationConfig: Codable {
 }
 
 /// Manages UI animations for the Go-Stop game.
-/// This class is separated from the game logic and is driven by animation.yaml.
+/// This class is separated from the game logic and is driven by configuration.yaml.
 class AnimationManager: ObservableObject {
     static let shared = AnimationManager()
     
     @Published var config = AnimationConfig()
-    private var lastLoadedPath: String?
 
     struct CardMovePlan {
         let animation: Animation?
@@ -53,39 +52,46 @@ class AnimationManager: ObservableObject {
         loadConfig()
     }
     
-    /// Loads animation configuration from animation.yaml
+    /// Loads animation configuration from configuration.yaml.
+    /// Falls back to legacy animation.yaml for one-time migration.
     func loadConfig() {
-        let paths = [
-            Bundle.main.path(forResource: "animation", ofType: "yaml"),
-            FileManager.default.currentDirectoryPath + "/animation.yaml",
-            "/Users/najongseong/git_repository/GoStop_antigravity/animation.yaml"
-        ]
-        
-        for path in paths {
-            if let path = path, let data = try? String(contentsOfFile: path) {
-                let decoder = YAMLDecoder()
-                if let decoded = try? decoder.decode(AnimationConfig.self, from: data) {
-                    self.config = decoded
-                    self.lastLoadedPath = path
-                    fputs("AnimationManager: Loaded config from \(path)\n", stderr)
-                    return
+        if let persisted = ConfigurationStore.shared.animationConfig() {
+            self.config = persisted
+            fputs("AnimationManager: Loaded config from \(ConfigurationStore.shared.configurationPath)\n", stderr)
+            return
+        }
 
+        let legacyPaths = [
+            Bundle.main.path(forResource: "animation", ofType: "yaml"),
+            FileManager.default.currentDirectoryPath + "/animation.yaml"
+        ]
+
+        let decoder = YAMLDecoder()
+        for path in legacyPaths {
+            guard let path, let data = try? String(contentsOfFile: path, encoding: .utf8) else {
+                continue
+            }
+            if let decoded = try? decoder.decode(AnimationConfig.self, from: data) {
+                self.config = decoded
+                if ConfigurationStore.shared.setAnimationConfig(decoded) {
+                    fputs("AnimationManager: Migrated legacy config (\(path)) to \(ConfigurationStore.shared.configurationPath)\n", stderr)
+                } else {
+                    fputs("AnimationManager: Failed to migrate legacy config from \(path)\n", stderr)
                 }
+                return
             }
         }
+
         fputs("AnimationManager: Using default configuration.\n", stderr)
+        _ = ConfigurationStore.shared.setAnimationConfig(self.config)
     }
     
-    /// Saves current configuration back to the file it was loaded from
+    /// Saves current configuration to configuration.yaml.
     func saveConfig() {
-        let encoder = YAMLEncoder()
-        do {
-            let encoded = try encoder.encode(self.config)
-            let path = lastLoadedPath ?? (FileManager.default.currentDirectoryPath + "/animation.yaml")
-            try encoded.write(toFile: path, atomically: true, encoding: .utf8)
-            fputs("AnimationManager: Saved config to \(path)\n", stderr)
-        } catch {
-            fputs("AnimationManager: Error saving config: \(error)\n", stderr)
+        if ConfigurationStore.shared.setAnimationConfig(self.config) {
+            fputs("AnimationManager: Saved config to \(ConfigurationStore.shared.configurationPath)\n", stderr)
+        } else {
+            fputs("AnimationManager: Error saving config to \(ConfigurationStore.shared.configurationPath)\n", stderr)
         }
     }
 
@@ -131,13 +137,13 @@ class AnimationManager: ObservableObject {
     }
 
     /// Centralized policy for hand -> table motion.
-    /// Update `animation.yaml: hand_to_table_motion` to apply globally.
+    /// Update `configuration.yaml: animation.hand_to_table_motion` to apply globally.
     func handToTableMotionPlan() -> HandToTableMotionPlan {
         motionPlan(source: "hand", target: "table")
     }
 
     /// Unified motion planning engine for all card routes.
-    /// Route differences are controlled by `animation.yaml`.
+    /// Route differences are controlled by `configuration.yaml`.
     func motionPlan(source: String, target: String) -> CardMovePlan {
         let route = "\(source.lowercased())->\(target.lowercased())"
         switch route {
