@@ -27,87 +27,253 @@ struct GameView: View {
         let duration: Double
     }
 
-    private struct SpecialEventPopup: Identifiable {
-        enum Kind {
-            case sweep
-            case ttadak
-            case jjok
-            case cheongdan
-            case hongdan
-            case godori
-            case gusa
-            case seolsa
-            case seolsaEat
-            case selfSeolsaEat
-            case tripleSeolsaEnd
-            case shake
-            case bomb
+    private struct CapturedPreviewState: Equatable {
+        let ownerPlayerId: String
+        let groupType: String
+    }
+
+    private struct CapturedPreviewGroupSummary: Identifiable {
+        let type: String
+        let label: String
+        let accentColor: Color
+        let count: Int
+
+        var id: String { type }
+    }
+
+    private struct CapturedPreviewModel {
+        let ownerTitle: String
+        let selectedLabel: String
+        let selectedType: String
+        let cards: [Card]
+        let groups: [CapturedPreviewGroupSummary]
+    }
+
+    private struct CapturedPreviewPanel: View {
+        let ctx: LayoutContext
+        let model: CapturedPreviewModel
+
+        var body: some View {
+            GeometryReader { geo in
+                let outerPadding = max(12, 16 * ctx.globalScale)
+                let panelPadding = max(14, 16 * ctx.globalScale)
+                let panelWidth = min(geo.size.width - (outerPadding * 2), geo.size.width < 430 ? 360 : 520)
+                let headerSpacing = max(8, 10 * ctx.globalScale)
+                let chipSpacing = max(6, 8 * ctx.globalScale)
+                let itemSpacing = max(8, 10 * ctx.globalScale)
+                let columnCount = geo.size.width < 430 ? 4 : 5
+                let availableCardWidth = panelWidth - (panelPadding * 2) - (CGFloat(columnCount - 1) * itemSpacing)
+                let targetCardWidth = max(44, availableCardWidth / CGFloat(columnCount))
+                let previewScale = max(0.66, min(0.9, targetCardWidth / ctx.cardSize.width))
+                let cardHeight = ctx.cardSize.height * previewScale
+                let maxScrollHeight = min(geo.size.height * 0.42, cardHeight * 3.4)
+                let cornerRadius = 20 * ctx.globalScale
+
+                ZStack {
+                    Color.black.opacity(0.26)
+                        .ignoresSafeArea()
+
+                    VStack(alignment: .leading, spacing: headerSpacing) {
+                        Text(model.ownerTitle)
+                            .font(.system(size: max(12, 13 * ctx.globalScale), weight: .semibold, design: .rounded))
+                            .foregroundColor(.white.opacity(0.78))
+
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Text("\(model.selectedLabel) 확대 보기")
+                                .font(.system(size: max(22, 24 * ctx.globalScale), weight: .black, design: .rounded))
+                                .foregroundColor(.white)
+                            Spacer(minLength: 8)
+                            Text("\(model.cards.count)장")
+                                .font(.system(size: max(13, 14 * ctx.globalScale), weight: .bold, design: .rounded))
+                                .foregroundColor(.white.opacity(0.72))
+                        }
+
+                        HStack(spacing: chipSpacing) {
+                            ForEach(model.groups) { group in
+                                let isSelected = group.type == model.selectedType
+                                Text("\(group.label) \(group.count)")
+                                    .font(.system(size: max(11, 12 * ctx.globalScale), weight: .bold, design: .rounded))
+                                    .foregroundColor(isSelected ? .black.opacity(0.85) : .white.opacity(group.count > 0 ? 0.92 : 0.55))
+                                    .padding(.horizontal, 10 * ctx.globalScale)
+                                    .padding(.vertical, 6 * ctx.globalScale)
+                                    .background(
+                                        Capsule()
+                                            .fill(group.accentColor.opacity(isSelected ? 0.95 : (group.count > 0 ? 0.28 : 0.12)))
+                                    )
+                            }
+                        }
+
+                        ScrollView(.vertical, showsIndicators: false) {
+                            LazyVGrid(
+                                columns: Array(repeating: GridItem(.flexible(), spacing: itemSpacing), count: columnCount),
+                                spacing: itemSpacing
+                            ) {
+                                ForEach(model.cards) { card in
+                                    CardView(card: card, isFaceUp: true, scale: previewScale)
+                                }
+                            }
+                            .padding(.top, 2)
+                        }
+                        .frame(maxHeight: maxScrollHeight)
+
+                        Text("길게 누르는 동안만 중앙에서 크게 보여줍니다")
+                            .font(.system(size: max(11, 12 * ctx.globalScale), weight: .medium, design: .rounded))
+                            .foregroundColor(.white.opacity(0.66))
+                    }
+                    .padding(panelPadding)
+                    .frame(width: panelWidth)
+                    .background(
+                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                            .fill(Color.black.opacity(0.78))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                            .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                    )
+                    .shadow(color: Color.black.opacity(0.38), radius: 20, x: 0, y: 12)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .allowsHitTesting(false)
         }
+    }
 
-        let id = UUID()
-        let kind: Kind
-        let title: String
-        let detail: String
+    private struct ShakePreviewCardCell: View {
+        let card: Card
+        let isSelected: Bool
+        let scale: CGFloat
+        let compact: Bool
 
-        var accentColor: Color {
-            switch kind {
-            case .sweep:
-                return .yellow
-            case .ttadak:
-                return .orange
-            case .jjok:
-                return .indigo
-            case .cheongdan:
-                return .blue
-            case .hongdan:
-                return .red
-            case .godori:
-                return .green
-            case .gusa:
-                return .teal
-            case .seolsa:
-                return .pink
-            case .seolsaEat:
-                return .orange
-            case .selfSeolsaEat:
-                return .red
-            case .tripleSeolsaEnd:
-                return .mint
-            case .shake:
-                return .cyan
-            case .bomb:
-                return .purple
+        var body: some View {
+            let strokeColor = isSelected ? Color.orange : Color.white.opacity(0.18)
+            let strokeWidth: CGFloat = isSelected ? (compact ? 3 : 4) : 1
+            let cornerRadius: CGFloat = compact ? 8 : 10
+
+            return VStack(spacing: compact ? 0 : 10) {
+                CardView(card: card, scale: scale)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: cornerRadius)
+                            .stroke(strokeColor, lineWidth: strokeWidth)
+                    )
+
+                if !compact {
+                    Text(captionText)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(captionColor)
+                }
             }
         }
 
-        var iconName: String {
-            switch kind {
-            case .sweep:
-                return "wind"
-            case .ttadak:
-                return "sparkle.magnifyingglass"
-            case .jjok:
-                return "sparkles"
-            case .cheongdan:
-                return "tag.fill"
-            case .hongdan:
-                return "tag.circle.fill"
-            case .godori:
-                return "bird.fill"
-            case .gusa:
-                return "9.circle.fill"
-            case .seolsa:
-                return "exclamationmark.triangle.fill"
-            case .seolsaEat:
-                return "hand.thumbsup.fill"
-            case .selfSeolsaEat:
-                return "flame.fill"
-            case .tripleSeolsaEnd:
-                return "trophy.fill"
-            case .shake:
-                return "waveform.path.ecg"
-            case .bomb:
-                return "burst.fill"
+        private var captionText: String {
+            let typeLabel: String = {
+                switch card.type {
+                case .bright:
+                    return "광"
+                case .animal:
+                    return "끗"
+                case .ribbon:
+                    return "띠"
+                case .doubleJunk:
+                    return "쌍피"
+                case .junk:
+                    return "피"
+                case .dummy:
+                    return "도탄"
+                }
+            }()
+            return isSelected ? "낼 카드 · \(typeLabel)" : typeLabel
+        }
+
+        private var captionColor: Color {
+            if isSelected {
+                return .orange
+            }
+
+            switch card.type {
+            case .bright:
+                return .yellow
+            case .animal:
+                return .cyan
+            case .ribbon:
+                return .pink
+            case .doubleJunk:
+                return .orange
+            case .junk:
+                return .white.opacity(0.9)
+            case .dummy:
+                return .gray
+            }
+        }
+    }
+
+    private struct ShakePreviewCardsPanel: View {
+        let previewCards: [Card]
+        let selectedShakeCardId: String?
+
+        var body: some View {
+            VStack(spacing: 14) {
+                Text("현재 들고 있는 패")
+                    .font(.headline)
+                    .foregroundStyle(.white.opacity(0.85))
+
+                ViewThatFits {
+                    HStack(alignment: .top, spacing: 16) {
+                        ForEach(previewCards) { card in
+                            ShakePreviewCardCell(
+                                card: card,
+                                isSelected: card.id == selectedShakeCardId,
+                                scale: 1.25,
+                                compact: false
+                            )
+                        }
+                    }
+
+                    VStack(spacing: 12) {
+                        ForEach(previewCards) { card in
+                            HStack(spacing: 14) {
+                                ShakePreviewCardCell(
+                                    card: card,
+                                    isSelected: card.id == selectedShakeCardId,
+                                    scale: 1.0,
+                                    compact: true
+                                )
+
+                                Text(card.id == selectedShakeCardId ? "낼 카드" : shortTypeLabel(for: card.type))
+                                    .font(.headline.weight(.semibold))
+                                    .foregroundStyle(card.id == selectedShakeCardId ? Color.orange : Color.white.opacity(0.9))
+
+                                Spacer(minLength: 0)
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 18)
+            .background(
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(Color.white.opacity(0.08))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
+            )
+        }
+
+        private func shortTypeLabel(for type: CardType) -> String {
+            switch type {
+            case .bright:
+                return "광"
+            case .animal:
+                return "끗"
+            case .ribbon:
+                return "띠"
+            case .doubleJunk:
+                return "쌍피"
+            case .junk:
+                return "피"
+            case .dummy:
+                return "도탄"
             }
         }
     }
@@ -116,12 +282,13 @@ struct GameView: View {
     @Namespace private var cardAnimationNamespace
     @ObservedObject var config: ConfigManager = .shared
     @StateObject private var animationManager = AnimationManager.shared
+    @StateObject private var specialEventPopupCoordinator = SpecialEventPopupCoordinator()
     @State private var playerHandSlotManager: PlayerHandSlotManager?
     @State private var tableSlotManager: TableSlotManager?
     @State private var tableCardCenters: [String: CGPoint] = [:]
     // Key: "playerId:groupType" (e.g. "abc123:gwang") → screen-space center of that group slot
     @State private var capturedGroupCenters: [String: CGPoint] = [:]
-    // Key: "cardId" -> exact rendered card center in captured area
+    // Key: "playerId:cardId" -> exact rendered card center in captured area
     @State private var capturedCardCenters: [String: CGPoint] = [:]
     // Persistent debug info: survives animation end for inspection
     @State private var persistentDebugSrc: CGPoint? = nil
@@ -138,10 +305,7 @@ struct GameView: View {
     @State private var rewindGeneration: Int = 0
     @State private var starterSelectionState: StarterSelectionState? = nil
     @State private var starterSelectionGeneration: Int = 0
-    @State private var specialEventPopupQueue: [SpecialEventPopup] = []
-    @State private var activeSpecialEventPopup: SpecialEventPopup? = nil
-    @State private var specialEventPopupGeneration: Int = 0
-    @State private var lastProcessedEventLogCount: Int = 0
+    @State private var activeCapturedPreview: CapturedPreviewState? = nil
     
     var body: some View {
         GeometryReader { geometry in
@@ -165,16 +329,33 @@ struct GameView: View {
             updateLatestRewindSnapshot()
         }
         .onChange(of: gameManager.eventLogs.count) { _ in
-            processNewSpecialEventLogs()
+            specialEventPopupCoordinator.process(eventLogs: gameManager.eventLogs)
         }
         .onChange(of: gameManager.gameState) { _ in
             syncSpecialEventOverlayProbe()
+            if !canShowCapturedPreview {
+                dismissCapturedPreview()
+            }
         }
-        .onChange(of: activeSpecialEventPopup?.id) { _ in
+        .onChange(of: specialEventPopupCoordinator.activePopup?.id) { _ in
             syncSpecialEventOverlayProbe()
+            if !canShowCapturedPreview {
+                dismissCapturedPreview()
+            }
         }
-        .onChange(of: specialEventPopupQueue.count) { _ in
+        .onChange(of: specialEventPopupCoordinator.pendingQueueCount) { _ in
             syncSpecialEventOverlayProbe()
+            if !canShowCapturedPreview {
+                dismissCapturedPreview()
+            }
+        }
+        .onChange(of: activeCapturedPreview) { _ in
+            syncCapturedPreviewProbe()
+        }
+        .onChange(of: showingEventLog || showingSettings || showingDeveloperInfo) { isBlockingOverlayVisible in
+            if isBlockingOverlayVisible {
+                dismissCapturedPreview()
+            }
         }
         .onChange(of: gameManager.players.map { $0.id.uuidString }.joined(separator: ",")) { _ in
             // Player IDs can rotate on restart/condition-set; clear stale geometry keys.
@@ -182,15 +363,18 @@ struct GameView: View {
             // Keep captured centers to avoid transient empty-target fallback jumps.
             // CapturedGroupsAreaV2 will upsert fresh owner keys on next layout pass.
             capturedCardCenters.removeAll()
-        }
-        .onChange(of: gameManager.penaltyMoveProgress) { value in
-            persistentDebugProgress = CGFloat(max(0, min(1, value)))
+            dismissCapturedPreview(animated: false)
         }
         .onReceive(gameManager.objectWillChange) { _ in
             // Slot managers can miss nested array mutations in long animation chains.
             // Resync from source-of-truth state on every GameManager change.
             DispatchQueue.main.async {
                 self.resyncSlotManagers()
+                if !self.canShowCapturedPreview {
+                    self.dismissCapturedPreview()
+                } else if self.activeCapturedPreview != nil {
+                    self.syncCapturedPreviewProbe()
+                }
             }
         }
     }
@@ -228,12 +412,14 @@ struct GameView: View {
             turnIndicatorIcon(safeArea: safeArea)
                 .zIndex(205)
             
-            // Unified Moving Card Overlay
+            // Unified Moving Card Overlay (시각적 전용 - 사용자 탭 불필요)
             movingCardOverlay(safeArea: safeArea)
+                .allowsHitTesting(false)
                 .zIndex(210)
 
-            // Debug rewind overlay (debug mode only)
+            // Debug rewind overlay (debug mode only, 시각적 전용)
             rewindOverlay(safeArea: safeArea)
+                .allowsHitTesting(false)
                 .zIndex(211)
 
             // ── PERSISTENT COORDINATE DEBUG OVERLAY (debug mode level3) ──
@@ -303,12 +489,28 @@ struct GameView: View {
         let opponentFrame = ctx.frame(for: .opponent)
         if isCapturedTransfer || isTableToCaptured {
             // Allow cross-area penalty card travel to remain visible end-to-end.
-            OpponentAreaV2(ctx: ctx, animationNamespace: cardAnimationNamespace, gameManager: gameManager, capturedGroupCenters: $capturedGroupCenters, capturedCardCenters: $capturedCardCenters)
+            OpponentAreaV2(
+                ctx: ctx,
+                animationNamespace: cardAnimationNamespace,
+                gameManager: gameManager,
+                capturedGroupCenters: $capturedGroupCenters,
+                capturedCardCenters: $capturedCardCenters,
+                onGroupPreviewRequested: showCapturedPreview,
+                onGroupPreviewEnded: endCapturedPreview
+            )
                 .frame(width: opponentFrame.width, height: opponentFrame.height)
                 .position(x: safeArea.leading + opponentFrame.midX, y: safeArea.top + opponentFrame.midY)
                 .zIndex(opponentZ)
         } else {
-            OpponentAreaV2(ctx: ctx, animationNamespace: cardAnimationNamespace, gameManager: gameManager, capturedGroupCenters: $capturedGroupCenters, capturedCardCenters: $capturedCardCenters)
+            OpponentAreaV2(
+                ctx: ctx,
+                animationNamespace: cardAnimationNamespace,
+                gameManager: gameManager,
+                capturedGroupCenters: $capturedGroupCenters,
+                capturedCardCenters: $capturedCardCenters,
+                onGroupPreviewRequested: showCapturedPreview,
+                onGroupPreviewEnded: endCapturedPreview
+            )
                 .frame(width: opponentFrame.width, height: opponentFrame.height)
                 .clipped()
                 .position(x: safeArea.leading + opponentFrame.midX, y: safeArea.top + opponentFrame.midY)
@@ -357,12 +559,30 @@ struct GameView: View {
         // 3. Player Area
         let playerFrame = ctx.frame(for: .player)
         if isCapturedTransfer || isTableToCaptured {
-            PlayerAreaV2(ctx: ctx, animationNamespace: cardAnimationNamespace, gameManager: gameManager, slotManager: playerHandSlotManager, capturedGroupCenters: $capturedGroupCenters, capturedCardCenters: $capturedCardCenters)
+            PlayerAreaV2(
+                ctx: ctx,
+                animationNamespace: cardAnimationNamespace,
+                gameManager: gameManager,
+                slotManager: playerHandSlotManager,
+                capturedGroupCenters: $capturedGroupCenters,
+                capturedCardCenters: $capturedCardCenters,
+                onGroupPreviewRequested: showCapturedPreview,
+                onGroupPreviewEnded: endCapturedPreview
+            )
                 .frame(width: playerFrame.width, height: playerFrame.height)
                 .position(x: safeArea.leading + playerFrame.midX, y: safeArea.top + playerFrame.midY)
                 .zIndex(playerZ)
         } else {
-            PlayerAreaV2(ctx: ctx, animationNamespace: cardAnimationNamespace, gameManager: gameManager, slotManager: playerHandSlotManager, capturedGroupCenters: $capturedGroupCenters, capturedCardCenters: $capturedCardCenters)
+            PlayerAreaV2(
+                ctx: ctx,
+                animationNamespace: cardAnimationNamespace,
+                gameManager: gameManager,
+                slotManager: playerHandSlotManager,
+                capturedGroupCenters: $capturedGroupCenters,
+                capturedCardCenters: $capturedCardCenters,
+                onGroupPreviewRequested: showCapturedPreview,
+                onGroupPreviewEnded: endCapturedPreview
+            )
                 .frame(width: playerFrame.width, height: playerFrame.height)
                 .clipped()
                 .position(x: safeArea.leading + playerFrame.midX, y: safeArea.top + playerFrame.midY)
@@ -373,7 +593,7 @@ struct GameView: View {
     private func onAppearAction() {
         gameManager.internalComputerAutomationEnabled = true
         gameManager.externalControlMode = false
-        lastProcessedEventLogCount = gameManager.eventLogs.count
+        specialEventPopupCoordinator.markExistingLogsProcessed(gameManager.eventLogs)
         #if targetEnvironment(simulator)
         if SimulatorBridge.shared == nil {
             // Keep simulator UI behavior aligned with real device by default.
@@ -392,6 +612,7 @@ struct GameView: View {
             self.resyncSlotManagers()
         }
         syncSpecialEventOverlayProbe()
+        syncCapturedPreviewProbe()
         updateLatestRewindSnapshot()
     }
 
@@ -728,189 +949,35 @@ struct GameView: View {
         return gameManager.players.first(where: { $0.id.uuidString == playerId })?.name
     }
 
-    private func processNewSpecialEventLogs() {
-        let logs = gameManager.eventLogs
-        if logs.count < lastProcessedEventLogCount {
-            lastProcessedEventLogCount = logs.count
-            resetSpecialEventPopups()
-            return
-        }
-        guard lastProcessedEventLogCount < logs.count else { return }
-
-        let newLogs = Array(logs[lastProcessedEventLogCount..<logs.count])
-        lastProcessedEventLogCount = logs.count
-
-        for log in newLogs {
-            if let popup = specialEventPopup(from: log) {
-                enqueueSpecialEventPopup(popup)
-            }
-        }
-    }
-
-    private func specialEventPopup(from log: String) -> SpecialEventPopup? {
-        if log.contains("reached Triple Seolsa") {
-            let actor = actorName(in: log, marker: " reached") ?? "플레이어"
-            return SpecialEventPopup(
-                kind: .tripleSeolsaEnd,
-                title: "삼뻑 종료",
-                detail: "\(actor)이(가) 3뻑으로 라운드를 종료했습니다."
-            )
-        }
-        if log.contains("declared SHAKE for month") {
-            let actor = actorName(in: log, marker: " declared") ?? "플레이어"
-            return SpecialEventPopup(
-                kind: .shake,
-                title: "흔들기",
-                detail: "\(actor)이(가) 흔들기를 선언했습니다."
-            )
-        }
-        if log.contains("triggered BOMB!") {
-            let actor = actorName(in: log, marker: " triggered") ?? "플레이어"
-            return SpecialEventPopup(
-                kind: .bomb,
-                title: "폭탄",
-                detail: "\(actor)이(가) 폭탄을 사용했습니다."
-            )
-        }
-        if log.contains("swept the table (싹쓸이)!") {
-            let actor = actorName(in: log, marker: " swept") ?? "플레이어"
-            return SpecialEventPopup(
-                kind: .sweep,
-                title: "싹쓸이",
-                detail: "\(actor)이(가) 테이블을 싹쓸이했습니다."
-            )
-        }
-        if log.contains("triggered 따닥(Ttadak)") {
-            let actor = actorName(in: log, marker: " triggered") ?? "플레이어"
-            return SpecialEventPopup(
-                kind: .ttadak,
-                title: "따닥",
-                detail: "\(actor)이(가) 따닥을 달성했습니다."
-            )
-        }
-        if log.contains("triggered 쪽(Jjok)") {
-            let actor = actorName(in: log, marker: " triggered") ?? "플레이어"
-            return SpecialEventPopup(
-                kind: .jjok,
-                title: "쪽",
-                detail: "\(actor)이(가) 쪽을 달성했습니다."
-            )
-        }
-        if log.contains("triggered 청단(Cheongdan)") {
-            let actor = actorName(in: log, marker: " triggered") ?? "플레이어"
-            return SpecialEventPopup(
-                kind: .cheongdan,
-                title: "청단",
-                detail: "\(actor)이(가) 청단을 달성했습니다."
-            )
-        }
-        if log.contains("triggered 홍단(Hongdan)") {
-            let actor = actorName(in: log, marker: " triggered") ?? "플레이어"
-            return SpecialEventPopup(
-                kind: .hongdan,
-                title: "홍단",
-                detail: "\(actor)이(가) 홍단을 달성했습니다."
-            )
-        }
-        if log.contains("triggered 고도리(Godori)") {
-            let actor = actorName(in: log, marker: " triggered") ?? "플레이어"
-            return SpecialEventPopup(
-                kind: .godori,
-                title: "고도리",
-                detail: "\(actor)이(가) 고도리를 달성했습니다."
-            )
-        }
-        if log.contains("triggered 구사(Gusa)") {
-            let actor = actorName(in: log, marker: " triggered") ?? "플레이어"
-            return SpecialEventPopup(
-                kind: .gusa,
-                title: "구사",
-                detail: "\(actor)이(가) 구사를 달성했습니다."
-            )
-        }
-        if log.contains("triggered 뻑(Seolsa)") {
-            let actor = actorName(in: log, marker: " triggered") ?? "플레이어"
-            return SpecialEventPopup(
-                kind: .seolsa,
-                title: "뻑(설사)",
-                detail: "\(actor)의 뻑(설사) 이벤트가 발생했습니다."
-            )
-        }
-        if log.contains("triggered 뻑 먹기(Seolsa Eat)") {
-            let actor = actorName(in: log, marker: " triggered") ?? "플레이어"
-            return SpecialEventPopup(
-                kind: .seolsaEat,
-                title: "뻑 먹기",
-                detail: "\(actor)이(가) 뻑 먹기를 성공했습니다."
-            )
-        }
-        if log.contains("triggered 자뻑(Self Seolsa Eat)") {
-            let actor = actorName(in: log, marker: " triggered") ?? "플레이어"
-            return SpecialEventPopup(
-                kind: .selfSeolsaEat,
-                title: "자뻑",
-                detail: "\(actor)의 자뻑 먹기 이벤트가 발생했습니다."
-            )
-        }
-        return nil
-    }
-
-    private func actorName(in log: String, marker: String) -> String? {
-        guard let markerRange = log.range(of: marker) else { return nil }
-        let actor = log[..<markerRange.lowerBound].trimmingCharacters(in: .whitespacesAndNewlines)
-        return actor.isEmpty ? nil : actor
-    }
-
-    private func enqueueSpecialEventPopup(_ popup: SpecialEventPopup) {
-        if activeSpecialEventPopup?.kind == popup.kind && activeSpecialEventPopup?.detail == popup.detail {
-            return
-        }
-        if specialEventPopupQueue.last?.kind == popup.kind && specialEventPopupQueue.last?.detail == popup.detail {
-            return
-        }
-        specialEventPopupQueue.append(popup)
-        showNextSpecialEventPopupIfNeeded()
-    }
-
-    private func showNextSpecialEventPopupIfNeeded() {
-        guard activeSpecialEventPopup == nil else { return }
-        guard !specialEventPopupQueue.isEmpty else { return }
-
-        specialEventPopupGeneration += 1
-        let generation = specialEventPopupGeneration
-        let nextPopup = specialEventPopupQueue.removeFirst()
-        withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
-            activeSpecialEventPopup = nextPopup
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.7) {
-            guard generation == self.specialEventPopupGeneration else { return }
-            withAnimation(.easeOut(duration: 0.18)) {
-                self.activeSpecialEventPopup = nil
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-                guard generation == self.specialEventPopupGeneration else { return }
-                self.showNextSpecialEventPopupIfNeeded()
-            }
-        }
-    }
-
     private func resetSpecialEventPopups() {
-        specialEventPopupGeneration += 1
-        activeSpecialEventPopup = nil
-        specialEventPopupQueue.removeAll()
+        specialEventPopupCoordinator.reset()
     }
 
     private var shouldDeferEndedOverlayForSpecialEventPopups: Bool {
         guard gameManager.gameState == .ended else { return false }
-        return activeSpecialEventPopup != nil || !specialEventPopupQueue.isEmpty
+        return specialEventPopupCoordinator.hasActiveOrPendingPopups
+    }
+
+    private var isDecisionOverlayState: Bool {
+        switch gameManager.gameState {
+        case .askingGoStop, .askingShake, .choosingCapture, .choosingChrysanthemumRole:
+            return true
+        case .ready, .playing, .ended:
+            return false
+        }
+    }
+
+    private var shouldDeferDecisionOverlayForSpecialEventPopups: Bool {
+        guard isDecisionOverlayState else { return false }
+        return specialEventPopupCoordinator.hasActiveOrPendingPopups
     }
 
     private func syncSpecialEventOverlayProbe() {
         gameManager.updateSpecialEventOverlayProbe(
-            activePopupTitle: activeSpecialEventPopup?.title,
-            pendingQueueCount: specialEventPopupQueue.count,
-            isEndSummaryDeferred: shouldDeferEndedOverlayForSpecialEventPopups
+            activePopupTitle: specialEventPopupCoordinator.activePopup?.title,
+            pendingQueueCount: specialEventPopupCoordinator.pendingQueueCount,
+            isEndSummaryDeferred: shouldDeferEndedOverlayForSpecialEventPopups,
+            isDecisionOverlayDeferred: shouldDeferDecisionOverlayForSpecialEventPopups
         )
     }
 
@@ -1016,6 +1083,11 @@ struct GameView: View {
                         restartManualGame()
                     })
                 }
+            } else if shouldDeferDecisionOverlayForSpecialEventPopups {
+                // Keep decision input blocked until transient event popups finish
+                // so the user never sees overlapping modal surfaces.
+                Color.black.opacity(0.001)
+                    .ignoresSafeArea()
             } else if gameManager.gameState == .askingGoStop {
                 goStopOverlay()
             } else if gameManager.gameState == .askingShake {
@@ -1025,6 +1097,8 @@ struct GameView: View {
             } else if gameManager.gameState == .choosingChrysanthemumRole {
                 chrysanthemumChoiceOverlay()
             }
+
+            capturedPreviewOverlay()
             
             if showingEventLog {
                 EventLogView(eventLogs: gameManager.eventLogs, isPresented: $showingEventLog)
@@ -1040,28 +1114,27 @@ struct GameView: View {
 
             specialEventPopupOverlay()
         }
+        // StarterSelection 중에는 overlayArea ZStack이 테이블 카드 위에 zIndex(200)으로 올라가 있어
+        // 터치를 차단한다. isStarterSelectionActive 상태에서는 hit-testing을 비활성화해
+        // 터치가 아래의 테이블 카드(CenterAreaV2)까지 전달되도록 한다.
+        .allowsHitTesting(!isStarterSelectionActive)
     }
 
     @ViewBuilder
     private func specialEventPopupOverlay() -> some View {
-        if let popup = activeSpecialEventPopup {
-            VStack(spacing: 8) {
-                Text(popup.title)
-                    .font(.system(size: 34, weight: .black, design: .rounded))
-                    .foregroundColor(popup.accentColor)
-                    .multilineTextAlignment(.center)
-                    .shadow(color: .black.opacity(0.85), radius: 5, x: 0, y: 2)
+        if let popup = specialEventPopupCoordinator.activePopup {
+            SpecialEventPopupView(popup: popup)
+        }
+    }
 
-                Text(popup.detail)
-                    .font(.system(size: 20, weight: .bold, design: .rounded))
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(.center)
-                    .shadow(color: .black.opacity(0.85), radius: 4, x: 0, y: 2)
-                    .padding(.horizontal, 20)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-            .transition(.scale(scale: 0.92).combined(with: .opacity))
-            .allowsHitTesting(false)
+    @ViewBuilder
+    private func capturedPreviewOverlay() -> some View {
+        if canShowCapturedPreview,
+           let preview = activeCapturedPreview,
+           let ctx = config.layoutContext,
+           let model = resolvedCapturedPreviewModel(for: preview) {
+            CapturedPreviewPanel(ctx: ctx, model: model)
+                .transition(.scale(scale: 0.96).combined(with: .opacity))
         }
     }
 
@@ -1093,20 +1166,119 @@ struct GameView: View {
         starterSelectionState != nil
     }
 
+    private var canShowCapturedPreview: Bool {
+        guard gameManager.gameState == .playing else { return false }
+        guard gameManager.currentMovingCards.isEmpty else { return false }
+        guard !showingEventLog, !showingSettings, !showingDeveloperInfo else { return false }
+        guard !specialEventPopupCoordinator.hasActiveOrPendingPopups else { return false }
+        return true
+    }
+
+    private func showCapturedPreview(ownerPlayerId: String, groupType: String) {
+        let nextState = CapturedPreviewState(ownerPlayerId: ownerPlayerId, groupType: groupType)
+        guard canShowCapturedPreview else { return }
+        guard resolvedCapturedPreviewModel(for: nextState) != nil else { return }
+        if activeCapturedPreview == nextState { return }
+        withAnimation(.easeOut(duration: 0.16)) {
+            activeCapturedPreview = nextState
+        }
+    }
+
+    private func endCapturedPreview(ownerPlayerId: String, groupType: String) {
+        guard activeCapturedPreview == CapturedPreviewState(ownerPlayerId: ownerPlayerId, groupType: groupType) else { return }
+        dismissCapturedPreview()
+    }
+
+    private func dismissCapturedPreview(animated: Bool = true) {
+        guard activeCapturedPreview != nil else {
+            syncCapturedPreviewProbe()
+            return
+        }
+        if animated {
+            withAnimation(.easeOut(duration: 0.12)) {
+                activeCapturedPreview = nil
+            }
+        } else {
+            activeCapturedPreview = nil
+        }
+    }
+
+    private func syncCapturedPreviewProbe() {
+        guard let preview = activeCapturedPreview,
+              let model = resolvedCapturedPreviewModel(for: preview) else {
+            gameManager.updateCapturedPreviewProbe(ownerPlayerId: nil, groupType: nil, cardCount: 0)
+            return
+        }
+        gameManager.updateCapturedPreviewProbe(
+            ownerPlayerId: preview.ownerPlayerId,
+            groupType: preview.groupType,
+            cardCount: model.cards.count
+        )
+    }
+
+    private func previewOwnerPlayer(for ownerPlayerId: String) -> Player? {
+        gameManager.players.first { $0.id.uuidString == ownerPlayerId }
+    }
+
+    private func previewGroupConfigs(for ownerPlayerId: String) -> [CapturedGroupConfigV2] {
+        guard let ctx = config.layoutContext else { return [] }
+        let playerOwnerId = gameManager.players.first?.id.uuidString
+        let capturedConfig = ownerPlayerId == playerOwnerId
+            ? ctx.config.areas.player.elements.captured
+            : ctx.config.areas.opponent.elements.captured
+        return capturedConfig.layout.groups ?? []
+    }
+
+    private func resolvedCapturedPreviewModel(for preview: CapturedPreviewState) -> CapturedPreviewModel? {
+        guard let owner = previewOwnerPlayer(for: preview.ownerPlayerId) else { return nil }
+        let groups = previewGroupConfigs(for: preview.ownerPlayerId)
+        guard !groups.isEmpty else { return nil }
+
+        let summaries = groups.map { group in
+            CapturedPreviewGroupSummary(
+                type: group.type,
+                label: group.label,
+                accentColor: group.background.colorSwiftUI,
+                count: CapturedCardGrouping.sortedCards(for: group.type, from: owner.capturedCards).count
+            )
+        }
+        let selectedCards = CapturedCardGrouping.sortedCards(for: preview.groupType, from: owner.capturedCards)
+        guard !selectedCards.isEmpty else { return nil }
+        guard let selectedGroup = groups.first(where: { $0.type == preview.groupType }) else { return nil }
+
+        let playerOwnerId = gameManager.players.first?.id.uuidString
+        let ownerTitle = preview.ownerPlayerId == playerOwnerId
+            ? "내 획득패"
+            : "\(owner.name) 획득패"
+
+        return CapturedPreviewModel(
+            ownerTitle: ownerTitle,
+            selectedLabel: selectedGroup.label,
+            selectedType: selectedGroup.type,
+            cards: selectedCards,
+            groups: summaries
+        )
+    }
+
     private func startManualGame() {
+        dismissCapturedPreview(animated: false)
         resetSpecialEventPopups()
         gameManager.internalComputerAutomationEnabled = true
         gameManager.externalControlMode = false
-        if let starterRule = starterRuleForManualStart() {
-            beginStarterSelection(rule: starterRule)
-            return
-        }
+        // StarterSelection(밤일낮장 선 정하기)은 현재 비활성화됨.
+        // rule.yaml의 starter.enabled=false가 configuration.yaml cached 설정에 의해 override되는 문제로
+        // 직접 여기서 스킵 처리. 재활성화 시 아래 주석을 해제하고 이 줄을 제거.
+        // if let starterRule = starterRuleForManualStart() {
+        //     beginStarterSelection(rule: starterRule)
+        //     return
+        // }
         resetStarterSelectionState()
         gameManager.startGame()
     }
 
     private func restartManualGame() {
         let previousWinnerIndex = gameManager.previousRoundWinnerIndex()
+        dismissCapturedPreview(animated: false)
         resetSpecialEventPopups()
         resetStarterSelectionState()
         gameManager.internalComputerAutomationEnabled = true
@@ -1406,20 +1578,73 @@ struct GameView: View {
     }
 
 
+    private func shakePreviewCards(for month: Int) -> [Card] {
+        guard let currentPlayer = gameManager.currentPlayer else { return [] }
+        return currentPlayer.hand
+            .filter { $0.month.rawValue == month }
+            .sorted { lhs, rhs in
+                let lhsRank = shakeCardSortRank(for: lhs.type)
+                let rhsRank = shakeCardSortRank(for: rhs.type)
+                if lhsRank != rhsRank {
+                    return lhsRank < rhsRank
+                }
+                if lhs.imageIndex != rhs.imageIndex {
+                    return lhs.imageIndex < rhs.imageIndex
+                }
+                return lhs.id < rhs.id
+            }
+    }
+
+    private func shakeCardSortRank(for type: CardType) -> Int {
+        switch type {
+        case .bright:
+            return 0
+        case .animal:
+            return 1
+        case .ribbon:
+            return 2
+        case .doubleJunk:
+            return 3
+        case .junk:
+            return 4
+        case .dummy:
+            return 5
+        }
+    }
+
+    private var projectedShakeMultiplier: Int {
+        let projectedShakeCount = (gameManager.currentPlayer?.shakeCount ?? 0) + 1
+        return 1 << projectedShakeCount
+    }
+
     @ViewBuilder
     func shakeOverlay() -> some View {
         if let month = gameManager.pendingShakeMonths.first {
+            let previewCards = shakePreviewCards(for: month)
+            let selectedShakeCardId = gameManager.pendingShakeCard?.id
+
             ZStack {
                 Color.black.opacity(0.6).ignoresSafeArea()
-                VStack(spacing: 30) {
-                    Text("\(month)월 카드가 3장 있습니다!")
-                        .font(.largeTitle)
+                VStack(spacing: 24) {
+                    Text("\(month)월 흔들기")
+                        .font(.system(size: 34, weight: .bold, design: .rounded))
                         .fontWeight(.bold)
                         .foregroundStyle(.white)
                     
-                    Text("흔들겠습니까? (점수 \(gameManager.players.first?.shakeCount ?? 0 + 2)배 적용)")
-                        .font(.title2)
+                    Text("손패에서 같은 월 카드 \(previewCards.count)장을 확인했습니다.")
+                        .font(.title3)
                         .foregroundStyle(.white.opacity(0.8))
+
+                    if !previewCards.isEmpty {
+                        ShakePreviewCardsPanel(
+                            previewCards: previewCards,
+                            selectedShakeCardId: selectedShakeCardId
+                        )
+                    }
+
+                    Text("흔들면 점수 배수가 x\(projectedShakeMultiplier)로 올라갑니다.")
+                        .font(.headline)
+                        .foregroundStyle(.white.opacity(0.82))
                     
                     HStack(spacing: 40) {
                         Button(action: {
@@ -1798,7 +2023,6 @@ extension GameView {
             usedRealCoords.append(usedReal)
             let x = sourcePoint.x + (targetX - sourcePoint.x) * p
             let y = sourcePoint.y + (targetY - sourcePoint.y) * p
-            print("📦 [overlay] \(card.month)_\(card.type) src=(\(Int(sourcePoint.x)),\(Int(sourcePoint.y))) tgt=(\(Int(targetX)),\(Int(targetY))) p=\(String(format:"%.2f",p)) realCoord=\(usedReal)")
             logMonth6TableToCapturedTrace(
                 card: card,
                 index: index,
@@ -1852,18 +2076,6 @@ extension GameView {
                 }
             }
 
-            // Persist latest coordinates so debug panel stays visible after animation.
-            if let src0 = srcPoints.first, let tgt0 = tgtPoints.first {
-                let isRealCoord = usedRealCoords.first ?? false
-                Color.clear
-                    .frame(width: 1, height: 1)
-                    .onAppear {
-                        updatePersistentCoordDebug(src: src0, tgt: tgt0, isReal: isRealCoord, progress: p)
-                    }
-                    .onChange(of: gameManager.penaltyMoveProgress) { _ in
-                        updatePersistentCoordDebug(src: src0, tgt: tgt0, isReal: isRealCoord, progress: p)
-                    }
-            }
         }
     }
 
@@ -1939,14 +2151,13 @@ extension GameView {
         let key = "\(ownerId):\(targetType)"
 
         // Priority 0: exact card center in captured area (best for table->captured direct path)
-        if let cardCenter = capturedCardCenters[card.id] {
-            print("🎯 [capturedAnchorPoint] CARD HIT for \(card.month)_\(card.type) id=\(card.id) -> \(cardCenter)")
+        let exactCardKey = CapturedCardCenterKey.make(ownerPlayerId: ownerId, cardId: card.id)
+        if let cardCenter = capturedCardCenters[exactCardKey] {
             return cardCenter
         }
 
         // Priority 1: Use real screen-space center captured by GeometryReader at render time
         if let realCenter = capturedGroupCenters[key] {
-            print("🎯 [capturedAnchorPoint] REAL HIT for \(card.month)_\(card.type) key=\(key) -> \(realCenter)")
             return realCenter
         }
 
@@ -1962,16 +2173,13 @@ extension GameView {
                     squaredDistance(a, fallbackCenter) < squaredDistance(b, fallbackCenter)
                 }
                 if let best {
-                    print("🟠 [capturedAnchorPoint] SURROGATE HIT for \(card.month)_\(card.type) key=\(key) via group=\(targetType) -> \(best)")
                     return best
                 }
             } else if let guessed = sameGroupCenters.first {
-                print("🟠 [capturedAnchorPoint] SURROGATE HIT for \(card.month)_\(card.type) key=\(key) using first group center -> \(guessed)")
                 return guessed
             }
         }
 
-        print("⚠️ [capturedAnchorPoint] REAL MISS for \(card.month)_\(card.type) key=\(key). Using math fallback.")
         return fallbackCenter
     }
 
@@ -2070,10 +2278,8 @@ extension GameView {
     private func tableAnchorPoint(for cardId: String, safeArea: EdgeInsets) -> CGPoint? {
         // Priority 1: Use real screen-space center captured by GeometryReader at render time
         if let realCenter = tableCardCenters[cardId] {
-            print("🎯 [tableAnchorPoint] REAL HIT for \(cardId) -> \(realCenter)")
             return realCenter
         }
-        print("⚠️ [tableAnchorPoint] REAL MISS for \(cardId). Using tableCardCenters median fallback.")
 
         // Priority 2: Use median of existing real positions (tableCardCenters has correct Y values from GeometryReader)
         // This handles newly-played cards whose onAppear hasn't fired yet.

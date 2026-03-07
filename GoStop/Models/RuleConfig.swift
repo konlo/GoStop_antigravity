@@ -81,6 +81,7 @@ struct ChongtongRule: Codable {
 struct TtadakRule: Codable {
     var enabled: Bool
     var steal_pi_count: Int
+    var first_turn_bonus_score: Int?
     var description: String?
 }
 
@@ -95,6 +96,8 @@ struct SeolsaRule: Codable {
     var penalty_pi_count: Int
     var instant_win_count: Int?
     var instant_win_score: Int?
+    var invalid_on_last_hand: Bool?
+    var first_turn_bonus_score: Int?
     var description: String?
 }
 
@@ -110,7 +113,34 @@ struct SweepRule: Codable {
     var bonus_points: Int
     var score_multiplier_type: String?
     var steal_pi_count: Int
+    var allow_empty_start_via_jjok: Bool
     var description: String?
+
+    init(
+        enabled: Bool,
+        bonus_points: Int,
+        score_multiplier_type: String?,
+        steal_pi_count: Int,
+        allow_empty_start_via_jjok: Bool = true,
+        description: String?
+    ) {
+        self.enabled = enabled
+        self.bonus_points = bonus_points
+        self.score_multiplier_type = score_multiplier_type
+        self.steal_pi_count = steal_pi_count
+        self.allow_empty_start_via_jjok = allow_empty_start_via_jjok
+        self.description = description
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        enabled = try container.decode(Bool.self, forKey: .enabled)
+        bonus_points = try container.decode(Int.self, forKey: .bonus_points)
+        score_multiplier_type = try container.decodeIfPresent(String.self, forKey: .score_multiplier_type)
+        steal_pi_count = try container.decode(Int.self, forKey: .steal_pi_count)
+        allow_empty_start_via_jjok = try container.decodeIfPresent(Bool.self, forKey: .allow_empty_start_via_jjok) ?? true
+        description = try container.decodeIfPresent(String.self, forKey: .description)
+    }
 }
 
 struct ShakeRule: Codable {
@@ -215,7 +245,35 @@ struct GoStopRule: Codable {
     var min_score_2_players: Int
     var apply_bak_on_stop: Bool
     var bak_only_if_opponent_go: Bool
+    var require_opponent_capture_for_scoring: Bool
     var go_bonuses: [String: GoBonus]
+
+    init(
+        min_score_3_players: Int,
+        min_score_2_players: Int,
+        apply_bak_on_stop: Bool,
+        bak_only_if_opponent_go: Bool,
+        require_opponent_capture_for_scoring: Bool = true,
+        go_bonuses: [String: GoBonus]
+    ) {
+        self.min_score_3_players = min_score_3_players
+        self.min_score_2_players = min_score_2_players
+        self.apply_bak_on_stop = apply_bak_on_stop
+        self.bak_only_if_opponent_go = bak_only_if_opponent_go
+        self.require_opponent_capture_for_scoring = require_opponent_capture_for_scoring
+        self.go_bonuses = go_bonuses
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        min_score_3_players = try container.decode(Int.self, forKey: .min_score_3_players)
+        min_score_2_players = try container.decode(Int.self, forKey: .min_score_2_players)
+        apply_bak_on_stop = try container.decode(Bool.self, forKey: .apply_bak_on_stop)
+        bak_only_if_opponent_go = try container.decode(Bool.self, forKey: .bak_only_if_opponent_go)
+        require_opponent_capture_for_scoring =
+            try container.decodeIfPresent(Bool.self, forKey: .require_opponent_capture_for_scoring) ?? true
+        go_bonuses = try container.decode([String: GoBonus].self, forKey: .go_bonuses)
+    }
 }
 
 struct GoBonus: Codable {
@@ -358,6 +416,10 @@ class RuleLoader {
     func updateRules(_ updatedConfig: RuleConfig) {
         self.config = updatedConfig
         saveRules()
+    }
+
+    func replaceRulesTemporarily(_ updatedConfig: RuleConfig) {
+        self.config = updatedConfig
     }
     
     /// Saves current rules to configuration.yaml.

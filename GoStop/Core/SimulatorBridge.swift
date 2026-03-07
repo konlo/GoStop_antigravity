@@ -15,6 +15,8 @@ class SimulatorBridge {
     private var cachedStatePayload: Data?
     private var cachedStateTimestamp: TimeInterval = 0
     private let stateCacheTTL: TimeInterval = 0.0
+    private var hasTemporaryRuleOverride = false
+    private var specialEventProbeGeneration = 0
     
     init(gameManager: GameManager, port: UInt16 = 8080) {
         self.gameManager = gameManager
@@ -122,6 +124,8 @@ class SimulatorBridge {
                 
             case "start_game":
                 DispatchQueue.main.async {
+                    self.resetTemporaryRulesIfNeeded()
+                    self.resetSimulatedSpecialEventProbe()
                     self.gameManager.startGame()
                     self.sendSimpleResponse(status: "ok", action: action, connection: connection)
                 }
@@ -227,15 +231,27 @@ class SimulatorBridge {
                 DispatchQueue.main.async {
                     var didChange = false
 
-                    if dataDict["rule_dummy_card_count"] != nil {
+                    if dataDict["rule_dummy_card_count"] != nil ||
+                        dataDict["rule_chongtong_initial_score"] != nil ||
+                        dataDict["rule_chongtong_midgame_score"] != nil {
                         guard var rules = RuleLoader.shared.config else {
                             self.sendErrorResponse(message: "Rule config is not loaded", connection: connection)
                             return
                         }
                         if let dummyCardCount = dataDict["rule_dummy_card_count"] as? Int {
                             rules.special_moves.bomb.dummy_card_count = max(0, dummyCardCount)
-                            RuleLoader.shared.updateRules(rules)
                             didChange = true
+                        }
+                        if let initialScore = dataDict["rule_chongtong_initial_score"] as? Int {
+                            rules.special_moves.chongtong.initial_chongtong_score = max(0, initialScore)
+                            didChange = true
+                        }
+                        if let midgameScore = dataDict["rule_chongtong_midgame_score"] as? Int {
+                            rules.special_moves.chongtong.midgame_chongtong_score = max(0, midgameScore)
+                            didChange = true
+                        }
+                        if didChange {
+                            RuleLoader.shared.updateRules(rules)
                         }
                     }
 
@@ -282,12 +298,16 @@ class SimulatorBridge {
                 
             case "click_restart_button":
                 DispatchQueue.main.async {
+                    self.resetTemporaryRulesIfNeeded()
+                    self.resetSimulatedSpecialEventProbe()
                     self.gameManager.setupGame()
                     self.sendSimpleResponse(status: "action executed", action: action, connection: connection)
                 }
                 
             case "click_start_button":
                 DispatchQueue.main.async {
+                    self.resetTemporaryRulesIfNeeded()
+                    self.resetSimulatedSpecialEventProbe()
                     self.gameManager.startGame()
                     self.sendSimpleResponse(status: "action executed", action: action, connection: connection)
                 }
@@ -389,6 +409,15 @@ class SimulatorBridge {
                 }
                 
                 DispatchQueue.main.async {
+                    if let customRules = data["custom_rules"] as? [String: Any] {
+                        do {
+                            try self.applyCustomRules(customRules)
+                        } catch {
+                            self.sendErrorResponse(message: "Failed to apply custom_rules: \(error.localizedDescription)", connection: connection)
+                            return
+                        }
+                    }
+
                     if let seed = data["rng_seed"] as? Int {
                         self.gameManager.setupGame(seed: seed)
                     }
@@ -414,21 +443,26 @@ class SimulatorBridge {
 
                     if let mockEndReason = data["mock_game_end_reason"] as? String {
                         self.gameManager.gameEndReason = GameEndReason(rawValue: mockEndReason)
+                    } else if let mockEndReason = data["mock_gameEndReason"] as? String {
+                        self.gameManager.gameEndReason = GameEndReason(rawValue: mockEndReason)
                     }
 
                     if let mockEventLogs = data["mock_event_logs"] as? [String] {
                         self.gameManager.eventLogs = mockEventLogs
+                        self.simulateSpecialEventProbe(for: mockEventLogs)
                     }
                     
                     if let mockCaptured = data["mock_captured_cards"] as? [[String: Any]] {
                          let player = self.gameManager.players[0]
                          player.capturedCards = self.parseCards(mockCaptured)
+                         player.hasCapturedThisRound = !player.capturedCards.isEmpty
                          player.score = ScoringSystem.calculateScore(for: player)
                     }
                     
                     if let mockOpponentCaptured = data["mock_opponent_captured_cards"] as? [[String: Any]] {
                          let opponent = self.gameManager.players[1]
                          opponent.capturedCards = self.parseCards(mockOpponentCaptured)
+                         opponent.hasCapturedThisRound = !opponent.capturedCards.isEmpty
                          opponent.score = ScoringSystem.calculateScore(for: opponent)
                     }
                     
@@ -463,20 +497,34 @@ class SimulatorBridge {
                             if let ttadakCount = pData["ttadakCount"] as? Int { p.ttadakCount = ttadakCount }
                             if let jjokCount = pData["jjokCount"] as? Int { p.jjokCount = jjokCount }
                             if let seolsaCount = pData["seolsaCount"] as? Int { p.seolsaCount = seolsaCount }
+                            if let awardedFirstTurnTtadakBonus = pData["awardedFirstTurnTtadakBonus"] as? Bool {
+                                p.awardedFirstTurnTtadakBonus = awardedFirstTurnTtadakBonus
+                            }
+                            if let awardedFirstTurnSeolsaBonus = pData["awardedFirstTurnSeolsaBonus"] as? Bool {
+                                p.awardedFirstTurnSeolsaBonus = awardedFirstTurnSeolsaBonus
+                            }
                             if let isPiMungbak = pData["isPiMungbak"] as? Bool { p.isPiMungbak = isPiMungbak }
                             if let mungddaCount = pData["mungddaCount"] as? Int { p.mungddaCount = mungddaCount }
                             if let bombMungddaCount = pData["bombMungddaCount"] as? Int { p.bombMungddaCount = bombMungddaCount }
                             if let isComputer = pData["isComputer"] as? Bool { p.isComputer = isComputer }
                             if let dummyCardCount = pData["dummyCardCount"] as? Int { p.dummyCardCount = dummyCardCount }
+                            if let hasCapturedThisRound = pData["hasCapturedThisRound"] as? Bool {
+                                p.hasCapturedThisRound = hasCapturedThisRound
+                            }
                             
                             if let h = pData["hand"] as? [[String: Any]] {
                                 p.hand = self.parseCards(h)
                             }
                             if let c = pData["capturedCards"] as? [[String: Any]] {
                                 p.capturedCards = self.parseCards(c)
+                                p.hasCapturedThisRound = !p.capturedCards.isEmpty
                                 p.score = ScoringSystem.calculateScore(for: p)
                             }
                         }
+                    }
+
+                    if let mockCompletedTurnCount = data["mock_completed_turn_count"] as? Int {
+                        self.gameManager.setCompletedTurnCountForTesting(mockCompletedTurnCount)
                     }
                     
                     // Mock month owners for Seolsa testing
@@ -529,6 +577,179 @@ class SimulatorBridge {
         }
         return cards
     }
+
+    private func resetTemporaryRulesIfNeeded() {
+        guard hasTemporaryRuleOverride else { return }
+        RuleLoader.shared.loadRules()
+        hasTemporaryRuleOverride = false
+    }
+
+    private func resetSimulatedSpecialEventProbe() {
+        specialEventProbeGeneration += 1
+        applySimulatedSpecialEventProbe(activePopupTitle: nil, pendingQueueCount: 0)
+    }
+
+    private func simulateSpecialEventProbe(for eventLogs: [String]) {
+        resetSimulatedSpecialEventProbe()
+        let generation = specialEventProbeGeneration
+        let popupTitles = eventLogs.compactMap { simulatedSpecialEventPopupTitle(from: $0) }
+
+        guard !popupTitles.isEmpty else {
+            return
+        }
+
+        presentSimulatedSpecialEventPopup(at: 0, titles: popupTitles, generation: generation)
+    }
+
+    private func presentSimulatedSpecialEventPopup(
+        at index: Int,
+        titles: [String],
+        generation: Int
+    ) {
+        guard generation == specialEventProbeGeneration else { return }
+        guard titles.indices.contains(index) else {
+            applySimulatedSpecialEventProbe(activePopupTitle: nil, pendingQueueCount: 0)
+            return
+        }
+
+        let pendingQueueCount = max(0, titles.count - index - 1)
+        applySimulatedSpecialEventProbe(
+            activePopupTitle: titles[index],
+            pendingQueueCount: pendingQueueCount
+        )
+
+        let displayDuration: TimeInterval = 1.7
+        let queueAdvanceDelay: TimeInterval = 0.12
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + displayDuration) {
+            guard generation == self.specialEventProbeGeneration else { return }
+            self.applySimulatedSpecialEventProbe(
+                activePopupTitle: nil,
+                pendingQueueCount: pendingQueueCount
+            )
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + queueAdvanceDelay) {
+                guard generation == self.specialEventProbeGeneration else { return }
+                let nextIndex = index + 1
+                if nextIndex < titles.count {
+                    self.presentSimulatedSpecialEventPopup(
+                        at: nextIndex,
+                        titles: titles,
+                        generation: generation
+                    )
+                } else {
+                    self.applySimulatedSpecialEventProbe(activePopupTitle: nil, pendingQueueCount: 0)
+                }
+            }
+        }
+    }
+
+    private func applySimulatedSpecialEventProbe(
+        activePopupTitle: String?,
+        pendingQueueCount: Int
+    ) {
+        let hasActiveOrPending = activePopupTitle != nil || pendingQueueCount > 0
+        let isDecisionOverlayDeferred = isDecisionOverlayState(gameManager.gameState) && hasActiveOrPending
+        let isEndSummaryDeferred = gameManager.gameState == .ended && hasActiveOrPending
+
+        gameManager.updateSpecialEventOverlayProbe(
+            activePopupTitle: activePopupTitle,
+            pendingQueueCount: pendingQueueCount,
+            isEndSummaryDeferred: isEndSummaryDeferred,
+            isDecisionOverlayDeferred: isDecisionOverlayDeferred
+        )
+    }
+
+    private func isDecisionOverlayState(_ gameState: GameState) -> Bool {
+        switch gameState {
+        case .askingGoStop, .askingShake, .choosingCapture, .choosingChrysanthemumRole:
+            return true
+        case .ready, .playing, .ended:
+            return false
+        }
+    }
+
+    private func simulatedSpecialEventPopupTitle(from log: String) -> String? {
+        if log.contains("reached Triple Seolsa") {
+            return "삼뻑 종료"
+        }
+        if log.contains("declared SHAKE for month") {
+            return "흔들기"
+        }
+        if log.contains("triggered BOMB!") {
+            return "폭탄"
+        }
+        if log.contains("swept the table (싹쓸이)!") {
+            return "싹쓸이"
+        }
+        if log.contains("triggered 따닥(Ttadak)") {
+            return "따닥"
+        }
+        if log.contains("triggered 쪽(Jjok)") {
+            return "쪽"
+        }
+        if log.contains("triggered 청단(Cheongdan)") {
+            return "청단"
+        }
+        if log.contains("triggered 홍단(Hongdan)") {
+            return "홍단"
+        }
+        if log.contains("triggered 고도리(Godori)") {
+            return "고도리"
+        }
+        if log.contains("triggered 구사(Gusa)") {
+            return "구사"
+        }
+        if log.contains("triggered 뻑(Seolsa)") {
+            return "뻑(설사)"
+        }
+        if log.contains("triggered 뻑 먹기(Seolsa Eat)") {
+            return "뻑 먹기"
+        }
+        if log.contains("triggered 자뻑(Self Seolsa Eat)") {
+            return "자뻑"
+        }
+        return nil
+    }
+
+    private func applyCustomRules(_ customRules: [String: Any]) throws {
+        guard let baseRules = ConfigurationStore.shared.ruleConfig() ?? RuleLoader.shared.config else {
+            throw NSError(
+                domain: "SimulatorBridge",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Base rule config is not loaded"]
+            )
+        }
+
+        let encoder = JSONEncoder()
+        let baseData = try encoder.encode(baseRules)
+        guard let baseJSONObject = try JSONSerialization.jsonObject(with: baseData) as? [String: Any] else {
+            throw NSError(
+                domain: "SimulatorBridge",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to serialize base rules"]
+            )
+        }
+
+        let mergedJSONObject = mergeJSONObject(baseJSONObject, with: customRules)
+        let mergedData = try JSONSerialization.data(withJSONObject: mergedJSONObject, options: [])
+        let decodedRules = try JSONDecoder().decode(RuleConfig.self, from: mergedData)
+        RuleLoader.shared.replaceRulesTemporarily(decodedRules)
+        hasTemporaryRuleOverride = true
+    }
+
+    private func mergeJSONObject(_ base: [String: Any], with overrides: [String: Any]) -> [String: Any] {
+        var merged = base
+        for (key, overrideValue) in overrides {
+            if let overrideDict = overrideValue as? [String: Any],
+               let baseDict = merged[key] as? [String: Any] {
+                merged[key] = mergeJSONObject(baseDict, with: overrideDict)
+            } else {
+                merged[key] = overrideValue
+            }
+        }
+        return merged
+    }
     
     private func sendSimpleResponse(status: String, action: String, connection: NWConnection) {
         let resp = ["status": status, "action": action]
@@ -559,6 +780,8 @@ class SimulatorBridge {
     private func persistenceProbeData() -> [String: Any] {
         [
             "rule_dummy_card_count": RuleLoader.shared.config?.special_moves.bomb.dummy_card_count ?? -1,
+            "rule_chongtong_initial_score": RuleLoader.shared.config?.special_moves.chongtong.initial_chongtong_score ?? -1,
+            "rule_chongtong_midgame_score": RuleLoader.shared.config?.special_moves.chongtong.midgame_chongtong_score ?? -1,
             "animation_opponent_action_delay": AnimationManager.shared.config.opponent_action_delay,
             "first_launch_starter_applied": ConfigurationStore.shared.firstLaunchStarterApplied(),
             "configuration_path": ConfigurationStore.shared.configurationPath

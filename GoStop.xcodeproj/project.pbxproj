@@ -37,6 +37,7 @@
 		7191E1B975ABC707C15A1FF2 /* GameAreaViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A6AE872E752608836265117 /* GameAreaViews.swift */; };
 		808657D99FB2F8247B9D373F /* Deck.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C9DC8F2B463C152AB92172B /* Deck.swift */; };
 		89D4C50CC12F800CCB24D5EA /* LayoutConfigV2.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3085BB433FB735CFD683B342 /* LayoutConfigV2.swift */; };
+		9A2B4C6D8E0F112233445566 /* SpecialEventPopupModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A2B4C6D8E0F112233445567 /* SpecialEventPopupModule.swift */; };
 		912AAFDB854A8A756615D5D9 /* DebugEndgameSummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2494B7B2463310B5E13410E /* DebugEndgameSummaryView.swift */; };
 		9EAF94310537CBCB3CE79C2A /* LayoutContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08DC9353031FD0D4F7EDF917 /* LayoutContext.swift */; };
 		A8E8EE127772993DF00F279D /* LayoutConfigV2.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3085BB433FB735CFD683B342 /* LayoutConfigV2.swift */; };
@@ -86,6 +87,7 @@
 		2C9DC8F2B463C152AB92172B /* Deck.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Deck.swift; sourceTree = "<group>"; };
 		307B0A27C609202DD546A40A /* GoStopCLI */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = text; path = GoStopCLI; sourceTree = BUILT_PRODUCTS_DIR; };
 		3085BB433FB735CFD683B342 /* LayoutConfigV2.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutConfigV2.swift; sourceTree = "<group>"; };
+		9A2B4C6D8E0F112233445567 /* SpecialEventPopupModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpecialEventPopupModule.swift; sourceTree = "<group>"; };
 		40A8AF9CA959E19695C3C65E /* AudioManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioManager.swift; sourceTree = "<group>"; };
 		4A3C1F6EB55586E9BE2C8E36 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		4C817E2BC7A6C44D1434325E /* ScoringSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoringSystem.swift; sourceTree = "<group>"; };
@@ -144,6 +146,7 @@
 				7A6AE872E752608836265117 /* GameAreaViews.swift */,
 				5BA63E4C6CDD8893D44DEAE5 /* GameView.swift */,
 				E2E17F950BAB90799F5D6CEE /* RuleSettingsView.swift */,
+				9A2B4C6D8E0F112233445567 /* SpecialEventPopupModule.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -252,6 +255,7 @@
 				F3EAB6DC9AFD7213A7BE4BEA /* Sources */,
 				B50273A6F20F4DF3DEFEF993 /* Resources */,
 				4D2D7874BD86DC1F4509E95F /* Frameworks */,
+				1CB37470B81B0CD47BA8D2D3 /* Update Build Version */,
 			);
 			buildRules = (
 			);
@@ -344,30 +348,53 @@
 		B50273A6F20F4DF3DEFEF993 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
-				files = (
-					F95644401EAA22B21356588D /* Assets.xcassets in Resources */,
-					F618CAD8BE7161E2EF105F13 /* Pixel_Paradise_Groove.mp3 in Resources */,
-					F646EB0313444F8E916B04C2 /* hwatu_card_hit.wav in Resources */,
-					7B8828B09E4A4C9A8D2A1E11 /* hwatu_blanket_puck.wav in Resources */,
-					0A51A5C805AD7B89B9629632 /* layout_hwatu.json in Resources */,
-					E7421836888772ACFC22C581 /* replace_images.py in Resources */,
-					382086F1D4678D7A44AFEE6E /* rule.yaml in Resources */,
+			files = (
+				F95644401EAA22B21356588D /* Assets.xcassets in Resources */,
+				F618CAD8BE7161E2EF105F13 /* Pixel_Paradise_Groove.mp3 in Resources */,
+				F646EB0313444F8E916B04C2 /* hwatu_card_hit.wav in Resources */,
+				7B8828B09E4A4C9A8D2A1E11 /* hwatu_blanket_puck.wav in Resources */,
+				0A51A5C805AD7B89B9629632 /* layout_hwatu.json in Resources */,
+				E7421836888772ACFC22C581 /* replace_images.py in Resources */,
+				382086F1D4678D7A44AFEE6E /* rule.yaml in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		D8B3733556BE837A8E70C700 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
-				files = (
-					2213E7E34BA30D7E97366273 /* Pixel_Paradise_Groove.mp3 in Resources */,
-					16E4282522134F35A8D7AB11 /* hwatu_card_hit.wav in Resources */,
-					4F28C762E6D54D20B0A23D01 /* hwatu_blanket_puck.wav in Resources */,
-					1447E916E4EEA0AB610C9DAC /* layout_hwatu.json in Resources */,
-					13AA39B13AD565444986FE26 /* rule.yaml in Resources */,
-				);
+			files = (
+				2213E7E34BA30D7E97366273 /* Pixel_Paradise_Groove.mp3 in Resources */,
+				16E4282522134F35A8D7AB11 /* hwatu_card_hit.wav in Resources */,
+				4F28C762E6D54D20B0A23D01 /* hwatu_blanket_puck.wav in Resources */,
+				1447E916E4EEA0AB610C9DAC /* layout_hwatu.json in Resources */,
+				13AA39B13AD565444986FE26 /* rule.yaml in Resources */,
+			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		1CB37470B81B0CD47BA8D2D3 /* Update Build Version */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Update Build Version";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -euo pipefail\n\ninfo_plist=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\n\nif [ ! -f \"$info_plist\" ]; then\n  echo \"warning: Built Info.plist not found at $info_plist\"\n  exit 0\nfi\n\nbuild_version=\"$(date '+%Y%m%d.%H%M%S')\"\n/usr/libexec/PlistBuddy -c \"Set :CFBundleVersion $build_version\" \"$info_plist\"\necho \"Updated CFBundleVersion to $build_version\"\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		869D1D8FE6FA71A9147B91CD /* Sources */ = {
@@ -429,6 +456,7 @@
 				000CC2A3B7490B3336A542B2 /* RuleSettingsView.swift in Sources */,
 				CA5E4294DC9C4A786488AA0C /* ScoringSystem.swift in Sources */,
 				5E0C21BF00A4D5D5A32CBB78 /* SimulatorBridge.swift in Sources */,
+				9A2B4C6D8E0F112233445566 /* SpecialEventPopupModule.swift in Sources */,
 				C4E5C5B23D59D1A9058F7DB5 /* TableSlotManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

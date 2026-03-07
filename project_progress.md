@@ -1,10 +1,17 @@
 # Project Progress Log
 
 ## Current Status
-- **Last Updated**: 2026-03-04
+- **Last Updated**: 2026-03-07
 - **Status**: In Progress
-- **Summary**: Bomb/Shake 연동, 3뻑 즉시승리, 족보·쪽 이벤트 팝업 확장을 반영하고 관련 회귀 시나리오를 동기화한 상태.
-- **Next Session Focus**: 신규 이벤트 팝업(쪽/족보/3뻑) 및 폭탄 애니메이션 경로에 대한 시뮬레이터 시각 검증과 전체 시나리오 회귀 실행.
+- **Summary**: 설정/오디오 영속화, 규칙·점수·피이동 보강, UI playability 개선, 브리지/테스트 안정화가 함께 반영된 미커밋 상태다. 최근 검증 기준으로 CLI 전체 82개와 socket 전체 82개 test scenario는 모두 PASS했다.
+- **Next Session Focus**: 전체 iOS XCTest 재검증, overlay/preview 수동 스모크 확인, `xcodeproj`/`xcuserdata` 변경 범위 정리.
+
+---
+
+## Next Action Items
+- [ ] 시뮬레이터가 안정된 상태에서 전체 iOS XCTest를 다시 실행해 현재 워크트리 기준 녹색 여부를 확인.
+- [ ] `captured` 롱프레스 확대, 흔들기 카드 프리뷰, special popup defer, 시작 직후 탭 가능 여부를 수동 스모크 체크.
+- [ ] `GoStop.xcodeproj`와 `xcuserdata` 변경 중 실제로 커밋할 범위를 정리.
 
 ---
 
@@ -55,6 +62,166 @@
 ---
 
 ## Log Entries
+
+### [2026-03-07 22:59:20 KST] User Request: commit message 정리해줘
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "현재 워크트리 전체를 기준으로 실제 변경 범위를 반영한 커밋 제목/본문 초안을 빠르게 재사용할 수 있게 정리해야 했음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`git status --short`, `git diff --stat`로 현재 변경 파일과 diff 규모를 다시 확인해 메시지 범위를 맞춤."
+- **Outcome**: "규칙/엔진, UI/UX, 브리지/테스트 안정화, 설정/오디오 영속화까지 포함하는 단일 커밋 메시지 초안을 정리했다."
+
+### [2026-03-07 22:26:06 KST] User Request: 이번에 작업한 내용 다 정리해줘
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "사용자가 이번 워크트리 기준 작업 전체를 한 번에 공유할 수 있는 wrap-up을 요청했고, 최신 로그와 검증 결과를 묶어 상태/다음 액션까지 정리해야 했음."
+- **Files Touched**: ["project_progress.md", "test_artifacts/daily_wrapup_2026-03-07.md"]
+- **Validation**: "`git status --short`, `git diff --stat`, `tail -n 220 project_progress.md`, `awk '...' project_progress.md`로 변경 파일, 로그, 검증 결과를 교차 확인."
+- **Outcome**: "2026-03-07 기준 작업을 규칙·엔진, UI/UX, 브리지·테스트 안정화 축으로 묶어 daily wrap-up을 작성했고, `project_progress.md` 상단 상태도 CLI/socket 82/82 PASS 기준으로 최신화했다."
+
+### [2026-03-07 21:48:31 KST] User Request: `python3 test_scenarios.py --mode socket` 실행 시 fail 나는 것들 수정
+- **Skills Planned**: ["gostop-test-reliability", "project_logger"]
+- **Skills Used**: ["gostop-test-reliability", "project_logger"]
+- **Trigger Reason**: "소켓 모드에서만 재발한 scenario 43, 44 실패를 앱/브리지/엔진 상태 기준으로 다시 재현하고 최소 수정으로 안정화해야 하는 턴이기 때문."
+- **Files Touched**: ["GoStop/Models/RuleConfig.swift", "GoStop/Core/SimulatorBridge.swift", "project_progress.md"]
+- **Validation**: "1) `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n 'error:|warning:|BUILD SUCCEEDED|BUILD FAILED'` 결과 `BUILD SUCCEEDED`. 2) `xcrun simctl terminate booted com.konlona.GoStop`, `xcrun simctl install booted /tmp/gostop_ios_build/Build/Products/Debug-iphonesimulator/GoStop.app`, `xcrun simctl launch booted com.konlona.GoStop`, `nc -vz 127.0.0.1 8080`로 최신 앱/브리지 재기동 확인. 3) `python3 tests/test_agent/test_scenarios.py --mode socket 43 44` 결과 PASS. 4) `python3 tests/test_agent/test_scenarios.py --mode socket 47 48` 결과 PASS. 5) `python3 tests/test_agent/test_scenarios.py --mode socket` 전체 82개 시나리오 결과 `82/82 PASS`."
+- **Outcome**: "`SimulatorBridge.set_condition`이 `custom_rules`를 실제로 적용하지 않던 문제를 수정해 소켓 테스트가 라운드별 임시 룰 오버라이드를 반영하도록 했고, `RuleLoader`에는 영구 저장 없이 테스트용 룰 교체 메서드를 추가했다. 또한 `mock_event_logs`만 주입하는 소켓 경로에서도 special-event popup probe가 deterministic 하게 active/pending/deferred 상태를 내도록 브리지에 테스트 전용 popup-probe 시뮬레이터를 추가해, `scenario_verify_self_seolsa_eat`, `scenario_bugfix_pi_transfer_uses_pi_value_units`, `scenario_bugfix_end_summary_deferred_until_special_event_popups_clear`, `scenario_bugfix_decision_overlay_deferred_until_special_event_popups_clear`를 모두 통과시켰고 풀 소켓 런도 전체 PASS로 마무리했다."
+
+### [2026-03-07 17:31:05 KST] User Request: 시작하고 화면 클릭이 안 되는 것 같은데 확인해줘
+- **Skills Planned**: ["gostop-ui-playability", "project_logger"]
+- **Skills Used**: ["gostop-ui-playability", "project_logger"]
+- **Trigger Reason**: "시작 직후 탭이 막히는 UI 입력 문제를 재현 가능한 코드 경로로 추적하고, 수정 내역을 작업 로그에 남겨야 하는 턴이기 때문."
+- **Files Touched**: ["GoStop/Views/GameAreaViews.swift", "project_progress.md"]
+- **Validation**: "`nl -ba GoStop/Views/GameAreaViews.swift | sed -n '660,690p'`, `nl -ba GoStop/Views/GameAreaViews.swift | sed -n '824,842p'`, `nl -ba GoStop/Views/GameAreaViews.swift | sed -n '1026,1040p'`로 좌표 수집용 투명 오버레이가 카드/그룹 위를 덮고 있음을 확인했고, `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n 'error:|warning:|BUILD SUCCEEDED|BUILD FAILED'` 결과 `BUILD SUCCEEDED` 확인."
+- **Outcome**: "테이블 슬롯과 획득패 그룹/카드 중심 좌표를 수집하던 `GeometryReader + Color.clear` 오버레이 3곳이 `allowsHitTesting(false)` 없이 카드 위를 덮고 있었다. 특히 시작 직후 `밤일낮장` 선 정하기는 테이블 카드 탭이 필수라 이 오버레이가 입력을 먹으면 '시작 후 화면 클릭이 안 되는 것처럼' 보일 수 있다. 좌표 수집은 유지하고 입력만 통과시키도록 수정했다."
+
+### [2026-03-07 17:09:29 KST] User Request: test_scenario 실행하고 문제 되는 것들 수정해줘
+- **Skills Planned**: ["gostop-test-reliability", "project_logger"]
+- **Skills Used**: ["gostop-test-reliability", "project_logger"]
+- **Trigger Reason**: "테스트 시나리오를 실제로 돌려 실패를 재현하고, 엔진/브리지/테스트 계약 문제를 최소 수정으로 안정화하는 턴이며 작업 시작 로그가 필요함."
+- **Files Touched**: ["GoStop/Core/GameManager.swift", "GoStop/Core/SimulatorBridge.swift", "GoStopCLI/main.swift", "configuration.yaml", "tests/test_agent/test_scenarios.py", "project_progress.md"]
+- **Validation**: "`xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI -configuration Debug -derivedDataPath build build CODE_SIGNING_ALLOWED=NO` => `BUILD SUCCEEDED`. `python3 tests/test_agent/test_scenarios.py --executable build/Build/Products/Debug/GoStopCLI 43 44` => PASS. `python3 tests/test_agent/test_scenarios.py --executable build/Build/Products/Debug/GoStopCLI` => 82/82 PASS."
+- **Outcome**: "stale CLI binary와 CLI/socket mock-state 불일치 때문에 남아 있던 scenario 실패를 정리했다. 엔진/CLI/bridge/config를 opening-turn bonus, completed-turn mock, hasCapturedThisRound parity 기준으로 맞췄고, `scenario_verify_self_seolsa_eat`와 `scenario_bugfix_pi_transfer_uses_pi_value_units`는 seeded capturedCards가 opening score claim을 열지 않도록 `hasCapturedThisRound=False`와 quiescent wait를 추가해 안정화했다. 최종적으로 전체 test_scenarios 82개가 모두 통과한다."
+
+### [2026-03-07 17:04:44 KST] User Request: 피 값 기준으로 정리하고 수정해줘, 그리고 test scenario에 이런 기준으로 되어 있는지 다시 한번 확인해줘
+- **Skills Planned**: ["gostop-game-builder", "add-bug-fix-scenario", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "add-bug-fix-scenario", "project_logger"]
+- **Trigger Reason**: "피 이동을 피 값 기준으로 바로잡고 회귀 시나리오를 함께 정렬해야 하는 엔진/테스트 수정 턴이며, 시작 시점 작업 로그 기록이 필요함."
+- **Files Touched**: ["GoStop/Core/ScoringSystem.swift", "GoStop/Core/GameManager.swift", "tests/test_agent/test_scenarios.py", "project_progress.md"]
+- **Validation**: "1) `python3 -c \"import ast, pathlib; ast.parse(pathlib.Path('tests/test_agent/test_scenarios.py').read_text(encoding='utf-8')); print('AST_OK')\"` => `AST_OK`. 2) `xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI -configuration Debug -derivedDataPath /tmp/gostop_cli_build build CODE_SIGNING_ALLOWED=NO` => `BUILD SUCCEEDED`. 3) `python3 tests/test_agent/test_scenarios.py --executable /tmp/gostop_cli_build/Build/Products/Debug/GoStopCLI -k seolsa_eat` => 4 scenarios PASS. 4) `python3 tests/test_agent/test_scenarios.py --executable /tmp/gostop_cli_build/Build/Products/Debug/GoStopCLI -k pi_transfer_uses_pi_value_units` => PASS. 5) `python3 tests/test_agent/test_scenarios.py --executable /tmp/gostop_cli_build/Build/Products/Debug/GoStopCLI -k empty_start_jjok_counts_as_sweep` => PASS. 6) `python3 tests/test_agent/test_scenarios.py --executable /tmp/gostop_cli_build/Build/Products/Debug/GoStopCLI -k ttadak_correct_detection` => PASS. 7) `python3 tests/test_agent/test_scenarios.py --executable /tmp/gostop_cli_build/Build/Products/Debug/GoStopCLI -k no_ttadak_on_different_months` => PASS. 8) `python3 tests/test_agent/test_scenarios.py --executable /tmp/gostop_cli_build/Build/Products/Debug/GoStopCLI -k no_jjok_on_last_hand_card` => PASS."
+- **Outcome**: "피 이동이 이제 카드 장수가 아니라 피 값 기준으로 선택된다. 정확한 피 값 조합이 있으면 그 조합을 우선하고, 같은 피 값이면 더 적은 카드 수를 고른다. 따라서 2피 지급은 쌍피 1장으로 처리할 수 있고, `피 1장 + 쌍피 1장` 같은 혼합 보유에서도 2피 요구 시 쌍피 1장만 이동해 과지급이 발생하지 않는다. 관련 Python 회귀 시나리오도 `junkish 카드 수` 대신 피 값 helper 기반 검증으로 정리했고, 신규 bugfix scenario로 단일 쌍피/혼합 보유 케이스를 모두 고정했다."
+
+### [2026-03-07 17:01:58 KST] User Request: 피를 두장 줘야하는 상황이면 쌍피는 하나로만 줘도 되는데 이것이 가능한지 확인해줘
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "2피 이동에서 쌍피 1장 대체 지급이 가능한지 엔진 선택 로직과 실제 CLI 재현으로 확인하고, turn 단위 작업 로그를 남겨야 했음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`GoStop/Core/GameManager.swift`의 `stealPi`와 `GoStop/Core/ScoringSystem.swift`의 쌍피 점수 계산을 확인. `/tmp/gostop_cli_build/Build/Products/Debug/GoStopCLI`로 자뻑(`self_eat_steal_pi_count=2`) 재현을 두 번 실행해 1) 상대가 쌍피 1장만 가진 경우 `피 이동 ... | 11월 쌍피 (1장)` 2) 상대가 피 1장+쌍피 1장인 경우 `피 이동 ... | 2월 피, 11월 쌍피 (2장)` 로그를 확인."
+- **Outcome**: "현재 구현은 쌍피 1장만 있어도 2피 이동 상황에서 그 1장을 넘길 수 있다. 다만 선택 로직이 피 값 기준이 아니라 카드 선택 반복 기반이라, 일반 피가 섞여 있으면 2피 상황에서도 `피 1장 + 쌍피 1장`을 함께 넘겨 총 3피 값이 이동할 수 있다."
+
+### [2026-03-07 16:58:29 KST] User Request: 따닥으로 싹쓸이를 하는 경우 피를 몇장을 받을 수 있는지 확인해줘
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "따닥과 싹쓸이가 같은 턴에 함께 성립할 때 피 이동 수를 엔진 순서와 실제 CLI 재현으로 확인하고, turn 단위 작업 로그를 남겨야 했음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`GoStop/Core/GameManager.swift`, `GoStop/Resources/rule.yaml`, `tests/test_agent/test_scenarios.py`를 확인. `/tmp/gostop_cli_build/Build/Products/Debug/GoStopCLI`로 커스텀 CLI 재현을 실행해 `ttadakCount=1`, `sweepCount=1`, `playerCapturedCount=6`, `opponentJunkishCount=0`, 이벤트 로그의 `피 이동 [따닥(Ttadak)]` + `피 이동 [싹쓸이(Sweep)]`를 확인."
+- **Outcome**: "현재 기본 규칙값은 따닥 1장 + 싹쓸이 1장으로 합계 2장이다. 단, `stealPi`는 카드 장수 기준으로 집계하며 일반 피를 우선 훔치고 부족하면 쌍피 카드를 선택한다."
+
+### [2026-03-07 16:53:40 KST] User Request: 따닥하면서 쓰리 하면 피를 몇장 주는지 확인해줘
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "따닥/뻑(쓰리로 지칭된 것으로 해석) 겹침 시 피 이동 규칙을 엔진 소스와 자동 검증으로 확인하고, turn 단위 작업 로그를 남겨야 했음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`GoStop/Resources/rule.yaml`, `GoStop/Core/GameManager.swift`, `tests/test_agent/test_scenarios.py`를 확인. `xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI -configuration Debug -derivedDataPath /tmp/gostop_cli_build build CODE_SIGNING_ALLOWED=NO` => `BUILD SUCCEEDED`. `python3 tests/test_agent/test_scenarios.py --executable /tmp/gostop_cli_build/Build/Products/Debug/GoStopCLI 9 60` 실행 결과 `scenario_verify_ttadak_correct_detection` PASS, `scenario_verify_seolsa` FAIL."
+- **Outcome**: "소스 기준으로 따닥은 `steal_pi_count: 1`, 뻑은 `penalty_pi_count: 0`이며 같은 턴에 중첩되지 않는다. 실제 재검증에서도 따닥 우선 판정은 PASS였고, 별도 뻑 시나리오는 현재 seolsaCount 미증가로 FAIL하여 런타임 경로에 별도 회귀 가능성이 확인됐다."
+
+### [2026-03-07 16:49:05 KST] User Request: 폰의 설정에서 보는 이력에서 피를 두 장 전달하는 것이 표현되지 않는지 확인
+- **Skills Planned**: ["gostop-ui-playability", "project_logger"]
+- **Skills Used**: ["gostop-ui-playability", "project_logger"]
+- **Trigger Reason**: "설정 메뉴의 화투 Log/rewind 이력에서 captured->captured 피 이동 표현 누락 여부를 확인하고, 필요 시 SwiftUI 좌표 표현 경로를 최소 수정해야 함."
+- **Files Touched**: ["GoStop/Views/GameAreaViews.swift", "GoStop/Views/GameView.swift", "GoStopTests/GoStopTests.swift", "project_progress.md"]
+- **Validation**: "1) `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n 'error:|warning:|BUILD SUCCEEDED|BUILD FAILED'` => `BUILD SUCCEEDED`. 2) `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_test_build -destination 'platform=iOS Simulator,name=iPhone 16' -only-testing:GoStopTests/GoStopTests/testSelfSeolsaEatKeepsTwoCardTransferHistory test CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n 'error:|warning:|Test Suite|Test Case|\\*\\* TEST SUCCEEDED \\*\\*|\\*\\* TEST FAILED \\*\\*'` => `TEST SUCCEEDED`."
+- **Outcome**: "문제가 있었다. captured->captured 이력/rewind가 `capturedCardCenters[card.id]`를 owner 구분 없이 사용해, 상대에게 넘어간 카드의 source 좌표가 target 좌표로 덮여 이동이 안 보일 수 있었다. `capturedCardCenters`를 `playerId:cardId` 키로 저장/조회하도록 수정했고, `자뻑(Self Seolsa Eat)` 2장 피 이동이 `eventLogs`와 `uxEventLogs`에 모두 2장으로 남는 XCTest를 추가해 회귀를 고정했다."
+
+### [2026-03-07 16:46:52 KST] User Request: 흔들기 안내에서 글자 대신 실제로 가지고 있는 3장의 화투를 보여주기
+- **Skills Planned**: ["gostop-ui-playability", "project_logger"]
+- **Skills Used**: ["gostop-ui-playability", "project_logger"]
+- **Trigger Reason**: "흔들기 오버레이의 시인성을 높이기 위해 기존 텍스트 중심 안내를 실제 카드 프리뷰 중심으로 바꾸는 SwiftUI UI 수정이며, turn 단위 작업 로그 기록이 필요함."
+- **Files Touched**: ["GoStop/Views/GameView.swift", "project_progress.md"]
+- **Validation**: "`xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n 'error:|warning:|BUILD SUCCEEDED|BUILD FAILED'` 결과 `BUILD SUCCEEDED` (AppIntents metadata warning 1건만 출력)."
+- **Outcome**: "흔들기 오버레이가 이제 월 숫자 안내만 보여 주지 않고, 현재 손패의 동일 월 화투들을 실제 `CardView`로 렌더링한다. 선택해 둔 카드에는 `낼 카드` 표시와 오렌지 강조를 추가했고, 예상 흔들기 배수 텍스트도 다음 shake 적용값 기준으로 갱신했다."
+
+### [2026-03-07 16:46:03 KST] User Request: 첫번째 화투에 대해서 따닥이나 뻑을 하면 10점을 주는 것을 rule에 추가하고 구현 및 test scenario 넣어줘
+- **Skills Planned**: ["gostop-game-builder", "add-bug-fix-scenario", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "add-bug-fix-scenario", "project_logger"]
+- **Trigger Reason**: "첫 턴 특수 이벤트 보너스 규칙을 엔진/룰 설정/회귀 시나리오까지 일관되게 추가해야 하고, turn 단위 작업 로그를 남겨야 함."
+- **Files Touched**: ["GoStop/Models/RuleConfig.swift", "GoStop/Models/Player.swift", "GoStop/Core/ScoringSystem.swift", "GoStop/Core/GameManager.swift", "GoStop/Resources/rule.yaml", "rule.yaml", "tests/test_agent/rule.yaml", "configuration.yaml", "tests/test_agent/test_scenarios.py", "GoStopTests/GoStopTests.swift", "project_progress.md"]
+- **Validation**: "`xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI -configuration Debug -derivedDataPath /tmp/gostop_cli_build build CODE_SIGNING_ALLOWED=NO` 성공 (`BUILD SUCCEEDED`). `python3 tests/test_agent/test_scenarios.py --executable /tmp/gostop_cli_build/Build/Products/Debug/GoStopCLI -k first_turn_` PASS (2 scenarios). iOS XCTest 재실행은 시뮬레이터/result bundle 환경 이슈로 깨끗하게 완료 확인하지 못함."
+- **Outcome**: "첫 턴에 발생한 따닥/뻑은 각각 `first_turn_bonus_score` 규칙값(기본 10점)을 점수 아이템으로 부여하도록 구현했고, Player 상태/점수 계산/턴 판정에 반영했다. 외부 TestAgent 회귀 시나리오 2개와 Swift XCTest 2개를 추가했다."
+
+### [2026-03-07 16:46:03 KST] User Request: captured 영역 롱프레스 확대 프리뷰를 중앙 포커스형(B)으로 구현해줘
+- **Skills Planned**: ["gostop-ui-playability", "project_logger"]
+- **Skills Used**: ["gostop-ui-playability", "project_logger"]
+- **Trigger Reason**: "선택된 UI 안(B)을 실제 SwiftUI 구조에 얹고, 빌드/검증까지 이어가야 하는 구현 턴임."
+- **Files Touched**: ["GoStop/Views/GameView.swift", "GoStop/Views/GameAreaViews.swift", "GoStop/Core/GameManager.swift", "GoStopTests/GoStopTests.swift", "project_progress.md"]
+- **Validation**: "1) `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO` 성공 (`BUILD SUCCEEDED`). 2) `/tmp/gostop_ios_build/Build/Products/Debug-iphonesimulator/GoStop.app`를 booted simulator에 `simctl install` 후 `xcrun simctl launch booted com.konlona.GoStop` 성공, `nc -vz 127.0.0.1 8080`로 SimulatorBridge 포트 기동 확인. 3) 전체 `xcodebuild ... test`는 현재 브랜치의 기존 엔진/테스트 실패(`testMatchingLogic`, opening-turn bonus 관련 테스트 등)로 실패. 4) 이번 턴에서 추가한 타깃 테스트만 좁힌 `xcodebuild ... -only-testing:`는 simulator-backed test session이 hang되어 완료 결과를 받지 못함."
+- **Outcome**: "captured 그룹 슬롯 롱프레스 시 `GameView` 글로벌 오버레이에 중앙 확대 패널이 뜨는 B안을 구현했다. 광/끗/띠/피 카운트와 선택 그룹 확대 카드 그리드를 표시하고, 손을 떼면 닫히도록 연결했다. 그룹 분류/정렬 헬퍼와 preview probe 직렬화, 관련 단위 테스트 2건도 추가했다."
+
+### [2026-03-07 00:30:27 KST] User Request: captured 영역 롱프레스 확대 프리뷰 UX를 설계하고, 구현 전 옵션 비교안을 제시해 선택 가능하게 해줘
+- **Skills Planned**: ["gostop-ui-playability", "project_logger"]
+- **Skills Used**: ["gostop-ui-playability", "project_logger"]
+- **Trigger Reason**: "captured 영역의 가독성 개선과 시뮬레이터 검증까지 포함한 SwiftUI UX 설계 작업이며, turn 단위 로그 기록이 필요함."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`GoStop/Views/GameAreaViews.swift`의 `CapturedAreaV2/CapturedGroupsAreaV2/CapturedGroupSlotView`, `GoStop/Views/GameView.swift`의 글로벌 `overlayArea`, `GoStop/Resources/layout_hwatu.json`의 광/끗/띠/피 그룹 레이아웃을 코드상 검토. `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO` 성공 (`BUILD SUCCEEDED`)."
+- **Outcome**: "구현 전 설계 결과: 평상시 player/opponent area가 `.clipped()`라 확대 UI는 캡처 슬롯 내부가 아니라 `GameView` 글로벌 오버레이에 렌더링해야 함을 확인. 롱프레스 그룹 확대 UX 3안과 추천안(중앙 포커스형)을 정리했고, 사용자 선택 대기 상태."
+
+### [2026-03-07 00:25:57 KST] User Request: 총통 발생 시 점수가 부여되는지 확인 해주고 없으면 점수를 기본 10점으로 주는것으로 하고 이 값은 설정을 통해서 수정 가능하도록 해줘. 구현 및 테스트 시나리오 넣어줘
+- **Skills Planned**: ["gostop-game-builder", "add-bug-fix-scenario", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "add-bug-fix-scenario", "project_logger"]
+- **Trigger Reason**: "총통 점수 규칙의 실제 반영 여부를 확인하고, 기본값/설정 UI/테스트 시나리오까지 한 번에 보강해야 했음."
+- **Files Touched**: ["GoStop/Views/RuleSettingsView.swift", "GoStop/Core/SimulatorBridge.swift", "GoStopCLI/main.swift", "tests/test_agent/test_scenarios.py", "project_progress.md"]
+- **Validation**: "1) `python3 -c \"import ast, pathlib; ast.parse(pathlib.Path('tests/test_agent/test_scenarios.py').read_text(encoding='utf-8')); print('AST_OK')\"` => `AST_OK`. 2) `xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI -configuration Debug -derivedDataPath /tmp/gostop_cli_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n \"error:|warning:|BUILD SUCCEEDED|BUILD FAILED\"` => `BUILD SUCCEEDED`. 3) `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n \"error:|warning:|BUILD SUCCEEDED|BUILD FAILED\"` => `BUILD SUCCEEDED`. 4) `python3 tests/test_agent/test_scenarios.py --executable /tmp/gostop_cli_build/Build/Products/Debug/GoStopCLI -k chongtong` => `scenario_verify_chongtong_initial`, `scenario_verify_chongtong_midgame_negative`, `scenario_bugfix_chongtong_score_respects_configuration` 모두 PASS."
+- **Outcome**: "확인 결과 총통은 이미 점수가 부여되고 있었고, 현재 기본 규칙은 `초기 총통 20점 / 중반 총통 10점`이다. 이번 작업에서는 인앱 설정 화면에 총통 활성화 및 초기/중반 점수 스테퍼를 추가했고, CLI/socket persistence probe를 확장해 테스트에서 설정값을 변경할 수 있게 했다. 또한 기존 초기 총통 시나리오를 점수 검증까지 강화하고, 설정 변경값이 초기/중반 총통 점수에 즉시 반영되는 회귀 시나리오를 추가했다."
+
+### [2026-03-07 00:22:05 KST] User Request: 마지막 카드로 발생하는 뻑 무효 규칙 구현 및 회귀 시나리오 추가
+- **Skills Planned**: ["gostop-game-builder", "add-bug-fix-scenario", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "add-bug-fix-scenario", "project_logger"]
+- **Trigger Reason**: "마지막 손패에서 뒤집어 생긴 뻑을 무효로 처리하고, 그 상태가 이후 뻑 먹기 보너스로 이어지지 않도록 엔진 규칙과 회귀 시나리오를 함께 보강해야 했음."
+- **Files Touched**: ["GoStop/Core/GameManager.swift", "GoStop/Models/RuleConfig.swift", "GoStop/Resources/rule.yaml", "rule.yaml", "configuration.yaml", "GoStopTests/GoStopTests.swift", "tests/test_agent/rule.yaml", "tests/test_agent/test_scenarios.py", "project_progress.md"]
+- **Validation**: "`xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI -configuration Debug -derivedDataPath build build CODE_SIGNING_ALLOWED=NO` 성공 (`BUILD SUCCEEDED`), `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_test_build -destination 'platform=iOS Simulator,name=iPhone 16' -only-testing:GoStopTests/GoStopTests/testLastHandSeolsaDoesNotCountOrCreateSeolsaEatState test CODE_SIGNING_ALLOWED=NO` 성공 (`TEST SUCCEEDED`), `python3 tests/test_agent/test_scenarios.py -k no_seolsa_on_last_hand_card` PASS."
+- **Outcome**: "Seolsa 규칙에 `invalid_on_last_hand` 설정을 추가하고, 마지막 손패로 생긴 뻑은 카운트/이벤트/뻑 먹기 상태를 만들지 않도록 `GameManager`를 수정했다. Swift 단위 테스트와 외부 TestAgent 회귀 시나리오를 추가해 마지막 손패 뻑 무효 및 후속 뻑 먹기 미발생까지 함께 검증했다."
+
+### [2026-03-06 23:51:05 KST] User Request: 특수 이벤트 팝업을 모듈형으로 정리
+- **Skills Planned**: ["gostop-ui-playability", "project_logger"]
+- **Skills Used**: ["gostop-ui-playability", "project_logger"]
+- **Trigger Reason**: "GameView 내부에 묶여 있던 특수 이벤트 팝업 타입/매핑/큐/렌더링을 재사용 가능한 모듈 경계로 분리해 향후 이벤트 추가를 파라미터 중심으로 관리할 필요가 있었음."
+- **Files Touched**: ["GoStop/Views/SpecialEventPopupModule.swift", "GoStop/Views/GameView.swift", "GoStop.xcodeproj/project.pbxproj", "project_progress.md"]
+- **Validation**: "`xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO` 성공 (`BUILD SUCCEEDED`)."
+- **Outcome**: "특수 이벤트 팝업을 `SpecialEventPopupCoordinator + SpecialEventPopupMapper + SpecialEventPopupView`로 분리하고, `GameView`는 상태 연결과 probe 동기화만 담당하도록 정리함."
+
+### [2026-03-06 23:43:37 KST] User Request: 고도리도 이벤트 팝업이 있는지 확인
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "간단한 코드 확인 요청이지만 turn 단위 작업 기록 규칙에 따라 조회 결과를 project_progress.md에 남김."
+- **Files Touched**: ["GoStop/Core/GameManager.swift", "GoStop/Views/GameView.swift", "project_progress.md"]
+- **Validation**: "`GameManager.emitScoreEventsIfNeeded`의 `triggered 고도리(Godori)` 로그 발생과 `GameView.specialEventPopup(from:)`의 `.godori` 팝업 매핑, `specialEventPopupOverlay()` 렌더링 경로를 코드상 확인."
+- **Outcome**: "고도리는 이미 특수 이벤트 팝업 대상에 포함되어 있으며, 이벤트 로그가 발생하면 `고도리` 제목과 달성 문구로 중앙 오버레이 팝업이 표시되는 구조임."
+
+### [2026-03-06 23:46:33 KST] User Request: 이벤트 팝업으로 나오는 것은 지금 어떻게 관리되지 ?
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "특수 이벤트 팝업의 현재 관리 구조를 코드 기준으로 설명해야 하므로 조회 결과를 turn 로그로 남김."
+- **Files Touched**: ["GoStop/Core/GameManager.swift", "GoStop/Views/GameView.swift", "GoStop/Core/SimulatorBridge.swift", "project_progress.md"]
+- **Validation**: "`gLog -> eventLogs`, `GameView.processNewSpecialEventLogs`, `specialEventPopupQueue/activeSpecialEventPopup`, 자동 dismiss 타이머, 종료 오버레이 defer, probe state export/socket mock 경로를 코드상 확인."
+- **Outcome**: "이벤트 팝업은 엔진의 문자열 이벤트 로그를 `GameView`가 파싱해 UI 큐로 관리하는 구조이며, 현재 표시 상태는 `GameManager` probe 필드로 역반영되어 테스트/시뮬레이터에서 관찰 가능함."
+
+### [2026-03-06 23:51:05 KST] User Request: 팝업 module로 만들어서 변경이 필요한 부분은 파라미터로 넘기는 구조로 작성 되어 있나 ?
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "현재 특수 이벤트 팝업 구현이 재사용 가능한 모듈인지, 로컬 뷰 로직인지 코드 구조 기준으로 판별한 결과를 기록함."
+- **Files Touched**: ["GoStop/Views/GameView.swift", "project_progress.md"]
+- **Validation**: "`SpecialEventPopup` 타입 정의, `specialEventPopup(from:)` 매핑, `specialEventPopupOverlay()` 렌더링 위치를 코드상 확인."
+- **Outcome**: "현재 구현은 별도 팝업 모듈이라기보다 `GameView` 내부 로컬 구조이며, `title/detail/kind` 정도만 데이터로 주입되는 반(半)파라미터화 상태임."
 
 ### [2026-03-01 18:35:55 KST] User Request: skill 통계 데이터 확보를 위한 기록 추가
 - **Skills Planned**: ["project_logger"]
@@ -1083,3 +1250,155 @@
 - **Files Touched**: ["project_progress.md"]
 - **Validation**: "`git status --short`, `git diff --stat`로 변경 파일/규모(오디오 세션 패치 + 로그 업데이트) 재확인."
 - **Outcome**: "현재 워크트리에 맞춘 커밋 제목/본문을 간결한 형태로 다시 제공."
+
+### [2026-03-06 23:39:25 KST] User Request: 쪽으로 쓰리할 때 피를 몇 장 주도록 되어 있는지 확인
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "현재 엔진 구현에서 `쪽(Jjok)` 발생 시 피 이동 수량이 몇 장으로 설정되어 있는지 코드와 규칙 파일 기준으로 정확히 확인해야 했음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`rg -n \"jjok|쓰리|special_moves\" GoStop GoStopCLI GoStopTests tests`, `sed -n '120,145p' GoStop/Resources/rule.yaml`, `sed -n '676,694p' GoStop/Core/GameManager.swift`, `sed -n '696,726p' tests/test_agent/test_scenarios.py`로 규칙값/적용 코드/회귀 테스트 기대값을 교차 확인."
+- **Outcome**: "현재 구현은 `쪽(Jjok)` 시 상대에게서 피 1장을 가져가도록 되어 있음. `GoStop/Resources/rule.yaml`의 `special_moves.jjok.steal_pi_count: 1`가 실제 적용되며, `GameManager`와 테스트 시나리오도 동일하게 1장 기준으로 맞춰져 있음을 확인."
+
+### [2026-03-06 23:43:03 KST] User Request: 쪽 1장 + 쓰리 1장이 같은 턴에 합산되는지 확인
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "사용자 해석상 `쪽`과 `쓰리` 보너스가 함께 성립하면 2장이어야 하는지, 현재 엔진이 이를 중첩 허용하는지 명확히 설명할 필요가 있었음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`rg -n \"turnIsJjok|turnIsSeolsa|didSeolsaEat|selfSeolsaEat\" GoStop/Core/GameManager.swift`, `nl -ba GoStop/Core/GameManager.swift | sed -n '1278,1310p'`, `nl -ba GoStop/Core/GameManager.swift | sed -n '1368,1392p'`, `nl -ba GoStop/Core/GameManager.swift | sed -n '692,711p'`로 판정 분기와 피 이동 수량을 확인."
+- **Outcome**: "현재 구현은 `쪽`과 `설사(쓰리)`를 같은 턴 누적 보너스로 합산하지 않음. `설사` 생성 자체는 자동 피 이동 0장이고, `뻑 먹기`는 1장, `자뻑`만 2장이다. 따라서 사용자 해석대로 `쪽 1 + 쓰리 1 = 2`가 되려면 규칙/구현 변경이 필요함."
+
+### [2026-03-06 23:45:42 KST] User Request: 피를 가져오는 조건들이 서로 독립적인지 확인
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "현재 엔진의 모든 피 이동 조건이 서로 독립적으로 누적되는지, 혹은 상호 배타/순서 의존 관계가 있는지 코드 기준으로 정리할 필요가 있었음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`rg -n \"stealPi\\(|turnIs[A-Za-z]+|did[A-Za-z]+|is[A-Za-z]+Flag|penalty_pi_count|steal_pi_count\" GoStop/Core`, `nl -ba GoStop/Core/GameManager.swift | sed -n '668,718p'`, `nl -ba GoStop/Core/GameManager.swift | sed -n '1278,1310p'`, `nl -ba GoStop/Core/GameManager.swift | sed -n '1368,1392p'`, `nl -ba GoStop/Core/GameManager.swift | sed -n '1598,1633p'`, `nl -ba GoStop/Core/GameManager.swift | sed -n '1888,1910p'`, `nl -ba GoStop/Core/GameManager.swift | sed -n '2035,2066p'`, `nl -ba tests/test_agent/test_scenarios.py | sed -n '2538,2576p'`, `nl -ba tests/test_agent/test_scenarios.py | sed -n '2890,2906p'`로 호출 지점, 플래그 세팅, 중첩 테스트를 교차 확인."
+- **Outcome**: "피 이동 조건들은 전부 독립적이지 않다. `finalizeTurnState`와 라운드 종료 패널티는 separate `if`라서 일부는 누적 가능하지만, `따닥/쪽`, `뻑 먹기/자뻑`, `설사` 대 `쪽·따닥`처럼 분기상 상호 배타인 조합이 있다. 또 `stealPi`가 즉시 상태를 바꾸므로 여러 조건이 연속 발생하면 뒤 조건은 앞선 피 이동 결과에 영향을 받는 순서 의존 구조다."
+
+### [2026-03-06 23:49:36 KST] User Request: 피 이동 조건들을 표로 정리
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "앞서 확인한 피 이동 규칙들의 독립/배타 관계를 사용자가 빠르게 비교할 수 있도록 표 형태로 재구성할 필요가 있었음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "직전 확인에 사용한 `GameManager.swift`, `rule.yaml`, `tests/test_agent/test_scenarios.py` 근거를 기준으로 조건별 장수/방향/중첩 여부를 재분류해 표로 정리."
+- **Outcome**: "피 이동 조건을 `특수행동`, `설사 계열`, `라운드 종료 패널티`로 나누고, 각 항목의 이동 방향·장수·독립성·배타 관계를 요약한 표를 사용자에게 제공."
+
+### [2026-03-06 23:53:18 KST] User Request: 조건과 stealPi를 테이블로 정리
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "사용자가 피 이동 로직을 구현 관점에서 바로 읽을 수 있도록 조건식과 `stealPi` 호출 인자를 직접 매핑한 표가 필요했음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`GameManager.swift`의 `finalizeTurnState`, `applyBakPenalties`, `stealPi` 헬퍼를 기준으로 각 조건식과 `from/to/count/reason` 인자를 직접 대응시켜 정리."
+- **Outcome**: "턴 종료 특수행동, 라운드 종료 박 패널티, 공통 `stealPi` 헬퍼 동작을 각각 조건식/호출 인자 중심의 표로 요약 제공."
+
+### [2026-03-06 23:54:54 KST] User Request: 쪽으로 쓰리를 하면 몇 장을 받는지 확인
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "사용자가 다시 확인한 `쪽으로 쓰리` 상황에 대해 현재 구현 기준 실제 피 이동 장수를 한 문장으로 명확히 확정할 필요가 있었음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "직전 확인한 `GameManager.swift`의 `turnIsJjok`, `turnIsSeolsa`, `didSeolsaEat`, `didSelfSeolsaEat` 분기와 `rule.yaml` 기본값을 기준으로 결론 재검증."
+- **Outcome**: "현재 구현 기준 `쪽으로 쓰리`는 2장 누적이 아니라 1장만 받는다. `쪽(Jjok)`은 1장, `설사(쓰리)` 생성은 0장이며 둘이 같은 턴에 합산되지 않는다."
+
+### [2026-03-06 23:56:24 KST] User Request: 쪽으로 싹쓰리하면 피를 몇 장 받는지 확인
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "`쪽(Jjok)`과 `싹쓸이(Sweep)`가 함께 성립하는 경우 현재 구현에서 피 이동이 몇 장 누적되는지, 그리고 빈 바닥 시작 예외가 실제로 반영돼 있는지 구분해서 설명할 필요가 있었음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`nl -ba GoStop/Core/GameManager.swift | sed -n '678,717p'`, `nl -ba GoStop/Core/GameManager.swift | sed -n '996,1002p'`, `nl -ba GoStop/Resources/rule.yaml | sed -n '118,131p'`, `rg -n \"allow_empty_start_via_jjok\" GoStop`로 `Jjok`/`Sweep` 호출 순서, 턴 시작 바닥 조건, 설정값 사용 여부를 확인."
+- **Outcome**: "현재 구현은 `쪽` 1장 + `싹쓸이` 1장이 separate `if`라서 둘 다 성립하면 총 2장을 받는다. 다만 `싹쓸이`는 `turnTableWasNotEmpty`가 참일 때만 인정되므로, 턴 시작 시 바닥이 비어 있었다면 현재 코드에서는 `allow_empty_start_via_jjok` 설정 주석과 달리 `쪽`만 적용되어 1장만 받는다."
+
+### [2026-03-06 23:59:39 KST] User Request: 바닥이 있던 상태의 쪽+싹쓸이가 실제 가능한지 확인하고 가능 케이스 제시
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "사용자가 이전 답변의 전제(바닥이 있던 상태에서 `쪽 + 싹쓸이`)가 실제 도달 가능한 게임 상태인지 검증해 달라고 요청했고, 불가능하다면 왜 불가능한지 코드 흐름으로 설명해야 했음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`nl -ba GoStop/Core/GameManager.swift | sed -n '1013,1118p'`, `nl -ba GoStop/Core/GameManager.swift | sed -n '1381,1387p'`, `nl -ba GoStop/Core/GameManager.swift | sed -n '1640,1650p'`, `nl -ba GoStop/Core/GameManager.swift | sed -n '1887,1934p'`, `nl -ba tests/test_agent/test_scenarios.py | sed -n '696,731p'`로 플레이 단계 캡처, `Jjok` 판정 조건, 실제 회귀 테스트 셋업을 교차 확인."
+- **Outcome**: "현재 구현에서는 턴 시작 시 바닥에 카드가 있던 상태의 `쪽 + 싹쓸이`는 사실상 도달 불가능하다. `쪽`이 되려면 플레이 단계에서 캡처가 없어야 해서 시작 바닥에 같은 월 카드가 있으면 안 되고, 그러면 드로우 단계는 방금 낸 카드만 회수하므로 기존 바닥 카드가 남아 `싹쓸이`가 될 수 없다. 현재 실제 `쪽` 회귀 테스트도 빈 바닥 시작 케이스만 다루며, 의도 규칙상 가능한 자연스러운 케이스는 `빈 바닥 시작 Jjok`뿐인데 이 경우도 현재 코드는 `allow_empty_start_via_jjok`를 사용하지 않아 `싹쓸이`로 인정하지 않는다."
+
+### [2026-03-06 23:50:21 KST] User Request: 버전 정보는 compile 할 때마다 업데이트 되었으면 좋겠어
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "앱의 개발자 정보에 표시되는 빌드 버전을 실제 컴파일 시각 기준으로 자동 갱신하도록 Xcode 타깃 build phase와 XcodeGen 원본을 함께 맞추고, 실제 빌드 결과까지 검증해야 했음."
+- **Files Touched**: ["project.yml", "GoStop.xcodeproj/project.pbxproj", "GoStop/Info.plist", "project_progress.md"]
+- **Validation**: "1) `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -destination 'platform=iOS Simulator,name=iPhone 16' -derivedDataPath /tmp/gostop_ios_build clean build CODE_SIGNING_ALLOWED=NO -quiet` 2회 성공. 2) `plutil -extract CFBundleVersion raw -o - /tmp/gostop_ios_build/Build/Products/Debug-iphonesimulator/GoStop.app/Info.plist` 결과가 `20260306.234943` -> `20260306.235006`로 변경됨을 확인."
+- **Outcome**: "`GoStop` 타깃에 `Update Build Version` shell script build phase를 추가해 실제 앱 번들의 `CFBundleVersion`을 빌드 시각(`YYYYMMDD.HHMMSS`)으로 덮어쓰도록 반영. XcodeGen 원본(`project.yml`)에도 동일한 `postBuildScripts` 설정을 추가했고, 소스 `Info.plist`의 기본값은 `1` placeholder로 정리됨."
+
+### [2026-03-07 00:03:49 KST] User Request: 두 번 흔들고 피박이면 몇 배인지 확인
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 현재 프로젝트 구현 기준으로 `흔들기`와 `피박` 배수가 어떻게 합성되는지 물었고, 규칙 파일과 실제 정산 코드 두 곳을 함께 확인해 답을 고정할 필요가 있었음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`rg -n \"shake|pibak|배수|multiplier\" GoStop`, `nl -ba GoStop/Core/PenaltySystem.swift | sed -n '140,210p'`, `nl -ba GoStop/Resources/rule.yaml | sed -n '84,118p'`로 기본 규칙값과 최종 점수 배수 공식을 교차 확인."
+- **Outcome**: "현재 구현은 흔들기 2회가 `2^2 = x4`, 피박이 `x2`라서 함께 성립하면 총 `x8`이다. 이후 `고` 배수는 `finalScore = (score + go bonus) * multiplier * goMultiplier`에서 별도로 한 번 더 곱해진다."
+
+### [2026-03-07 00:01:55 KST] User Request: 다른 피 이동 규칙에도 모순되는 케이스가 있는지 확인
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "앞서 확인한 `쪽 + 싹쓸이`처럼, 다른 피 이동 규칙들에도 설명/설정/구현 사이에 도달 불가능한 조합이나 상태 불일치가 있는지 전반 점검이 필요했음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`rg -n \"stealPi\\(|Sweep|Ttadak|Jjok|Seolsa Eat|광박|피박|멍박|resolution_type|allow_empty_start_via_jjok\" GoStop/Core GoStop/Resources tests/test_agent/test_scenarios.py`, `nl -ba GoStop/Core/GameManager.swift | sed -n '1448,1455p'`, `nl -ba GoStop/Core/GameManager.swift | sed -n '1568,1635p'`, `nl -ba GoStop/Core/PenaltySystem.swift | sed -n '1,90p'`, `nl -ba GoStop/Resources/rule.yaml | sed -n '118,152p'`, `nl -ba tests/test_agent/test_scenarios.py | sed -n '758,772p'` 등으로 피 이동 호출, 점수 계산, 규칙 설명, 제거된 규칙 흔적을 교차 확인."
+- **Outcome**: "강한 모순 후보 3개를 확인했다. 1) `resolution_type == both`인 박 패널티는 피 이동이 먼저 적용되고 multiplier 판정은 그 후 상태로 다시 계산되어 `both` 의미가 깨질 수 있음. 2) `sweep.allow_empty_start_via_jjok`는 규칙 파일에 있으나 구현이 없어 도달 불가능한 설정이다. 3) `mungdda`/`bomb_mungdda`의 `steal_pi_count`와 관련 필드는 규칙 파일/모델에 남아 있지만 실제 피 이동 로직과 테스트는 제거된 규칙으로 취급한다. 반면 `Bomb + Sweep`, `Seolsa Eat + Sweep`, `Ttadak` 우선순위 등은 테스트와 구현이 대체로 일치했다."
+
+### [2026-03-07 00:06:11 KST] User Request: 이벤트 파업 발생과 게임 종료 summary 방식, 그리고 이벤트 팝업과 고/스톱 화면 및 화투 선택 방식이 동일한지 확인
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "이벤트 팝업, 종료 summary, 고/스톱/흔들기/화투 선택 UI가 동일한 상태 전개 패턴인지 코드 기준으로 구분해 설명할 필요가 있었음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`nl -ba GoStop/Views/GameView.swift | sed -n '1,220p'`, `nl -ba GoStop/Views/GameView.swift | sed -n '620,1225p'`, `nl -ba GoStop/Views/SpecialEventPopupModule.swift | sed -n '1,380p'`, `nl -ba GoStop/Core/GameManager.swift | sed -n '140,840p'`, `nl -ba GoStop/Core/GameManager.swift | sed -n '965,1590p'`, `rg -n \"specialEventPopupCoordinator|askingGoStop|askingShake|choosingCapture|executeStop|lastPenaltyResult|shouldDeferEndedOverlayForSpecialEventPopups\" GoStop/Views/GameView.swift GoStop/Views/SpecialEventPopupModule.swift GoStop/Core/GameManager.swift`로 오버레이 렌더링 분기, 로그->팝업 매핑, 종료 상태 저장, 선택 UI 상태 전이를 교차 확인."
+- **Outcome**: "코드상 `이벤트 팝업`은 `eventLogs`를 `SpecialEventPopupCoordinator`가 읽어 큐로 표시하는 로그 기반 방식이고, `게임 종료 summary`는 `gameState == .ended`와 `lastPenaltyResult/gameEndReason`를 직접 읽어 띄우는 상태 기반 방식이라 동일하지 않다. 다만 종료 summary는 `shouldDeferEndedOverlayForSpecialEventPopups`로 이벤트 팝업 큐가 모두 사라질 때까지 지연된다. 또한 `고/스톱`, `흔들기 선택`, `화투 선택`은 모두 `gameState` 분기(`askingGoStop`, `askingShake`, `choosingCapture`)로 표시되는 동일 계열이고, `이벤트 팝업`과는 별도 메커니즘이다. `흔들기`만 예외적으로 선언 전 선택 화면은 state 기반, 선언 후 축하/알림 팝업은 log 기반 두 경로를 모두 가진다."
+
+### [2026-03-07 00:09:39 KST] User Request: 지금 이벤트 팝업과 선택화면이 겹칠 수 있는지 확인
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "이벤트 팝업과 선택 오버레이가 동시에 렌더링될 수 있는지, 단순 ZStack 배치뿐 아니라 실제 상태 전이상 도달 가능한지 구분해 설명해야 했음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`nl -ba GoStop/Views/GameView.swift | sed -n '669,785p'`, `nl -ba GoStop/Views/SpecialEventPopupModule.swift | sed -n '268,380p'`, `nl -ba GoStop/Core/GameManager.swift | sed -n '610,640p'`, `nl -ba GoStop/Core/GameManager.swift | sed -n '678,735p'`, `nl -ba GoStop/Core/GameManager.swift | sed -n '1127,1177p'`, `nl -ba GoStop/Core/GameManager.swift | sed -n '1340,1455p'`, `rg -n \"hasActiveOrPendingPopups|askingGoStop|askingShake|choosingCapture|choosingChrysanthemumRole|declared SHAKE|triggered BOMB|triggered 청단|triggered 홍단|triggered 고도리|triggered 구사\" GoStop/Views/GameView.swift GoStop/Views/SpecialEventPopupModule.swift GoStop/Core/GameManager.swift`로 오버레이 배치 순서와 팝업 생성 시점/선택 상태 진입 시점을 교차 확인."
+- **Outcome**: "현재 구현에서는 이벤트 팝업과 선택화면이 겹칠 수 있다. `overlayArea` 내부에서 선택화면(`askingGoStop`, `askingShake`, `choosingCapture`, `choosingChrysanthemumRole`)을 먼저 그리고, 같은 `ZStack`의 마지막에 `specialEventPopupOverlay()`를 항상 추가하므로 active popup이 있으면 선택화면 위에 함께 보인다. 이 겹침을 막는 조건은 `ended` summary 지연에만 있고 선택화면에는 없다. 특히 `고/스톱`은 점수 이벤트/특수 이벤트 로그 직후 진입 가능해 겹칠 수 있고, `화투 선택`도 폭탄 팝업 잔존 등으로 겹칠 수 있다. `흔들기 선택`은 같은 흔들기 트리거 자체로는 팝업이 아니라 선택화면만 뜨지만, 이전 이벤트 팝업이 아직 active면 역시 겹칠 수 있다."
+
+### [2026-03-07 00:13:33 KST] User Request: 선택화면과 이벤트 파업이 겹치지 않게 수정
+- **Skills Planned**: ["gostop-ui-playability", "project_logger"]
+- **Skills Used**: ["gostop-ui-playability", "project_logger"]
+- **Trigger Reason**: "이벤트 팝업과 decision overlay가 같은 프레임에서 겹치던 UX를 제거하면서도 기존 상태 전이와 자동화 로직은 건드리지 않는 최소 UI 수정이 필요했음."
+- **Files Touched**: ["GoStop/Views/GameView.swift", "project_progress.md"]
+- **Validation**: "`xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n \"error:|warning:|BUILD SUCCEEDED|BUILD FAILED\"` 결과 `BUILD SUCCEEDED` 확인. 코드상 `isDecisionOverlayState`/`shouldDeferDecisionOverlayForSpecialEventPopups` 추가와 `overlayArea` decision 분기 앞 지연 블로커 삽입으로 `askingGoStop`, `askingShake`, `choosingCapture`, `choosingChrysanthemumRole`가 special popup active/pending 동안 렌더링되지 않음을 재확인."
+- **Outcome**: "`GameView`에서 선택 계열 상태를 묶는 helper를 추가하고, special event popup 큐가 남아 있을 때는 decision overlay 대신 전체화면 입력 차단층만 표시하도록 수정했다. 이제 이벤트 팝업이 모두 사라진 뒤에만 `고/스톱`, `흔들기`, `화투 선택`, `국진 역할 선택` 화면이 나타난다."
+
+### [2026-03-07 00:20:08 KST] User Request: 그리고 test scenario도 추가 해줘
+- **Skills Planned**: ["add-bug-fix-scenario", "project_logger"]
+- **Skills Used**: ["add-bug-fix-scenario", "project_logger"]
+- **Trigger Reason**: "방금 수정한 `선택화면 defer` UX가 재발하지 않도록 socket UI probe 기반 회귀 시나리오를 추가하고 실제 시뮬레이터에서 단독 PASS까지 확인해야 했음."
+- **Files Touched**: ["GoStop/Core/GameManager.swift", "GoStop/Views/GameView.swift", "tests/test_agent/test_scenarios.py", "project_progress.md"]
+- **Validation**: "1) `python3 -c \"import ast, pathlib; ast.parse(pathlib.Path('tests/test_agent/test_scenarios.py').read_text(encoding='utf-8')); print('AST_OK')\"` 결과 `AST_OK`. 2) `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n \"error:|warning:|BUILD SUCCEEDED|BUILD FAILED\"` 결과 `BUILD SUCCEEDED`. 3) `xcrun simctl install booted /tmp/gostop_ios_build/Build/Products/Debug-iphonesimulator/GoStop.app`, `xcrun simctl launch booted com.konlona.GoStop`, `nc -vz 127.0.0.1 8080`로 앱/브리지 재기동 확인. 4) `python3 tests/test_agent/test_scenarios.py --mode socket -k scenario_bugfix_decision_overlay_deferred_until_special_event_popups_clear` 결과 `PASS`."
+- **Outcome**: "`GameManager` serialize state에 `uiIsDecisionOverlayDeferredBySpecialEvents` probe를 추가하고, `GameView`가 popup/decision defer 상태를 함께 동기화하도록 반영했다. 테스트 에이전트에는 `scenario_bugfix_decision_overlay_deferred_until_special_event_popups_clear`를 추가해, `askingGoStop` 상태에서 이벤트 팝업이 active/pending이면 decision overlay defer 플래그가 true가 되고 팝업 소진 후 false로 돌아오면서 decision state가 유지되는 것을 socket 모드에서 검증하도록 등록했다."
+
+### [2026-03-07 00:05:56 KST] User Request: 두 번 흔들고 피박 배수가 test scenario로 검증되는지 확인
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 앞서 확인한 `2회 흔들기 + 피박 = x8` 계산이 실제 테스트 시나리오에서 보호되고 있는지 물었고, 시나리오 본문과 실행 목록을 함께 대조해야 했음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`rg -n \"shakeCount|isPibak|Pibak\\(x2\\)|Shake\\(x4\\)|scenario_verify_\" tests/test_agent/test_scenarios.py`, `nl -ba tests/test_agent/test_scenarios.py | sed -n '2300,2475p'`, `nl -ba tests/test_agent/test_scenarios.py | sed -n '3398,3480p'`, `nl -ba tests/test_agent/test_scenarios.py | sed -n '4380,4450p'`, `nl -ba tests/test_agent/test_scenarios.py | sed -n '216,270p'`, `nl -ba tests/test_agent/test_scenarios.py | sed -n '954,1006p'`로 조합 시나리오 유무와 실제 runner 등록 여부를 확인."
+- **Outcome**: "현재 실행되는 test scenario 목록에는 `2회 흔들기 + 피박 = x8`를 직접 검증하는 시나리오가 없다. 등록된 시나리오 중에는 `scenario_verify_score_formula`가 `피박 + 흔들기 1회`를 확인하고, `scenario_verify_pibak_threshold_boundary`가 피박 경계를, `scenario_verify_shake_multiplier_stacking`이 `shakeCount=2` 추적만 확인한다. `scenario_verify_exponential_multipliers`는 `2회 흔들기 -> x4`를 포함하지만 runner 목록에 등록되지 않았고 sweep 구식 기대값도 포함해 현재 활성 검증으로 보긴 어렵다."
+
+### [2026-03-07 00:10:37 KST] User Request: 두 번 흔들고 피박 배수 test scenario 추가
+- **Skills Planned**: ["add-bug-fix-scenario", "gostop-game-builder", "project_logger"]
+- **Skills Used**: ["add-bug-fix-scenario", "gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "활성 시나리오 목록에 빠져 있던 `2회 흔들기 + 피박 = x8` 조합을 회귀 테스트로 고정하고, runner에 등록된 상태로 실제 단독 실행까지 확인해야 했음."
+- **Files Touched**: ["tests/test_agent/test_scenarios.py", "project_progress.md"]
+- **Validation**: "`python3 tests/test_agent/test_scenarios.py 72` 실행 성공. 새 시나리오 `scenario_bugfix_double_shake_pibak_multiplier`가 `finalScore=16`, `scoreFormula=(1 + 1 Go bonus) x Pibak(x2) x Shake(x4) = 16`을 검증하며 PASS."
+- **Outcome**: "`tests/test_agent/test_scenarios.py`에 `scenario_bugfix_double_shake_pibak_multiplier`를 추가하고 runner 목록 끝에 등록했다. 시나리오는 `winner.goCount=1`, `winner.shakeCount=2`, loser low-pi mock 상태로 `Gobak/Gwangbak/Mungbak`를 배제한 채 `Pibak(x2) * Shake(x4) = x8` 조합을 직접 검증한다."
+
+### [2026-03-07 00:16:42 KST] User Request: `allow_empty_start_via_jjok`를 실제 동작하게 패치
+- **Skills Planned**: ["gostop-game-builder", "add-bug-fix-scenario", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "add-bug-fix-scenario", "project_logger"]
+- **Trigger Reason**: "규칙 파일에만 존재하던 `sweep.allow_empty_start_via_jjok`를 실제 엔진 `Sweep` 판정에 연결하고, 빈 바닥 `Jjok` 경로가 회귀 테스트로 보호되도록 해야 했음."
+- **Files Touched**: ["GoStop/Models/RuleConfig.swift", "GoStop/Core/GameManager.swift", "tests/test_agent/test_scenarios.py", "project_progress.md"]
+- **Validation**: "1) `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n \"BUILD SUCCEEDED|BUILD FAILED|error:\"` => `BUILD SUCCEEDED`. 2) `xcrun simctl install booted /tmp/gostop_ios_build/Build/Products/Debug-iphonesimulator/GoStop.app`, `xcrun simctl launch booted com.konlona.GoStop`, `nc -vz 127.0.0.1 8080` 확인 후 `python3 tests/test_agent/test_scenarios.py --mode socket -k empty_start_jjok_counts_as_sweep` PASS. 3) 참고: `GoStopCLI` 스킴 빌드는 기존 `AudioManager.swift`의 macOS용 `AVAudioSession` 비호환 오류로 별도 실패."
+- **Outcome**: "`SweepRule`에 `allow_empty_start_via_jjok` 필드와 누락 시 기본값 `true`를 추가해 기존 `configuration.yaml`도 깨지지 않도록 했고, `GameManager.finalizeTurnState`에서 `empty-start Jjok`일 때도 `Sweep`가 성립하도록 판정을 확장했다. 또한 `scenario_bugfix_empty_start_jjok_counts_as_sweep`를 추가해 빈 바닥 `Jjok`가 `sweepCount` 증가와 추가 피 1장(총 2장 steal)을 유발하는 경로를 socket 시나리오로 검증했다."
+
+### [2026-03-07 00:19:14 KST] User Request: 상대가 아무것도 못 먹었을 때 점수 획득 제한 규칙 확인 및 구현, test scenario 추가
+- **Skills Planned**: ["gostop-game-builder", "add-bug-fix-scenario", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "add-bug-fix-scenario", "project_logger"]
+- **Trigger Reason**: "상대가 이번 판에서 한 장도 못 먹은 경우 점수 확정을 막는 규칙의 부재 여부를 엔진/시나리오 기준으로 확인하고, 없으면 최소 변경으로 추가해야 했음."
+- **Files Touched**: ["GoStop/Models/Player.swift", "GoStop/Models/RuleConfig.swift", "GoStop/Core/PenaltySystem.swift", "GoStop/Core/GameManager.swift", "GoStop/Core/SimulatorBridge.swift", "rule.yaml", "configuration.yaml", "GoStop/Resources/rule.yaml", "tests/test_agent/rule.yaml", "tests/test_agent/test_scenarios.py", "project_progress.md"]
+- **Validation**: "1) `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n 'error:|warning:|BUILD SUCCEEDED|BUILD FAILED'` => `BUILD SUCCEEDED`. 2) `python3 tests/test_agent/test_scenarios.py --mode socket -k block_score_claim_until_opponent_captures` PASS. 3) 회귀 영향 확인: `python3 tests/test_agent/test_scenarios.py --mode socket -k endgame_conditions` PASS, `python3 tests/test_agent/test_scenarios.py --mode socket -k pibak_zero_pi_exception` PASS."
+- **Outcome**: "기존 구현에는 `피박`의 `loserPi > 0` 예외만 있고 '상대가 이번 라운드에 한 번도 못 먹었으면 점수 확정 보류' 규칙은 없었다. `Player.hasCapturedThisRound`를 추가해 실제 캡처/피 이동/테스트 모킹 경로에서 추적하고, `GoStopRule.require_opponent_capture_for_scoring`(기본/설정값 true)을 도입해 Go/Stop 및 점수 확정 경로를 막도록 구현했다. 또한 `scenario_bugfix_block_score_claim_until_opponent_captures`를 추가해 실제 턴 진행과 강제 `askingGoStop` 주입 모두에서 점수 확정이 차단되는지를 검증했다."

@@ -152,6 +152,7 @@ class GameManager: ObservableObject {
     // For Seolsa (뻑/설사) tracking
     @Published var monthOwners: [Int: Player] = [:]
     @Published var seolsaMonths: [Int: Player] = [:] // Tracks which months are in a "뻑" state and who made it
+    private var invalidLastHandSeolsaMonths: Set<Int> = [] // Triple left by last-hand Seolsa should not grant Seolsa Eat.
     
     // For capture card selection (테이블 2장 중 선택)
     @Published var pendingCapturePlayedCard: Card? = nil
@@ -174,6 +175,8 @@ class GameManager: ObservableObject {
     private var turnDrawPhaseCaptured: [Card] = []
     private var turnPlayedCard: Card? = nil
     private var turnTableWasNotEmpty = false
+    private var turnWasOpeningTurn = false
+    private var completedTurnCount = 0
     // Logical table after resolving play-phase capture (used for draw-phase rules).
     // Visual table can still keep pending play captures until draw is revealed.
     private var turnPlayPhaseResultingTable: [Card]? = nil
@@ -199,6 +202,10 @@ class GameManager: ObservableObject {
     @Published var uiActiveSpecialEventPopupTitle: String? = nil
     @Published var uiPendingSpecialEventPopupCount: Int = 0
     @Published var uiIsEndSummaryDeferredBySpecialEvents: Bool = false
+    @Published var uiIsDecisionOverlayDeferredBySpecialEvents: Bool = false
+    @Published var uiActiveCapturedPreviewOwnerPlayerId: String? = nil
+    @Published var uiActiveCapturedPreviewGroupType: String? = nil
+    @Published var uiActiveCapturedPreviewCardCount: Int = 0
     private var stateHistory: [[String: AnyCodable]] = []
     private var scoreEventKindsByPlayer: [String: Set<String>] = [:]
     
@@ -275,11 +282,24 @@ class GameManager: ObservableObject {
     func updateSpecialEventOverlayProbe(
         activePopupTitle: String?,
         pendingQueueCount: Int,
-        isEndSummaryDeferred: Bool
+        isEndSummaryDeferred: Bool,
+        isDecisionOverlayDeferred: Bool
     ) {
         uiActiveSpecialEventPopupTitle = activePopupTitle
         uiPendingSpecialEventPopupCount = max(0, pendingQueueCount)
         uiIsEndSummaryDeferredBySpecialEvents = isEndSummaryDeferred
+        uiIsDecisionOverlayDeferredBySpecialEvents = isDecisionOverlayDeferred
+    }
+
+    func updateCapturedPreviewProbe(ownerPlayerId: String?, groupType: String?, cardCount: Int) {
+        let safeCount = max(0, cardCount)
+        if uiActiveCapturedPreviewOwnerPlayerId != ownerPlayerId ||
+           uiActiveCapturedPreviewGroupType != groupType ||
+           uiActiveCapturedPreviewCardCount != safeCount {
+            uiActiveCapturedPreviewOwnerPlayerId = ownerPlayerId
+            uiActiveCapturedPreviewGroupType = groupType
+            uiActiveCapturedPreviewCardCount = safeCount
+        }
     }
 
     private func updateScoreAndEmitScoreEvents(for player: Player) {
@@ -383,11 +403,16 @@ class GameManager: ObservableObject {
         self.uiActiveSpecialEventPopupTitle = nil
         self.uiPendingSpecialEventPopupCount = 0
         self.uiIsEndSummaryDeferredBySpecialEvents = false
+        self.uiIsDecisionOverlayDeferredBySpecialEvents = false
+        self.uiActiveCapturedPreviewOwnerPlayerId = nil
+        self.uiActiveCapturedPreviewGroupType = nil
+        self.uiActiveCapturedPreviewCardCount = 0
         self.stateHistory = []
         self.scoreEventKindsByPlayer = [:]
         self.deck.reset(seed: seed)
         self.monthOwners = [:]
         self.seolsaMonths = [:]
+        self.invalidLastHandSeolsaMonths = []
         self.currentMovingCards = []
         self.penaltyMoveProgress = 0
         self.sourceCueCardIds = []
@@ -420,6 +445,8 @@ class GameManager: ObservableObject {
         self.turnDrawPhaseCaptured = []
         self.turnPlayedCard = nil
         self.turnTableWasNotEmpty = false
+        self.turnWasOpeningTurn = false
+        self.completedTurnCount = 0
         self.turnPlayPhaseResultingTable = nil
         self.turnDrawPhaseBaseTable = nil
         self.internalComputerActionScheduled = false
@@ -472,6 +499,19 @@ class GameManager: ObservableObject {
             gLog("Game already ended (e.g. initial Chongtong). Skipping startGame playing state.")
             return
         }
+        // 이전 게임의 이동 애니메이션이 stuck 상태로 남아있을 수 있음.
+        // generation을 증가시켜 이전 in-flight 딜레이 콜백을 무효화하고
+        // move context를 초기화하여 tableToCapturedOverlay 무한 루프를 방지.
+        self.automationDelayGeneration += 1
+        self.currentMovingCards = []
+        self.pendingAutomationDelays = 0
+        self.hiddenInSourceCardIds = []
+        self.hiddenInTargetCardIds = []
+        self.sourceCueCardIds = []
+        self.targetCueCardIds = []
+        self.clearMoveContext()
+        self.internalComputerActionScheduled = false
+
         let startingTurnIndex: Int
         if let initialTurnIndex, players.indices.contains(initialTurnIndex) {
             startingTurnIndex = initialTurnIndex
@@ -484,6 +524,11 @@ class GameManager: ObservableObject {
         currentTurnIndex = startingTurnIndex
         gameState = .playing
         maybeScheduleInternalComputerAction()
+    }
+
+    func setCompletedTurnCountForTesting(_ count: Int) {
+        completedTurnCount = max(0, count)
+        turnWasOpeningTurn = completedTurnCount == 0
     }
 
     /// Returns the current round winner index (0-based) so the next round can start from winner.
@@ -660,6 +705,11 @@ class GameManager: ObservableObject {
         finalizeTurnAfterCapture(player: player)
     }
 
+    private func isValidJjokTurn(for player: Player) -> Bool {
+        // House rule: a Jjok created by the last hand card is invalid.
+        turnIsJjok && !player.hand.isEmpty
+    }
+
     private func finalizeTurnAfterCapture(player: Player) {
         let opponentIndex = (currentTurnIndex + 1) % players.count
         let opponent = players[opponentIndex]
@@ -672,6 +722,7 @@ class GameManager: ObservableObject {
         // so they never leak into the next turn.
         let didSeolsaEat = isSeolsaEatFlag
         let didSelfSeolsaEat = isSelfSeolsaEatFlag
+        let isValidJjok = isValidJjokTurn(for: player)
         isSeolsaEatFlag = false
         isSelfSeolsaEatFlag = false
         
@@ -683,21 +734,45 @@ class GameManager: ObservableObject {
             player.ttadakCount += 1
             gLog("\(player.name) triggered 따닥(Ttadak)")
             stealPi(from: opponent, to: player, count: rules.special_moves.ttadak.steal_pi_count, reason: "따닥(Ttadak)")
+            maybeAwardOpeningTurnBonus(
+                to: player,
+                alreadyAwarded: player.awardedFirstTurnTtadakBonus,
+                setAwarded: { player.awardedFirstTurnTtadakBonus = true },
+                points: rules.special_moves.ttadak.first_turn_bonus_score ?? 0,
+                label: "첫 따닥"
+            )
         }
-        if turnIsJjok && rules.special_moves.jjok.enabled {
+        if turnIsJjok && !isValidJjok {
+            gLog("\(player.name) produced Jjok on the last hand card. Ignoring per rule.")
+        }
+        if isValidJjok && rules.special_moves.jjok.enabled {
             player.jjokCount += 1
             gLog("\(player.name) triggered 쪽(Jjok)")
             stealPi(from: opponent, to: player, count: rules.special_moves.jjok.steal_pi_count, reason: "쪽(Jjok)")
         }
         if turnIsSeolsa && rules.special_moves.seolsa.enabled && turnPlayPhaseCaptured.isEmpty {
-             let month = turnPlayedCard?.month.rawValue ?? 0
-             player.seolsaCount += 1
-             gLog("\(player.name) triggered 뻑(Seolsa) for month \(month)")
-             let seolsaPenaltyPi = rules.special_moves.seolsa.penalty_pi_count
-             if seolsaPenaltyPi > 0 {
-                 stealPi(from: player, to: opponent, count: seolsaPenaltyPi, reason: "뻑(Seolsa) 패널티")
-             }
-             seolsaMonths[month] = player
+            let month = turnPlayedCard?.month.rawValue ?? 0
+            let invalidOnLastHand = rules.special_moves.seolsa.invalid_on_last_hand ?? true
+            let isInvalidLastHandSeolsa = invalidOnLastHand && player.hand.isEmpty
+
+            if isInvalidLastHandSeolsa {
+                invalidLastHandSeolsaMonths.insert(month)
+            } else {
+                player.seolsaCount += 1
+                gLog("\(player.name) triggered 뻑(Seolsa) for month \(month)")
+                let seolsaPenaltyPi = rules.special_moves.seolsa.penalty_pi_count
+                if seolsaPenaltyPi > 0 {
+                    stealPi(from: player, to: opponent, count: seolsaPenaltyPi, reason: "뻑(Seolsa) 패널티")
+                }
+                seolsaMonths[month] = player
+                maybeAwardOpeningTurnBonus(
+                    to: player,
+                    alreadyAwarded: player.awardedFirstTurnSeolsaBonus,
+                    setAwarded: { player.awardedFirstTurnSeolsaBonus = true },
+                    points: rules.special_moves.seolsa.first_turn_bonus_score ?? 0,
+                    label: "첫 뻑"
+                )
+            }
         }
         if didSeolsaEat && rules.special_moves.seolsaEat.enabled {
             player.seolsaEatCount += 1
@@ -710,7 +785,14 @@ class GameManager: ObservableObject {
             stealPi(from: opponent, to: player, count: rules.special_moves.seolsaEat.self_eat_steal_pi_count, reason: "자뻑(Self Seolsa Eat)")
         }
         
-        if rules.special_moves.sweep.enabled, turnTableWasNotEmpty, tableCards.isEmpty, !player.hand.isEmpty {
+        let allowEmptyStartJjokSweep =
+            rules.special_moves.sweep.allow_empty_start_via_jjok &&
+            isValidJjok &&
+            !turnTableWasNotEmpty
+        if rules.special_moves.sweep.enabled,
+           (turnTableWasNotEmpty || allowEmptyStartJjokSweep),
+           tableCards.isEmpty,
+           !player.hand.isEmpty {
             gLog("\(player.name) swept the table (싹쓸이)!")
             player.sweepCount += 1
             stealPi(from: opponent, to: player, count: rules.special_moves.sweep.steal_pi_count, reason: "싹쓸이(Sweep)")
@@ -719,10 +801,15 @@ class GameManager: ObservableObject {
         if checkEndgameConditions(player: player, opponent: opponent, rules: rules, isAfterGo: false) {
             return
         }
-        
+
         let minScore = players.count == 3 ? rules.go_stop.min_score_3_players : rules.go_stop.min_score_2_players
         if player.score >= minScore && player.score > player.lastGoScore {
-            if player.hand.count == 0 {
+            if isScoreClaimBlocked(winner: player, loser: opponent, rules: rules) {
+                gLog(
+                    "\(player.name) reached \(player.score) points, but \(opponent.name) has not captured any cards this round. Score claim is blocked."
+                )
+                endTurn()
+            } else if player.hand.count == 0 {
                 gLog("\(player.name) reached \(player.score) points, but has no cards left. Forced STOP.")
                 executeStop(player: player, rules: rules)
             } else {
@@ -733,6 +820,21 @@ class GameManager: ObservableObject {
             endTurn()
         }
     }
+
+    private func maybeAwardOpeningTurnBonus(
+        to player: Player,
+        alreadyAwarded: Bool,
+        setAwarded: () -> Void,
+        points: Int,
+        label: String
+    ) {
+        let isOpeningTurnContext = turnWasOpeningTurn || completedTurnCount == 0
+        guard isOpeningTurnContext, !alreadyAwarded, points > 0 else { return }
+        setAwarded()
+        gLog("\(player.name) received \(label) bonus (+\(points) points)")
+        updateScoreAndEmitScoreEvents(for: player)
+    }
+
     func respondToCapture(selectedCard: Card) {
         guard let player = currentPlayer else { return }
         let playedCard = pendingCapturePlayedCard
@@ -963,8 +1065,14 @@ class GameManager: ObservableObject {
     }
 
     func playTurn(card: Card) {
-        guard let rules = RuleLoader.shared.config else { return }
-        guard gameState == .playing, !isAutomationBusy, let player = currentPlayer else { return }
+        guard let rules = RuleLoader.shared.config else { gLog("playTurn BLOCKED: rules nil"); return }
+        guard gameState == .playing else { gLog("playTurn BLOCKED: gameState=\(gameState) (not .playing)"); return }
+        guard !isAutomationBusy else {
+            gLog("playTurn BLOCKED: isAutomationBusy=true (pendingDelays=\(pendingAutomationDelays), movingCards=\(currentMovingCards.count), hiddenSrc=\(hiddenInSourceCardIds.count), hiddenTgt=\(hiddenInTargetCardIds.count))")
+            return
+        }
+        guard let player = currentPlayer else { gLog("playTurn BLOCKED: currentPlayer=nil"); return }
+
 
         self.uxEventLogs.removeAll() // Clear stale logs from previous turn
 
@@ -997,6 +1105,7 @@ class GameManager: ObservableObject {
         turnDrawPhaseCaptured = []
         turnPlayedCard = nil
         turnTableWasNotEmpty = !tableCards.isEmpty
+        turnWasOpeningTurn = completedTurnCount == 0
         turnPlayPhaseResultingTable = nil
         turnDrawPhaseBaseTable = nil
         
@@ -1142,6 +1251,7 @@ class GameManager: ObservableObject {
         turnDrawPhaseBaseTable = nil
         monthOwners.removeValue(forKey: month.rawValue)
         seolsaMonths.removeValue(forKey: month.rawValue)
+        invalidLastHandSeolsaMonths.remove(month.rawValue)
 
         player.bombCount += 1
         // Rule: Bomb counts as a shake event for multiplier tracking via shakeCount.
@@ -1293,9 +1403,14 @@ class GameManager: ObservableObject {
                         sameMonthInLogicalTable.isEmpty
 
                     if isSeolsa {
+                        let invalidOnLastHand = rules.special_moves.seolsa.invalid_on_last_hand ?? true
                         self.showTargetCue(for: [drawnCard], tableImpactMatched: false)
                         self.turnIsSeolsa = true
-                        gLog("SEOLSA!")
+                        if invalidOnLastHand && player.hand.isEmpty {
+                            gLog("\(player.name) produced Seolsa on the last hand card for month \(drawnCard.month.rawValue). Ignoring per rule.")
+                        } else {
+                            gLog("SEOLSA!")
+                        }
                         self.turnPlayPhaseCaptured = []
                         self.turnDrawPhaseCaptured = []
                         self.turnPlayPhaseResultingTable = nil
@@ -1387,6 +1502,7 @@ class GameManager: ObservableObject {
             for captured in turnDrawPhaseCaptured {
                 monthOwners.removeValue(forKey: captured.month.rawValue)
                 seolsaMonths.removeValue(forKey: captured.month.rawValue)
+                invalidLastHandSeolsaMonths.remove(captured.month.rawValue)
             }
         } else {
             monthOwners[drawnCard.month.rawValue] = player
@@ -1441,6 +1557,16 @@ class GameManager: ObservableObject {
             if checkEndgameConditions(player: player, opponent: opponent, rules: rules, isAfterGo: true) { return }
             endTurn()
         } else {
+            let opponentIndex = (currentTurnIndex + 1) % players.count
+            let opponent = players[opponentIndex]
+            if isScoreClaimBlocked(winner: player, loser: opponent, rules: rules) {
+                gLog(
+                    "\(player.name) tried to STOP at \(player.score) points, but \(opponent.name) has not captured any cards this round. Continuing play."
+                )
+                gameState = .playing
+                endTurn()
+                return
+            }
             executeStop(player: player, rules: rules)
         }
     }
@@ -1503,6 +1629,8 @@ class GameManager: ObservableObject {
     }
     
     private func endTurn() {
+        completedTurnCount += 1
+        turnWasOpeningTurn = false
         let allHandsEmpty = players.allSatisfy { $0.hand.isEmpty }
         if deck.cards.isEmpty || allHandsEmpty {
             self.gameEndReason = .nagari
@@ -1546,6 +1674,7 @@ class GameManager: ObservableObject {
         let endgame = rules.endgame
         let bak = PenaltySystem.calculatePenalties(winner: player, loser: opponent, rules: rules)
         let seolsaRule = rules.special_moves.seolsa
+        let scoreClaimBlocked = isScoreClaimBlocked(winner: player, loser: opponent, rules: rules)
 
         // 0. Triple Seolsa (3뻑) Instant Win
         let seolsaInstantWinCount = seolsaRule.instant_win_count ?? 0
@@ -1566,6 +1695,10 @@ class GameManager: ObservableObject {
         if (instantEnd.pibak && bak.isPibak) || 
            (instantEnd.gwangbak && bak.isGwangbak) || 
            (instantEnd.mungbak && bak.isMungbak) {
+            if scoreClaimBlocked {
+                gLog("Instant End via Bak is blocked because \(opponent.name) has not captured any cards this round.")
+                return false
+            }
             gLog("Instant End Condition met via Bak!")
             executeStop(player: player, rules: rules)
             return true
@@ -1574,6 +1707,10 @@ class GameManager: ObservableObject {
         // 2. Max Score Check (pre/post multiplier based on rule)
         let scoreForThreshold = (endgame.score_check_timing == "post_multiplier") ? bak.finalScore : player.score
         if scoreForThreshold >= endgame.max_round_score {
+            if scoreClaimBlocked {
+                gLog("\(player.name) reached Max Score, but score claim is blocked because \(opponent.name) has not captured any cards this round.")
+                return false
+            }
             gLog("\(player.name) reached Max Score (\(endgame.max_round_score))! score=\(scoreForThreshold)")
             executeStop(player: player, rules: rules, reason: .maxScore)
             return true
@@ -1581,12 +1718,22 @@ class GameManager: ObservableObject {
 
         // 3. Max Go Count
         if player.goCount >= endgame.max_go_count {
+            if scoreClaimBlocked {
+                gLog("\(player.name) reached Max Go Count, but score claim is blocked because \(opponent.name) has not captured any cards this round.")
+                return false
+            }
             gLog("\(player.name) reached Max Go Count (\(endgame.max_go_count))!")
             executeStop(player: player, rules: rules, reason: .maxScore)
             return true
         }
         
         return false
+    }
+
+    private func isScoreClaimBlocked(winner: Player, loser: Player, rules: RuleConfig) -> Bool {
+        guard rules.go_stop.require_opponent_capture_for_scoring else { return false }
+        guard winner.score > 0 else { return false }
+        return !loser.hasCapturedThisRound
     }
 
     private func resolveBakPiTransfers(winner: Player, loser: Player, rules: RuleConfig) {
@@ -1892,18 +2039,20 @@ class GameManager: ObservableObject {
         } else if m.count == 3 {
             let allFour = [monthCard] + m
             table.removeAll { $0.month == monthCard.month }
-            
-            if let puckCreator = seolsaMonths[monthCard.month.rawValue] {
+
+            let month = monthCard.month.rawValue
+            let isInvalidLastHandSeolsa = invalidLastHandSeolsaMonths.contains(month)
+            if let puckCreator = seolsaMonths[month] {
                 if puckCreator.id == player.id {
                     isSelfSeolsaEatFlag = true
                 } else {
                     isSeolsaEatFlag = true
                 }
-                seolsaMonths.removeValue(forKey: monthCard.month.rawValue)
-            } else {
+                seolsaMonths.removeValue(forKey: month)
+            } else if !isInvalidLastHandSeolsa {
                 isSeolsaEatFlag = true
             }
-            
+            invalidLastHandSeolsaMonths.remove(month)
             return allFour
         } else if m.count == 2 {
             let typesDistinct = m[0].type != m[1].type
@@ -1951,6 +2100,7 @@ class GameManager: ObservableObject {
             if !to.capturedCards.contains(where: { $0.id == movedCard.id }) {
                 to.capturedCards.append(movedCard)
             }
+            to.hasCapturedThisRound = true
             hiddenInTargetCardIds.insert(movedCard.id)
             hiddenInSourceCardIds.remove(movedCard.id)
         }
@@ -2032,21 +2182,55 @@ class GameManager: ObservableObject {
         }
     }
 
-    private func stealPi(from: Player, to: Player, count: Int, reason: String = "") {
-        guard RuleLoader.shared.config != nil else { return }
+    private struct PiTransferCandidate {
+        let card: Card
+        let piValue: Int
+    }
 
-        var selectedCardIds: Set<String> = []
-        var selectedCards: [Card] = []
+    private func shouldPreferPiTransferCombo(
+        _ candidate: [PiTransferCandidate],
+        over existing: [PiTransferCandidate]?
+    ) -> Bool {
+        guard let existing else { return true }
+        return candidate.count < existing.count
+    }
 
-        for _ in 0..<count {
-            if let piCard = from.capturedCards.last(where: { $0.type == .junk && !selectedCardIds.contains($0.id) }) {
-                selectedCardIds.insert(piCard.id)
-                selectedCards.append(piCard)
-            } else if let doublePiCard = from.capturedCards.last(where: { $0.type == .doubleJunk && !selectedCardIds.contains($0.id) }) {
-                selectedCardIds.insert(doublePiCard.id)
-                selectedCards.append(doublePiCard)
+    private func selectPiCardsForTransfer(from cards: [Card], targetPiCount: Int, rules: RuleConfig) -> [Card] {
+        guard targetPiCount > 0 else { return [] }
+
+        let candidates = cards.reversed().compactMap { card -> PiTransferCandidate? in
+            let piValue = ScoringSystem.piValue(for: card, in: cards, rules: rules)
+            guard piValue > 0 else { return nil }
+            return PiTransferCandidate(card: card, piValue: piValue)
+        }
+        guard !candidates.isEmpty else { return [] }
+
+        var bestCombosBySum: [Int: [PiTransferCandidate]] = [0: []]
+        for candidate in candidates {
+            let snapshot = bestCombosBySum
+            for (sum, combo) in snapshot {
+                let newSum = sum + candidate.piValue
+                var newCombo = combo
+                newCombo.append(candidate)
+                if shouldPreferPiTransferCombo(newCombo, over: bestCombosBySum[newSum]) {
+                    bestCombosBySum[newSum] = newCombo
+                }
             }
         }
+
+        let sortedSums = bestCombosBySum.keys.sorted()
+        if let selectedSum = sortedSums.first(where: { $0 >= targetPiCount }) {
+            return bestCombosBySum[selectedSum]?.map(\.card) ?? []
+        }
+        guard let maxAvailableSum = sortedSums.last else { return [] }
+        return bestCombosBySum[maxAvailableSum]?.map(\.card) ?? []
+    }
+
+    private func stealPi(from: Player, to: Player, count: Int, reason: String = "") {
+        guard let rules = RuleLoader.shared.config else { return }
+
+        // `count` represents requested Pi units, not a raw card count.
+        let selectedCards = selectPiCardsForTransfer(from: from.capturedCards, targetPiCount: count, rules: rules)
 
         if !selectedCards.isEmpty {
             animatePenaltyPiTransfer(cards: selectedCards, from: from, to: to, reason: reason)
@@ -2109,6 +2293,10 @@ extension GameManager {
         state["uiActiveSpecialEventPopupTitle"] = AnyCodable(uiActiveSpecialEventPopupTitle as Any)
         state["uiPendingSpecialEventPopupCount"] = AnyCodable(uiPendingSpecialEventPopupCount)
         state["uiIsEndSummaryDeferredBySpecialEvents"] = AnyCodable(uiIsEndSummaryDeferredBySpecialEvents)
+        state["uiIsDecisionOverlayDeferredBySpecialEvents"] = AnyCodable(uiIsDecisionOverlayDeferredBySpecialEvents)
+        state["uiActiveCapturedPreviewOwnerPlayerId"] = AnyCodable(uiActiveCapturedPreviewOwnerPlayerId as Any)
+        state["uiActiveCapturedPreviewGroupType"] = AnyCodable(uiActiveCapturedPreviewGroupType as Any)
+        state["uiActiveCapturedPreviewCardCount"] = AnyCodable(uiActiveCapturedPreviewCardCount)
         state["players"] = AnyCodable(players.map { player in
             var playerDict = player.serialize()
             playerDict["scoreItems"] = AnyCodable(ScoringSystem.calculateScoreDetail(for: player))

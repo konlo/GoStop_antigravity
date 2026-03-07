@@ -322,6 +322,25 @@ def wait_for_quiescent_state(agent: TestAgent, timeout_sec: float = 8.0, poll_se
     )
 
 
+def pi_units_for_card(card: dict) -> int:
+    selected_role = card.get("selectedRole")
+    if selected_role == "doublePi":
+        return 2
+    if selected_role == "animal":
+        return 0
+    if card.get("type") == "doubleJunk":
+        return 2
+    if card.get("type") == "junk":
+        return 1
+    if card.get("month") == 9 and card.get("type") == "animal" and selected_role == "doublePi":
+        return 2
+    return 0
+
+
+def total_pi_units(cards) -> int:
+    return sum(pi_units_for_card(card) for card in cards or [])
+
+
 def wait_for_game_state(agent: TestAgent, expected_state: str, timeout_sec: float = 8.0, poll_sec: float = 0.15):
     deadline = time.time() + timeout_sec
     last_state = None
@@ -434,6 +453,115 @@ def scenario_bugfix_end_summary_deferred_until_special_event_popups_clear(agent:
     )
 
     logger.info("Bugfix verification passed: end summary waits until all special event popups disappear.")
+
+
+def scenario_bugfix_decision_overlay_deferred_until_special_event_popups_clear(agent: TestAgent):
+    """
+    Bug: Decision overlays could render while special event popups were still being shown.
+    Fix: Defer decision overlays until all special event popups are fully drained.
+    """
+    logger.info("Running bugfix scenario: decision overlay deferred until special event popups clear...")
+
+    if agent.connection_mode != "socket":
+        logger.info("SKIPPED: requires socket mode UI probe fields. PASS")
+        return
+
+    agent.set_condition({
+        "mock_gameState": "askingGoStop",
+        "mock_event_logs": [],
+        "player0_data": {"isComputer": False},
+        "player1_data": {"isComputer": False},
+    })
+    # Let the UI consume the cleared log state before injecting the popup-producing logs.
+    time.sleep(0.25)
+
+    agent.set_condition({
+        "mock_gameState": "askingGoStop",
+        "mock_event_logs": [
+            "Player 1 triggered 따닥(Ttadak)",
+            "Player 1 triggered 쪽(Jjok)",
+            "Player 1 triggered BOMB!"
+        ],
+        "player0_data": {"isComputer": False},
+        "player1_data": {"isComputer": False},
+    })
+
+    initial_state = wait_for_game_state(agent, "askingGoStop", timeout_sec=2.0, poll_sec=0.05)
+    required_probe_keys = [
+        "uiActiveSpecialEventPopupTitle",
+        "uiPendingSpecialEventPopupCount",
+        "uiIsDecisionOverlayDeferredBySpecialEvents",
+    ]
+    missing_keys = [k for k in required_probe_keys if k not in initial_state]
+    assert not missing_keys, (
+        f"Missing UI probe keys in socket state: {missing_keys}. "
+        f"State keys: {sorted(initial_state.keys())}"
+    )
+
+    observe_deadline = time.time() + 2.5
+    saw_deferred = False
+    saw_popup_activity = False
+    saw_decision_state_preserved = False
+    last_state = initial_state
+    while time.time() < observe_deadline:
+        state = agent.get_all_information()
+        last_state = state
+        deferred = bool(state.get("uiIsDecisionOverlayDeferredBySpecialEvents", False))
+        pending_count = int(state.get("uiPendingSpecialEventPopupCount", 0) or 0)
+        active_title = state.get("uiActiveSpecialEventPopupTitle")
+        game_state = state.get("gameState")
+
+        saw_deferred = saw_deferred or deferred
+        saw_popup_activity = saw_popup_activity or bool(active_title) or pending_count > 0
+        saw_decision_state_preserved = saw_decision_state_preserved or (deferred and game_state == "askingGoStop")
+        if saw_deferred and saw_popup_activity and saw_decision_state_preserved:
+            break
+        time.sleep(0.08)
+
+    assert saw_deferred, (
+        f"Expected decision overlay deferral while popup is active/queued, but deferred flag was never true. "
+        f"Last state: {last_state}"
+    )
+    assert saw_popup_activity, (
+        f"Expected popup activity for injected event logs, but no active/pending popup observed. "
+        f"Last state: {last_state}"
+    )
+    assert saw_decision_state_preserved, (
+        f"Expected askingGoStop state to remain pending while decision overlay is deferred. "
+        f"Last state: {last_state}"
+    )
+
+    drain_deadline = time.time() + 8.0
+    drained_state = None
+    while time.time() < drain_deadline:
+        state = agent.get_all_information()
+        drained_state = state
+        pending_count = int(state.get("uiPendingSpecialEventPopupCount", 0) or 0)
+        active_title = state.get("uiActiveSpecialEventPopupTitle")
+        deferred = bool(state.get("uiIsDecisionOverlayDeferredBySpecialEvents", False))
+
+        if pending_count == 0 and not active_title and not deferred:
+            break
+        time.sleep(0.12)
+
+    assert drained_state is not None, "Failed to observe post-popup decision state."
+    assert drained_state.get("gameState") == "askingGoStop", (
+        f"Decision state should still be pending after popup drain, got {drained_state.get('gameState')}. "
+        f"State: {drained_state}"
+    )
+    assert int(drained_state.get("uiPendingSpecialEventPopupCount", -1) or 0) == 0, (
+        f"Popup queue should be empty after drain, got {drained_state.get('uiPendingSpecialEventPopupCount')}. "
+        f"State: {drained_state}"
+    )
+    assert not drained_state.get("uiActiveSpecialEventPopupTitle"), (
+        f"Active popup should be nil after drain, got {drained_state.get('uiActiveSpecialEventPopupTitle')}. "
+        f"State: {drained_state}"
+    )
+    assert drained_state.get("uiIsDecisionOverlayDeferredBySpecialEvents") is False, (
+        f"Decision overlay deferral should be false after popup drain. State: {drained_state}"
+    )
+
+    logger.info("Bugfix verification passed: decision overlay waits until all special event popups disappear.")
 
 
 def _assert_player_captured_cards_visible(state: dict, player_index: int, expected_cards: list[tuple[int, str]]):
@@ -711,8 +839,8 @@ def scenario_verify_special_moves_suite(agent: TestAgent):
     pre_opponent = pre_state["players"][1]
     pre_jjok = pre_player.get("jjokCount", 0)
     pre_ttadak = pre_player.get("ttadakCount", 0)
-    pre_player_captured = len(pre_player.get("capturedCards", []))
-    pre_opponent_junkish = len([c for c in pre_opponent.get("capturedCards", []) if c.get("type") in ("junk", "doubleJunk")])
+    pre_player_pi_units = total_pi_units(pre_player.get("capturedCards", []))
+    pre_opponent_pi_units = total_pi_units(pre_opponent.get("capturedCards", []))
     agent.send_user_action("play_card", {"month": 3, "type": "junk"})
     
     state = wait_for_quiescent_state(agent, timeout_sec=3.0)
@@ -720,14 +848,15 @@ def scenario_verify_special_moves_suite(agent: TestAgent):
     opponent = state["players"][1]
     assert player["jjokCount"] == pre_jjok + 1, f"Expected jjokCount to increment by 1, {pre_jjok} -> {player['jjokCount']}"
     assert player.get("ttadakCount", 0) == pre_ttadak, f"Jjok subcase must NOT also increment ttadakCount, got {pre_ttadak} -> {player.get('ttadakCount', 0)}"
-    # Jjok should steal exactly the seeded 1 Pi (not double-steal via erroneous Ttadak overlap).
-    opponent_junkish = [c for c in opponent.get("capturedCards", []) if c.get("type") in ("junk", "doubleJunk")]
-    assert len(opponent_junkish) == max(0, pre_opponent_junkish - 1), (
-        f"Jjok subcase should steal exactly 1 junkish card, opponent junkish {pre_opponent_junkish} -> {len(opponent_junkish)}"
+    # Jjok should steal exactly 1 pi unit (not double-steal via erroneous Ttadak overlap).
+    opponent_pi_units = total_pi_units(opponent.get("capturedCards", []))
+    player_pi_units = total_pi_units(player.get("capturedCards", []))
+    assert opponent_pi_units == max(0, pre_opponent_pi_units - 1), (
+        f"Jjok subcase should steal exactly 1 pi unit, opponent pi {pre_opponent_pi_units} -> {opponent_pi_units}"
     )
-    assert len(player["capturedCards"]) == pre_player_captured + 3, (
-        f"Jjok subcase should add 3 cards (2 capture + 1 steal), "
-        f"got {pre_player_captured} -> {len(player['capturedCards'])}"
+    assert player_pi_units == pre_player_pi_units + 3, (
+        f"Jjok subcase should add 3 pi units (2 from capture + 1 stolen), "
+        f"got {pre_player_pi_units} -> {player_pi_units}"
     )
     
     logger.info("Jjok verification passed!")
@@ -781,6 +910,8 @@ def scenario_verify_chongtong_initial(agent: TestAgent):
     """
     logger.info("Running Initial Chongtong verification (full flow)...")
 
+    expected_initial_score, _ = _get_chongtong_scores_from_probe(agent)
+
     # Use set_condition to arrange a guaranteed Chongtong: Player 1 has all 4 of month 1
     agent.send_user_action("set_condition", {
         "currentTurnIndex": 0,
@@ -820,11 +951,21 @@ def scenario_verify_chongtong_initial(agent: TestAgent):
 
     chongtong_month = state.get("chongtongMonth")
     chongtong_timing = state.get("chongtongTiming")
+    penalty = state.get("penaltyResult")
 
     if chongtong_month != 1:
         raise AssertionError(f"Expected chongtongMonth=1, got {chongtong_month}")
     if chongtong_timing != "initial":
         raise AssertionError(f"Expected chongtongTiming='initial', got {chongtong_timing}")
+    if not isinstance(penalty, dict):
+        raise AssertionError(f"Expected penaltyResult for Chongtong end, got {penalty}")
+    if penalty.get("finalScore") != expected_initial_score:
+        raise AssertionError(
+            f"Expected initial Chongtong finalScore={expected_initial_score}, got {penalty.get('finalScore')}. "
+            f"Penalty: {penalty}"
+        )
+    if "Chongtong Rule (initial)" not in penalty.get("scoreFormula", ""):
+        raise AssertionError(f"Expected Chongtong formula in penaltyResult, got {penalty}")
 
     # Critically: verify the player CANNOT play any card in ended state
     # Try playing a card and confirm it's rejected
@@ -838,7 +979,8 @@ def scenario_verify_chongtong_initial(agent: TestAgent):
     logger.info(
         f"Initial Chongtong verification passed! "
         f"gameState={game_state}, reason={game_end_reason}, "
-        f"month={chongtong_month}, timing={chongtong_timing}. PASS"
+        f"month={chongtong_month}, timing={chongtong_timing}, "
+        f"score={penalty.get('finalScore')}. PASS"
     )
 
 
@@ -883,6 +1025,79 @@ def scenario_verify_chongtong_midgame_negative(agent: TestAgent):
         f"Mid-game Chongtong Negative verified: game did not end via Chongtong "
         f"when cards split between hand/captured. gameState={game_state}. PASS"
     )
+
+
+def scenario_bugfix_chongtong_score_respects_configuration(agent: TestAgent):
+    """
+    Bug: Chongtong score output was not protected by regression when settings changed.
+    Fix: Expose Chongtong scores via persistence probe and verify initial/midgame ends use the configured values.
+    """
+    logger.info("Running bugfix scenario: chongtong score respects configuration...")
+
+    original_initial, original_midgame = _get_chongtong_scores_from_probe(agent)
+    updated_initial = 13 if original_initial != 13 else 17
+    updated_midgame = 11 if original_midgame != 11 else 14
+
+    def assert_chongtong_score(expected_score: int, timing: str, month: int):
+        agent.send_user_action("click_restart_button")
+        agent.send_user_action("set_condition", {
+            "currentTurnIndex": 0,
+            "mock_hand": [
+                {"month": month, "type": "bright"},
+                {"month": month, "type": "animal"},
+                {"month": month, "type": "ribbon"},
+                {"month": month, "type": "junk"},
+                {"month": 12, "type": "junk"},
+            ],
+            "mock_table": [],
+            "mock_deck": [],
+            "mock_gameState": "playing",
+            "player0_data": {"capturedCards": [], "goCount": 0, "name": "Player 1"},
+            "player1_data": {"capturedCards": [], "goCount": 0, "name": "Computer", "mock_hand": [{"month": 3, "type": "junk"}]}
+        })
+        agent.send_user_action("force_chongtong_check", {"timing": timing})
+
+        state = agent.get_all_information()
+        penalty = state.get("penaltyResult")
+        assert state.get("gameState") == "ended", f"{timing}: Chongtong should end the game. state={state}"
+        assert state.get("gameEndReason") == "chongtong", f"{timing}: unexpected end reason. state={state}"
+        assert isinstance(penalty, dict), f"{timing}: expected penaltyResult, got {penalty}"
+        assert penalty.get("finalScore") == expected_score, (
+            f"{timing}: expected finalScore={expected_score}, got {penalty.get('finalScore')}. penalty={penalty}"
+        )
+        assert penalty.get("scoreFormula") == f"Chongtong Rule ({timing}) = {expected_score}", (
+            f"{timing}: unexpected scoreFormula {penalty.get('scoreFormula')}"
+        )
+
+    try:
+        changed = _set_persistence_probe_config(
+            agent,
+            rule_chongtong_initial_score=updated_initial,
+            rule_chongtong_midgame_score=updated_midgame
+        )
+        assert int(changed.get("rule_chongtong_initial_score", -1)) == updated_initial, (
+            f"Failed to update initial Chongtong score via probe: {changed}"
+        )
+        assert int(changed.get("rule_chongtong_midgame_score", -1)) == updated_midgame, (
+            f"Failed to update midgame Chongtong score via probe: {changed}"
+        )
+
+        assert_chongtong_score(updated_initial, "initial", 1)
+        assert_chongtong_score(updated_midgame, "midgame", 2)
+    finally:
+        restored = _set_persistence_probe_config(
+            agent,
+            rule_chongtong_initial_score=original_initial,
+            rule_chongtong_midgame_score=original_midgame
+        )
+        assert int(restored.get("rule_chongtong_initial_score", -1)) == original_initial, (
+            f"Failed to restore initial Chongtong score via probe: {restored}"
+        )
+        assert int(restored.get("rule_chongtong_midgame_score", -1)) == original_midgame, (
+            f"Failed to restore midgame Chongtong score via probe: {restored}"
+        )
+
+    logger.info("Chongtong configuration score verification passed.")
 
 
 
@@ -1020,7 +1235,10 @@ def scenario_verify_endgame_conditions(agent: TestAgent):
         "mock_gameState": "askingGoStop",
         "player0_data": {"goCount": 4, "lastGoScore": 1},
         "mock_captured_cards": [{"month": 1, "type": "junk"}] * 10,
-        "player1_data": {"isComputer": False}
+        "player1_data": {
+            "isComputer": False,
+            "capturedCards": [{"month": 12, "type": "junk"}]
+        }
     })
     
     agent.send_user_action("respond_go_stop", {"isGo": True})
@@ -1648,16 +1866,29 @@ def _get_persistence_probe_config(agent: TestAgent) -> dict:
     assert isinstance(data, dict), f"Probe response missing data dictionary: {response}"
     return data
 
+
+def _get_chongtong_scores_from_probe(agent: TestAgent) -> tuple[int, int]:
+    probe = _get_persistence_probe_config(agent)
+    assert "rule_chongtong_initial_score" in probe, f"Probe missing rule_chongtong_initial_score: {probe}"
+    assert "rule_chongtong_midgame_score" in probe, f"Probe missing rule_chongtong_midgame_score: {probe}"
+    return int(probe["rule_chongtong_initial_score"]), int(probe["rule_chongtong_midgame_score"])
+
 def _set_persistence_probe_config(
     agent: TestAgent,
     *,
     rule_dummy_card_count: int = None,
+    rule_chongtong_initial_score: int = None,
+    rule_chongtong_midgame_score: int = None,
     animation_opponent_action_delay: float = None,
     first_launch_starter_applied: bool = None
 ) -> dict:
     payload = {}
     if rule_dummy_card_count is not None:
         payload["rule_dummy_card_count"] = int(rule_dummy_card_count)
+    if rule_chongtong_initial_score is not None:
+        payload["rule_chongtong_initial_score"] = int(rule_chongtong_initial_score)
+    if rule_chongtong_midgame_score is not None:
+        payload["rule_chongtong_midgame_score"] = int(rule_chongtong_midgame_score)
     if animation_opponent_action_delay is not None:
         payload["animation_opponent_action_delay"] = float(animation_opponent_action_delay)
     if first_launch_starter_applied is not None:
@@ -1936,7 +2167,7 @@ def scenario_verify_seolsa(agent: TestAgent):
     # Give player 0 Pi cards so we can verify they are NOT transferred by Seolsa.
     agent.set_condition({
         "currentTurnIndex": 0,
-        "mock_hand": [{"month": 7, "type": "ribbon"}],  # Player 0 has month-7 ribbon
+        "mock_hand": [{"month": 7, "type": "ribbon"}, {"month": 8, "type": "junk"}],  # Keep one extra card so last-hand Seolsa invalidation does not apply
         "mock_table": [{"month": 7, "type": "junk"}],   # Month-7 junk is already on table
         "mock_deck": [{"month": 7, "type": "animal"}],  # Draw card MUST match the month for 뻑 (Seolsa)
         "mock_gameState": "playing",
@@ -1976,7 +2207,7 @@ def scenario_verify_triple_seolsa_instant_win(agent: TestAgent):
 
     agent.set_condition({
         "currentTurnIndex": 0,
-        "mock_hand": [{"month": 7, "type": "ribbon"}],
+        "mock_hand": [{"month": 7, "type": "ribbon"}, {"month": 8, "type": "junk"}],
         "mock_table": [{"month": 7, "type": "junk"}],
         "mock_deck": [{"month": 7, "type": "animal"}],
         "mock_gameState": "playing",
@@ -2464,6 +2695,400 @@ def scenario_verify_score_formula(agent: TestAgent):
     logger.info("Score Formula verification passed!")
 
 
+def scenario_bugfix_double_shake_pibak_multiplier(agent: TestAgent):
+    """
+    Bug: The active regression suite did not directly verify the 2-shake + Pibak endgame path.
+    Fix: Add a deterministic endgame scenario that isolates Pibak(x2) and Shake(x4) into x8 total.
+    """
+    logger.info("Running bugfix scenario: double shake + pibak multiplier...")
+
+    winner_cards = [{"month": m, "type": "junk"} for m in range(1, 11)]  # 10 Pi -> 1 point
+    loser_cards = [{"month": m, "type": "junk"} for m in range(1, 6)]  # 5 Pi -> vulnerable to Pibak
+
+    agent.set_condition({
+        "mock_captured_cards": winner_cards,
+        "mock_opponent_captured_cards": loser_cards,
+        # Winner goCount=1 keeps Bak active without triggering Gobak.
+        # shakeCount=2 means Shake(x4), so total multiplier should be Pibak(x2) * Shake(x4) = x8.
+        "player0_data": {"goCount": 1, "shakeCount": 2},
+        "player1_data": {"goCount": 0},
+        "mock_scenario": "game_over"
+    })
+
+    state = agent.get_all_information()
+    penalty = state.get("penaltyResult")
+    assert penalty is not None, f"Failed to get penaltyResult. State: {state}"
+
+    winner = state["players"][0]
+    assert winner.get("shakeCount") == 2, f"Expected shakeCount=2, got {winner.get('shakeCount')}"
+    assert penalty.get("isPibak") is True, f"Expected isPibak=True, got {penalty}"
+    assert penalty.get("isGobak") is False, f"Gobak should be isolated out of this scenario: {penalty}"
+    assert penalty.get("isGwangbak") is False, f"Gwangbak should be isolated out of this scenario: {penalty}"
+    assert penalty.get("isMungbak") is False, f"Mungbak should be isolated out of this scenario: {penalty}"
+
+    expected_final_score = 16  # (base 1 + 1 Go bonus) * Pibak(x2) * Shake(x4)
+    assert penalty.get("finalScore") == expected_final_score, (
+        f"Expected finalScore={expected_final_score} for x8 total multiplier, got {penalty.get('finalScore')}. "
+        f"Penalty: {penalty}"
+    )
+
+    formula = penalty.get("scoreFormula", "")
+    if formula:
+        assert "Pibak(x2)" in formula and "Shake(x4)" in formula, f"Expected x8 terms in formula, got: {formula}"
+        assert "Gobak(" not in formula and "Gwangbak(" not in formula and "Mungbak(" not in formula, (
+            f"Unexpected extra bak multiplier leaked into formula: {formula}"
+        )
+
+    logger.info(
+        "Double shake + pibak verified: finalScore=%s, formula=%s",
+        penalty.get("finalScore"),
+        formula
+    )
+
+def scenario_bugfix_empty_start_jjok_counts_as_sweep(agent: TestAgent):
+    """
+    Bug: `sweep.allow_empty_start_via_jjok` was declared in rules but not enforced.
+    Fix: An empty-start Jjok should also count as Sweep and steal the extra Pi when enabled.
+    """
+    logger.info("Running bugfix scenario: empty-start Jjok counts as Sweep...")
+
+    agent.send_user_action("click_restart_button")
+    state = agent.get_all_information()
+    if state.get("gameState") != "playing":
+        agent.send_user_action("start_game")
+
+    agent.set_condition({
+        "mock_hand": [{"month": 3, "type": "junk"}, {"month": 5, "type": "junk"}],
+        "mock_table": [],
+        "mock_deck": [{"month": 3, "type": "junk"}],
+        "mock_gameState": "playing",
+        "player0_data": {"isComputer": True},
+        "player1_data": {"isComputer": False},
+        "mock_opponent_captured_cards": [
+            {"month": 1, "type": "junk"},
+            {"month": 2, "type": "junk"}
+        ]
+    })
+    handle_potential_shake(agent)
+    wait_for_quiescent_state(agent, timeout_sec=3.0)
+
+    pre_state = agent.get_all_information()
+    pre_player = pre_state["players"][0]
+    pre_opponent = pre_state["players"][1]
+    pre_jjok = pre_player.get("jjokCount", 0)
+    pre_sweep = pre_player.get("sweepCount", 0)
+    pre_player_pi_units = total_pi_units(pre_player.get("capturedCards", []))
+    pre_opponent_pi_units = total_pi_units(pre_opponent.get("capturedCards", []))
+
+    agent.send_user_action("play_card", {"month": 3, "type": "junk"})
+
+    state = wait_for_quiescent_state(agent, timeout_sec=3.0)
+    player = state["players"][0]
+    opponent = state["players"][1]
+    opponent_pi_units = total_pi_units(opponent.get("capturedCards", []))
+    player_pi_units = total_pi_units(player.get("capturedCards", []))
+
+    assert player["jjokCount"] == pre_jjok + 1, (
+        f"Expected empty-start Jjok to increment jjokCount, {pre_jjok} -> {player['jjokCount']}"
+    )
+    assert player.get("sweepCount", 0) == pre_sweep + 1, (
+        f"Expected empty-start Jjok to also increment sweepCount, {pre_sweep} -> {player.get('sweepCount', 0)}"
+    )
+    assert len(state.get("tableCards", [])) == 0, (
+        f"Table should remain empty after empty-start Jjok Sweep, got {len(state.get('tableCards', []))} cards"
+    )
+    assert opponent_pi_units == max(0, pre_opponent_pi_units - 2), (
+        f"Expected Jjok + Sweep to steal 2 pi units, opponent pi {pre_opponent_pi_units} -> {opponent_pi_units}"
+    )
+    assert player_pi_units == pre_player_pi_units + 4, (
+        f"Expected player pi units to gain 4 (2 from capture + 2 stolen), "
+        f"got {pre_player_pi_units} -> {player_pi_units}"
+    )
+
+    logger.info("Empty-start Jjok Sweep verification passed!")
+
+
+def scenario_bugfix_block_score_claim_until_opponent_captures(agent: TestAgent):
+    """
+    Bug: A player could enter Go/Stop and confirm scoring even when the opponent had not
+    captured any card in the current round.
+    Fix: Track per-round capture history and block score claims until the opponent captures.
+    """
+    logger.info("Running bugfix scenario: block score claim until opponent captures...")
+
+    winner_cards = [{"month": ((i % 12) + 1), "type": "junk"} for i in range(16)]  # 16 pi -> 7 points
+
+    agent.send_user_action("start_game")
+    agent.set_condition({
+        "clear_deck": True,
+        "mock_gameState": "playing",
+        "currentTurnIndex": 0,
+        "mock_captured_cards": winner_cards,
+        "mock_opponent_captured_cards": [],
+        "mock_table": [
+            {"month": 1, "type": "junk", "imageIndex": 0}
+        ],
+        "mock_deck": [
+            {"month": 5, "type": "junk", "imageIndex": 0},
+            {"month": 2, "type": "junk", "imageIndex": 0}
+        ],
+        "player0_data": {
+            "isComputer": False,
+            "goCount": 0,
+            "lastGoScore": 0,
+            "hand": [
+                {"month": 11, "type": "ribbon", "imageIndex": 0},
+                {"month": 12, "type": "ribbon", "imageIndex": 0}
+            ]
+        },
+        "player1_data": {
+            "isComputer": False,
+            "hand": [
+                {"month": 3, "type": "junk", "imageIndex": 0}
+            ],
+            "capturedCards": []
+        }
+    })
+
+    pre_state = agent.get_all_information()
+    assert pre_state["players"][0]["score"] >= 7, f"Expected player 0 score >= 7, got {pre_state['players'][0]['score']}"
+    assert pre_state["players"][0].get("hasCapturedThisRound") is True, (
+        f"Winner should already have capture history, state={pre_state['players'][0]}"
+    )
+    assert pre_state["players"][1].get("hasCapturedThisRound") is False, (
+        f"Opponent should have no capture history yet, state={pre_state['players'][1]}"
+    )
+
+    agent.send_user_action("play_card", {"month": 11, "type": "ribbon"})
+
+    state = wait_for_quiescent_state(agent, timeout_sec=3.0)
+    assert state["gameState"] == "playing", f"Score claim should stay blocked, got gameState={state['gameState']}"
+    assert state["currentTurnIndex"] == 1, (
+        f"Turn should pass to opponent instead of asking Go/Stop, got currentTurnIndex={state['currentTurnIndex']}"
+    )
+    assert state["players"][0]["lastGoScore"] == 0, (
+        f"lastGoScore must remain unchanged while score claim is blocked, got {state['players'][0]['lastGoScore']}"
+    )
+    assert state["players"][1].get("hasCapturedThisRound") is False, (
+        f"Opponent should still have no capture history, state={state['players'][1]}"
+    )
+
+    agent.set_condition({
+        "mock_gameState": "askingGoStop",
+        "currentTurnIndex": 0,
+        "mock_captured_cards": winner_cards,
+        "mock_opponent_captured_cards": [],
+        "mock_deck": [
+            {"month": 6, "type": "junk", "imageIndex": 0}
+        ],
+        "player0_data": {
+            "isComputer": False,
+            "goCount": 0,
+            "lastGoScore": 0,
+            "hand": [
+                {"month": 12, "type": "ribbon", "imageIndex": 0}
+            ]
+        },
+        "player1_data": {
+            "isComputer": False,
+            "hand": [
+                {"month": 4, "type": "junk", "imageIndex": 0}
+            ],
+            "capturedCards": []
+        }
+    })
+
+    agent.send_user_action("respond_go_stop", {"isGo": False})
+
+    blocked_stop_state = agent.get_all_information()
+    assert blocked_stop_state["gameState"] == "playing", (
+        f"Forced Stop should be rejected while opponent has no capture history, got {blocked_stop_state['gameState']}"
+    )
+    assert blocked_stop_state["currentTurnIndex"] == 1, (
+        f"Forced Stop should hand turn to opponent, got currentTurnIndex={blocked_stop_state['currentTurnIndex']}"
+    )
+    assert "penaltyResult" not in blocked_stop_state, (
+        f"No end summary should be created when score claim is blocked, state={blocked_stop_state}"
+    )
+
+    logger.info("Blocked score claim verification passed!")
+
+
+def scenario_bugfix_no_jjok_on_last_hand_card(agent: TestAgent):
+    """
+    Bug: Jjok was still awarded when it was created by the acting player's last hand card.
+    Fix: Last-hand-card Jjok is invalid for either player, so no Jjok count/event/Pi steal should occur.
+    """
+    logger.info("Running bugfix scenario: no Jjok on last hand card...")
+
+    def ensure_playing_round():
+        agent.send_user_action("click_restart_button")
+        state = agent.get_all_information()
+        if state.get("gameState") != "playing":
+            agent.send_user_action("start_game")
+        handle_potential_shake(agent)
+        wait_for_quiescent_state(agent, timeout_sec=3.0)
+
+    def assert_no_last_card_jjok(actor_index: int, actor_month: int):
+        ensure_playing_round()
+
+        player0_hand = [{"month": 6, "type": "junk"}]
+        player1_hand = [{"month": 7, "type": "junk"}]
+        player0_captured = []
+        player1_captured = []
+
+        if actor_index == 0:
+            player0_hand = [{"month": actor_month, "type": "junk"}]
+            player1_hand = [{"month": 7, "type": "junk"}, {"month": 8, "type": "junk"}]
+            player1_captured = [{"month": 1, "type": "junk"}]
+        else:
+            player0_hand = [{"month": 6, "type": "junk"}, {"month": 9, "type": "junk"}]
+            player1_hand = [{"month": actor_month, "type": "junk"}]
+            player0_captured = [{"month": 1, "type": "junk"}]
+
+        agent.set_condition({
+            "currentTurnIndex": actor_index,
+            "mock_gameState": "playing",
+            "mock_event_logs": [],
+            "mock_table": [],
+            "mock_deck": [{"month": actor_month, "type": "junk"}],
+            "player0_data": {
+                "isComputer": False,
+                "hand": player0_hand,
+                "capturedCards": player0_captured,
+                "jjokCount": 0,
+                "sweepCount": 0
+            },
+            "player1_data": {
+                "isComputer": False,
+                "hand": player1_hand,
+                "capturedCards": player1_captured,
+                "jjokCount": 0,
+                "sweepCount": 0
+            }
+        })
+        wait_for_quiescent_state(agent, timeout_sec=3.0)
+
+        before = agent.get_all_information()
+        player = before["players"][actor_index]
+        opponent = before["players"][1 - actor_index]
+        assert len(player.get("hand", [])) == 1, (
+            f"Setup error: actor {actor_index} should start with one card, got {player.get('hand', [])}"
+        )
+
+        pre_player_pi_units = total_pi_units(player.get("capturedCards", []))
+        pre_opponent_pi_units = total_pi_units(opponent.get("capturedCards", []))
+
+        agent.send_user_action("play_card", {"month": actor_month, "type": "junk"})
+
+        state = wait_for_quiescent_state(agent, timeout_sec=3.0)
+        player = state["players"][actor_index]
+        opponent = state["players"][1 - actor_index]
+        events = state.get("eventLogs", state.get("recentEvents", []))
+        opponent_pi_units = total_pi_units(opponent.get("capturedCards", []))
+        player_pi_units = total_pi_units(player.get("capturedCards", []))
+
+        assert len(player.get("hand", [])) == 0, (
+            f"Expected actor {actor_index} hand to be empty after last-card play, got {player.get('hand', [])}"
+        )
+        assert player.get("jjokCount", 0) == 0, (
+            f"Last-card Jjok should be invalid for actor {actor_index}, got jjokCount={player.get('jjokCount', 0)}"
+        )
+        assert player.get("sweepCount", 0) == 0, (
+            f"Last-card Jjok should not create a sweep side effect for actor {actor_index}, got sweepCount={player.get('sweepCount', 0)}"
+        )
+        assert not any("triggered 쪽(Jjok)" in e for e in events), (
+            f"Last-card Jjok should not emit a Jjok event for actor {actor_index}, events={events}"
+        )
+        assert opponent_pi_units == pre_opponent_pi_units, (
+            f"Last-card Jjok should not steal Pi for actor {actor_index}, "
+            f"opponent pi {pre_opponent_pi_units} -> {opponent_pi_units}"
+        )
+        assert player_pi_units == pre_player_pi_units + 2, (
+            f"Last-card Jjok should capture only the played/drawn pi pair for actor {actor_index}, "
+            f"got {pre_player_pi_units} -> {player_pi_units}"
+        )
+
+    assert_no_last_card_jjok(actor_index=0, actor_month=3)
+    assert_no_last_card_jjok(actor_index=1, actor_month=4)
+
+    logger.info("Last-hand-card Jjok invalidation verified for both players.")
+
+
+def scenario_bugfix_no_seolsa_on_last_hand_card(agent: TestAgent):
+    """
+    Bug: Seolsa (뻑) was counted when it was created by the acting player's last hand card,
+    and the leftover triple could still grant Seolsa Eat on the next capture.
+    Fix: Last-hand Seolsa is invalid and must not create Seolsa/Seolsa Eat state.
+    """
+    logger.info("Running bugfix scenario: no Seolsa on last hand card...")
+
+    agent.send_user_action("start_game")
+    agent.set_condition({
+        "clear_deck": True,
+        "currentTurnIndex": 0,
+        "mock_gameState": "playing",
+        "mock_table": [{"month": 7, "type": "junk"}],
+        "mock_deck": [
+            {"month": 10, "type": "junk"},
+            {"month": 7, "type": "animal"}
+        ],
+        "player0_data": {
+            "isComputer": False,
+            "hand": [{"month": 7, "type": "ribbon"}],
+            "capturedCards": [{"month": 11, "type": "junk"}],
+            "seolsaCount": 0,
+            "seolsaEatCount": 0
+        },
+        "player1_data": {
+            "isComputer": False,
+            "hand": [{"month": 7, "type": "bright"}],
+            "capturedCards": [],
+            "seolsaCount": 0,
+            "seolsaEatCount": 0
+        }
+    })
+    wait_for_quiescent_state(agent, timeout_sec=3.0)
+
+    pre_state = agent.get_all_information()
+    pre_actor_captured = len(pre_state["players"][0].get("capturedCards", []))
+
+    agent.send_user_action("play_card", {"month": 7, "type": "ribbon"})
+
+    mid_state = wait_for_quiescent_state(agent, timeout_sec=3.0)
+    actor = mid_state["players"][0]
+    mid_events = mid_state.get("eventLogs", mid_state.get("recentEvents", []))
+    month7_on_table = [c for c in mid_state.get("tableCards", []) if c.get("month") == 7]
+
+    assert len(actor.get("hand", [])) == 0, f"Expected actor hand to be empty after last-card play, got {actor.get('hand', [])}"
+    assert actor.get("seolsaCount", 0) == 0, f"Last-hand Seolsa should be invalid, got seolsaCount={actor.get('seolsaCount', 0)}"
+    assert len(month7_on_table) == 3, f"Ignored last-hand Seolsa should leave 3 month-7 cards on table, got {month7_on_table}"
+    assert mid_state.get("currentTurnIndex") == 1, f"Turn should pass to opponent after ignored last-hand Seolsa, got {mid_state.get('currentTurnIndex')}"
+    assert not any("SEOLSA!" in e for e in mid_events), f"Last-hand Seolsa should not emit Seolsa marker log, events={mid_events}"
+    assert not any("triggered 뻑(Seolsa)" in e for e in mid_events), f"Last-hand Seolsa should not emit Seolsa event, events={mid_events}"
+
+    agent.send_user_action("play_card", {"month": 7, "type": "bright"})
+
+    final_state = wait_for_quiescent_state(agent, timeout_sec=3.0)
+    actor = final_state["players"][0]
+    opponent = final_state["players"][1]
+    final_events = final_state.get("eventLogs", final_state.get("recentEvents", []))
+    captured_month7 = [c for c in opponent.get("capturedCards", []) if c.get("month") == 7]
+
+    assert opponent.get("seolsaEatCount", 0) == 0, (
+        f"Capturing a triple from ignored last-hand Seolsa should not award Seolsa Eat, got {opponent.get('seolsaEatCount', 0)}"
+    )
+    assert len(captured_month7) == 4, f"Opponent should capture the four month-7 cards without bonus, got {captured_month7}"
+    assert len(actor.get("capturedCards", [])) == pre_actor_captured, (
+        f"Ignored last-hand Seolsa should not steal Pi from actor, captured {pre_actor_captured} -> {len(actor.get('capturedCards', []))}"
+    )
+    assert not any("triggered 뻑 먹기(Seolsa Eat)" in e or "triggered 자뻑(Self Seolsa Eat)" in e for e in final_events), (
+        f"Ignored last-hand Seolsa should not create Seolsa Eat events, events={final_events}"
+    )
+
+    logger.info("Last-hand Seolsa invalidation verified, including no follow-up Seolsa Eat bonus.")
+
+
 def scenario_verify_pibak_zero_pi_exception(agent: TestAgent):
     """
     Verify that a player with 0 Pi is not Pibak.
@@ -2923,40 +3548,141 @@ def scenario_verify_self_seolsa_eat(agent):
         "player0_data": {
             "name": "Player 1",
             "isComputer": False,
-            "hand": [{"month": 1, "type": "junk"}, {"month": 1, "type": "bright"}]
+            "hand": [{"month": 1, "type": "junk"}, {"month": 1, "type": "bright"}],
+            "awardedFirstTurnSeolsaBonus": True
         },
         "player1_data": {
             "name": "Computer",
             "isComputer": False,
             "hand": [{"month": 11, "type": "bright"}, {"month": 11, "type": "animal"}],
-            "capturedCards": [{"month": 2, "type": "junk"}, {"month": 3, "type": "junk"}, {"month": 4, "type": "junk"}]
+            "capturedCards": [{"month": 2, "type": "junk"}, {"month": 3, "type": "junk"}, {"month": 4, "type": "junk"}],
+            "hasCapturedThisRound": False
         }
     })
+    wait_for_quiescent_state(agent, timeout_sec=3.0)
 
     # Step 1: P1 plays 1월 junk -> creates Seolsa.
     agent.send_user_action("play_card", {"month": 1, "type": "junk"})
+    wait_for_quiescent_state(agent, timeout_sec=3.0)
     
     # Step 2: Computer plays something else (month 11)
     agent.send_user_action("play_card", {"month": 11, "type": "bright"}) 
+    wait_for_quiescent_state(agent, timeout_sec=3.0)
 
     # Step 3: P1 plays 1월 bright -> Self-Seolsa Eat! (자뻑)
     # Stolen count should be 2.
     agent.send_user_action("play_card", {"month": 1, "type": "bright"})
 
-    state = agent.get_all_information()
+    state = wait_for_quiescent_state(agent, timeout_sec=3.0)
     p1 = state["players"][0]
     comp = state["players"][1]
     
-    # Computer started with 3, captured 2 in Step 2, then lost 2 to P1 via Self-Seolsa Eat.
-    # (3 + 2) - 2 = 3.
-    if len(comp["capturedCards"]) != 3:
-        raise AssertionError(f"BUG: Computer should have 3 pi left after Self-Seolsa Eat steal. Got {len(comp['capturedCards'])}.")
+    # Computer started with 3 pi, captured one additional junk pi in Step 2, then lost 2 pi to P1.
+    # (3 + 1) - 2 = 2 pi units remain.
+    if total_pi_units(comp["capturedCards"]) != 2:
+        raise AssertionError(
+            f"BUG: Computer should have 2 pi units left after Self-Seolsa Eat steal. "
+            f"Got {total_pi_units(comp['capturedCards'])} from {comp['capturedCards']}."
+        )
     
-    # P1 should have captured 4 cards of Month 1 (play) + 2 cards stolen from Computer = 6 cards.
-    if len(p1["capturedCards"]) != 6:
-        raise AssertionError(f"BUG: Player 1 should have 6 cards total (4 captured + 2 stolen). Got {len(p1['capturedCards'])}.")
+    # P1 captures two month-1 junk pi plus 2 bonus pi from Self-Seolsa Eat = 4 pi units total.
+    if total_pi_units(p1["capturedCards"]) != 4:
+        raise AssertionError(
+            f"BUG: Player 1 should have 4 pi units total after Self-Seolsa Eat. "
+            f"Got {total_pi_units(p1['capturedCards'])} from {p1['capturedCards']}."
+        )
     
     logger.info("ASSERTION SUCCESS: Self-Seolsa Eat (자뻑) bonus verified.")
+
+
+def scenario_bugfix_pi_transfer_uses_pi_value_units(agent: TestAgent):
+    """
+    Bug: `stealPi` treated requested Pi as card count, which could over-transfer when junk and doubleJunk were mixed.
+    Fix: Select transferred cards by Pi value, allowing a single doubleJunk to satisfy 2 Pi when exact.
+    """
+    logger.info("Running bugfix scenario: pi transfer uses pi-value units...")
+
+    def restart_round():
+        agent.send_user_action("click_restart_button")
+        state = agent.get_all_information()
+        if state.get("gameState") != "playing":
+            agent.send_user_action("start_game")
+
+    def run_self_seolsa_case(opponent_captured_cards):
+        restart_round()
+        agent.set_condition({
+            "mock_deck": [{"month": 6, "type": "junk"}, {"month": 5, "type": "junk"}, {"month": 1, "type": "ribbon"}],
+            "mock_table": [{"month": 1, "type": "junk"}, {"month": 8, "type": "junk"}],
+            "mock_gameState": "playing",
+            "currentTurnIndex": 0,
+            "player0_data": {
+                "name": "Player 1",
+                "isComputer": False,
+                "hand": [{"month": 1, "type": "junk"}, {"month": 1, "type": "bright"}],
+                "capturedCards": []
+            },
+            "custom_rules": {
+                "special_moves": {
+                    "seolsa": {
+                        "enabled": True,
+                        "penalty_pi_count": 0,
+                        "first_turn_bonus_score": 0
+                    }
+                }
+            },
+            "player1_data": {
+                "name": "Computer",
+                "isComputer": False,
+                "hand": [{"month": 11, "type": "bright"}],
+                "capturedCards": opponent_captured_cards,
+                "hasCapturedThisRound": False
+            }
+        })
+        wait_for_quiescent_state(agent, timeout_sec=3.0)
+
+        agent.send_user_action("play_card", {"month": 1, "type": "junk"})
+        wait_for_quiescent_state(agent, timeout_sec=3.0)
+        agent.send_user_action("play_card", {"month": 11, "type": "bright"})
+        wait_for_quiescent_state(agent, timeout_sec=3.0)
+        agent.send_user_action("play_card", {"month": 1, "type": "bright"})
+        return wait_for_quiescent_state(agent, timeout_sec=3.0)
+
+    double_only_state = run_self_seolsa_case([
+        {"month": 11, "type": "doubleJunk"}
+    ])
+    double_only_player = double_only_state["players"][0]
+    double_only_opponent = double_only_state["players"][1]
+    double_only_events = double_only_state.get("eventLogs", double_only_state.get("recentEvents", []))
+    assert total_pi_units(double_only_opponent.get("capturedCards", [])) == 0, (
+        f"Single doubleJunk should satisfy the full 2-pi transfer, got opponent cards={double_only_opponent.get('capturedCards', [])}"
+    )
+    assert any(c.get("month") == 11 and c.get("type") == "doubleJunk" for c in double_only_player.get("capturedCards", [])), (
+        f"Transferred single-card 2-pi case should give the player the opponent's doubleJunk, got {double_only_player.get('capturedCards', [])}"
+    )
+    assert any("피 이동 [자뻑(Self Seolsa Eat)]" in e and "쌍피 (1장)" in e for e in double_only_events), (
+        f"Expected transfer log to record a single-card doubleJunk move, events={double_only_events}"
+    )
+
+    mixed_state = run_self_seolsa_case([
+        {"month": 2, "type": "junk"},
+        {"month": 11, "type": "doubleJunk"}
+    ])
+    mixed_player = mixed_state["players"][0]
+    mixed_opponent = mixed_state["players"][1]
+    assert total_pi_units(mixed_opponent.get("capturedCards", [])) == 1, (
+        f"Mixed 1-pi + 2-pi holdings should leave exactly 1 pi behind after a 2-pi transfer, got {mixed_opponent.get('capturedCards', [])}"
+    )
+    assert any(c.get("month") == 2 and c.get("type") == "junk" for c in mixed_opponent.get("capturedCards", [])), (
+        f"Mixed-value transfer should leave the 1-pi junk behind, got {mixed_opponent.get('capturedCards', [])}"
+    )
+    assert any(c.get("month") == 11 and c.get("type") == "doubleJunk" for c in mixed_player.get("capturedCards", [])), (
+        f"Mixed-value transfer should move only the exact-value doubleJunk, got {mixed_player.get('capturedCards', [])}"
+    )
+    assert not any(c.get("month") == 2 and c.get("type") == "junk" for c in mixed_player.get("capturedCards", [])), (
+        f"Mixed-value transfer should not overpay by also moving the 1-pi junk, got {mixed_player.get('capturedCards', [])}"
+    )
+
+    logger.info("Pi-value transfer regression verified.")
 
 
 def scenario_verify_initial_seolsa_eat(agent):
@@ -2993,14 +3719,19 @@ def scenario_verify_initial_seolsa_eat(agent):
     p1 = state["players"][0]
     comp = state["players"][1]
     
-    # Computer started with 3 cards in captured cards
-    # Should lose 1 pi to P1 because of Initial Seolsa Eat
-    if len(comp["capturedCards"]) != 2:
-        raise AssertionError(f"BUG: Computer should have 2 pi left after Initial Seolsa Eat steal (3-1). Got {len(comp['capturedCards'])}.")
+    # Computer started with 3 pi and should lose exactly 1 pi to P1.
+    if total_pi_units(comp["capturedCards"]) != 2:
+        raise AssertionError(
+            f"BUG: Computer should have 2 pi units left after Initial Seolsa Eat steal (3-1). "
+            f"Got {total_pi_units(comp['capturedCards'])} from {comp['capturedCards']}."
+        )
     
-    # P1 should have captured 4 cards of Month 1 (play + 3 on table) + 1 stolen from Computer = 5
-    if len(p1["capturedCards"]) != 5:
-        raise AssertionError(f"BUG: Player 1 should have 5 cards total (4 captured + 1 stolen). Got {len(p1['capturedCards'])}.")
+    # P1 captures two month-1 junk pi plus 1 stolen pi = 3 pi units total.
+    if total_pi_units(p1["capturedCards"]) != 3:
+        raise AssertionError(
+            f"BUG: Player 1 should have 3 pi units total after Initial Seolsa Eat. "
+            f"Got {total_pi_units(p1['capturedCards'])} from {p1['capturedCards']}."
+        )
         
     logger.info("ASSERTION SUCCESS: Initial Seolsa Eat (바닥 뻑 먹기) bonus verified.")
 
@@ -3598,8 +4329,7 @@ def scenario_verify_ttadak_correct_detection(agent: TestAgent):
     player = state["players"][0]
     opponent = state["players"][1]
     assert player.get("ttadakCount", 0) >= 1, "Player ttadakCount should increment"
-    opponent_junkish = [c for c in opponent.get("capturedCards", []) if c.get("type") in ("junk", "doubleJunk")]
-    assert len(opponent_junkish) == 0, "Opponent should have lost their seeded Pi via Ttadak theft"
+    assert total_pi_units(opponent.get("capturedCards", [])) == 0, "Opponent should have lost their seeded 1 pi via Ttadak theft"
     
     logger.info("Ttadak correct detection verified.")
 
@@ -3640,8 +4370,7 @@ def scenario_verify_no_ttadak_on_different_months(agent: TestAgent):
     player = state["players"][0]
     opponent = state["players"][1]
     assert player.get("ttadakCount", 0) == 0, "ttadakCount should remain 0 for different-month captures"
-    opponent_junkish = [c for c in opponent.get("capturedCards", []) if c.get("type") in ("junk", "doubleJunk")]
-    assert len(opponent_junkish) >= 1, "Opponent should STILL have their Pi (no Ttadak theft)"
+    assert total_pi_units(opponent.get("capturedCards", [])) >= 1, "Opponent should STILL have their Pi (no Ttadak theft)"
     
     logger.info("Confirmed: Ttadak is correctly NOT triggered for different months.")
 
@@ -3826,6 +4555,98 @@ def scenario_verify_ttadak_correct_detection(agent: TestAgent):
     assert len(m1_on_table) == 0, f"Table should be empty of Month 1, but found {len(m1_on_table)} cards."
     
     logger.info("Verified: Ttadak correctly takes precedence over Seolsa when 4 cards are matched.")
+
+
+def scenario_bugfix_first_turn_ttadak_bonus(agent: TestAgent):
+    """
+    Bug: Opening-turn Ttadak did not add the configured bonus score.
+    Fix: Apply the rule-configured first-turn Ttadak bonus as a score item.
+    """
+    logger.info("Running bugfix scenario: first-turn Ttadak bonus...")
+
+    agent.send_user_action("start_game")
+    agent.set_condition({
+        "clear_deck": True,
+        "currentTurnIndex": 0,
+        "mock_completed_turn_count": 0,
+        "mock_gameState": "playing",
+        "mock_hand": [{"month": 1, "type": "junk"}],
+        "mock_table": [{"month": 1, "type": "junk"}, {"month": 1, "type": "junk"}],
+        "mock_deck": [{"month": 2, "type": "junk"}, {"month": 1, "type": "bright"}],
+        "player0_data": {
+            "isComputer": False,
+            "capturedCards": []
+        },
+        "player1_data": {
+            "isComputer": False,
+            "hand": [{"month": 2, "type": "junk"}],
+            "capturedCards": []
+        }
+    })
+    wait_for_quiescent_state(agent, timeout_sec=3.0)
+
+    agent.send_user_action("play_card", {"month": 1, "type": "junk"})
+
+    state = wait_for_quiescent_state(agent, timeout_sec=3.0)
+    player = state["players"][0]
+    score_items = player.get("scoreItems", [])
+    bonus_item = next((item for item in score_items if item["name"].startswith("첫 따닥")), None)
+
+    assert player.get("ttadakCount", 0) == 1, f"Expected ttadakCount=1, got {player.get('ttadakCount')}"
+    assert player.get("score", 0) == 10, f"Expected opening-turn Ttadak score=10, got {player.get('score')}"
+    assert bonus_item is not None, f"Expected opening-turn Ttadak bonus item, got scoreItems={score_items}"
+    assert bonus_item.get("points") == 10, f"Expected Ttadak bonus item points=10, got {bonus_item}"
+    assert state.get("currentTurnIndex") == 1, f"Expected turn to pass after blocked opening score claim, got {state.get('currentTurnIndex')}"
+    assert state.get("gameState") == "playing", f"Expected game to continue after blocked opening score claim, got {state.get('gameState')}"
+
+    logger.info("Opening-turn Ttadak bonus verified.")
+
+
+def scenario_bugfix_first_turn_seolsa_bonus(agent: TestAgent):
+    """
+    Bug: Opening-turn Seolsa did not add the configured bonus score.
+    Fix: Apply the rule-configured first-turn Seolsa bonus as a score item.
+    """
+    logger.info("Running bugfix scenario: first-turn Seolsa bonus...")
+
+    agent.send_user_action("start_game")
+    agent.set_condition({
+        "clear_deck": True,
+        "currentTurnIndex": 0,
+        "mock_completed_turn_count": 0,
+        "mock_gameState": "playing",
+        "mock_hand": [{"month": 7, "type": "ribbon"}, {"month": 8, "type": "junk"}],
+        "mock_table": [{"month": 7, "type": "junk"}],
+        "mock_deck": [{"month": 2, "type": "junk"}, {"month": 7, "type": "animal"}],
+        "player0_data": {
+            "isComputer": False,
+            "capturedCards": []
+        },
+        "player1_data": {
+            "isComputer": False,
+            "hand": [{"month": 2, "type": "junk"}],
+            "capturedCards": []
+        }
+    })
+    wait_for_quiescent_state(agent, timeout_sec=3.0)
+
+    agent.send_user_action("play_card", {"month": 7, "type": "ribbon"})
+
+    state = wait_for_quiescent_state(agent, timeout_sec=3.0)
+    player = state["players"][0]
+    score_items = player.get("scoreItems", [])
+    bonus_item = next((item for item in score_items if item["name"].startswith("첫 뻑")), None)
+    month7_on_table = [card for card in state.get("tableCards", []) if card.get("month") == 7]
+
+    assert player.get("seolsaCount", 0) == 1, f"Expected seolsaCount=1, got {player.get('seolsaCount')}"
+    assert player.get("score", 0) == 10, f"Expected opening-turn Seolsa score=10, got {player.get('score')}"
+    assert bonus_item is not None, f"Expected opening-turn Seolsa bonus item, got scoreItems={score_items}"
+    assert bonus_item.get("points") == 10, f"Expected Seolsa bonus item points=10, got {bonus_item}"
+    assert len(month7_on_table) == 3, f"Expected Seolsa triple to remain on table, got {month7_on_table}"
+    assert state.get("currentTurnIndex") == 1, f"Expected turn to pass after blocked opening score claim, got {state.get('currentTurnIndex')}"
+    assert state.get("gameState") == "playing", f"Expected game to continue after blocked opening score claim, got {state.get('gameState')}"
+
+    logger.info("Opening-turn Seolsa bonus verified.")
     
 def scenario_verify_acquisition_order(agent: TestAgent):
     """
@@ -4405,6 +5226,7 @@ def main():
         scenario_verify_endgame_stats_validation,
         scenario_verify_chongtong_initial,
         scenario_verify_chongtong_midgame_negative,
+        scenario_bugfix_chongtong_score_respects_configuration,
         scenario_verify_dummy_draw_phase,
         scenario_verify_score_formula,
         scenario_verify_pibak_zero_pi_exception,
@@ -4416,9 +5238,11 @@ def main():
         scenario_verify_triple_bomb_count_and_score,
         scenario_verify_seolsa_eat,
         scenario_verify_self_seolsa_eat,
+        scenario_bugfix_pi_transfer_uses_pi_value_units,
         scenario_verify_initial_seolsa_eat,
         scenario_bugfix_seolsa_eat_flag_reset_between_turns,
         scenario_bugfix_end_summary_deferred_until_special_event_popups_clear,
+        scenario_bugfix_decision_overlay_deferred_until_special_event_popups_clear,
         scenario_verify_missing_dec_card,
         scenario_verify_chrysanthemum_as_animal,
         scenario_verify_chrysanthemum_as_double_pi,
@@ -4432,6 +5256,8 @@ def main():
         scenario_verify_table_4_card_nagari,
         scenario_verify_nagari_end_flow,
         scenario_verify_ttadak_correct_detection,
+        scenario_bugfix_first_turn_ttadak_bonus,
+        scenario_bugfix_first_turn_seolsa_bonus,
         scenario_verify_no_ttadak_on_different_months,
         scenario_verify_ttadak_with_initial_double_on_table,
         scenario_repro_pi_unit_mismatch,
@@ -4444,7 +5270,12 @@ def main():
         scenario_verify_chrysanthemum_choice,
         scenario_verify_captured_brights_visible_after_consecutive_captures,
         scenario_verify_draw_choice_trigger_bright_visible_after_capture,
-        scenario_verify_opponent_single_month6_pi_capture
+        scenario_verify_opponent_single_month6_pi_capture,
+        scenario_bugfix_double_shake_pibak_multiplier,
+        scenario_bugfix_empty_start_jjok_counts_as_sweep,
+        scenario_bugfix_block_score_claim_until_opponent_captures,
+        scenario_bugfix_no_jjok_on_last_hand_card,
+        scenario_bugfix_no_seolsa_on_last_hand_card
     ]
     
     # 2. Print available scenarios

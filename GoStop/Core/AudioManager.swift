@@ -8,12 +8,17 @@ class AudioManager {
     private var isAudioSessionConfigured = false
     
     private init() {}
+
+    private func log(_ message: String) {
+        guard let data = "\(message)\n".data(using: .utf8) else { return }
+        FileHandle.standardError.write(data)
+    }
     
     func startBackgroundMusic() {
         configureAudioSessionIfNeeded()
 
         guard let url = Bundle.main.url(forResource: "Pixel_Paradise_Groove", withExtension: "mp3") else {
-            print("AudioManager: Could not find Pixel_Paradise_Groove.mp3")
+            log("AudioManager: Could not find Pixel_Paradise_Groove.mp3")
             return
         }
         
@@ -22,9 +27,9 @@ class AudioManager {
             backgroundMusicPlayer?.numberOfLoops = -1 // Infinite loop
             backgroundMusicPlayer?.prepareToPlay()
             backgroundMusicPlayer?.play()
-            print("AudioManager: Started background music")
+            log("AudioManager: Started background music")
         } catch {
-            print("AudioManager: Could not play audio file - \(error.localizedDescription)")
+            log("AudioManager: Could not play audio file - \(error.localizedDescription)")
         }
     }
     
@@ -62,7 +67,7 @@ class AudioManager {
         configureAudioSessionIfNeeded()
 
         guard let url = Bundle.main.url(forResource: resource, withExtension: fileExtension) else {
-            print("AudioManager: Could not find \(resource).\(fileExtension)")
+            log("AudioManager: Could not find \(resource).\(fileExtension)")
             return
         }
 
@@ -77,21 +82,25 @@ class AudioManager {
                 effectPlayers.removeFirst(effectPlayers.count - 12)
             }
         } catch {
-            print("AudioManager: Could not play effect \(resource).\(fileExtension) - \(error.localizedDescription)")
+            log("AudioManager: Could not play effect \(resource).\(fileExtension) - \(error.localizedDescription)")
         }
     }
 
     private func configureAudioSessionIfNeeded() {
         guard !isAudioSessionConfigured else { return }
 
+#if os(iOS) || os(tvOS) || os(watchOS) || targetEnvironment(macCatalyst)
         do {
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.playback, mode: .default)
             try session.setActive(true)
             isAudioSessionConfigured = true
-            print("AudioManager: AVAudioSession configured as playback")
+            log("AudioManager: AVAudioSession configured as playback")
         } catch {
-            print("AudioManager: Could not configure AVAudioSession - \(error.localizedDescription)")
+            log("AudioManager: Could not configure AVAudioSession - \(error.localizedDescription)")
         }
+#else
+        isAudioSessionConfigured = true
+#endif
     }
 }

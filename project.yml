@@ -15,6 +15,23 @@ targets:
     sources: 
       - GoStop
       - GoStop/Assets.xcassets
+    postBuildScripts:
+      - name: Update Build Version
+        basedOnDependencyAnalysis: false
+        showEnvVars: false
+        script: |
+          set -euo pipefail
+
+          info_plist="${TARGET_BUILD_DIR}/${INFOPLIST_PATH}"
+
+          if [ ! -f "$info_plist" ]; then
+            echo "warning: Built Info.plist not found at $info_plist"
+            exit 0
+          fi
+
+          build_version="$(date '+%Y%m%d.%H%M%S')"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $build_version" "$info_plist"
+          echo "Updated CFBundleVersion to $build_version"
     dependencies:
       - package: Yams
     settings:

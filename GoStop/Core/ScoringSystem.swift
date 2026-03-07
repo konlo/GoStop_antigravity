@@ -24,6 +24,7 @@ struct ScoringSystem {
         items.append(contentsOf: getYulDetails(cards: cards, rules: rules))
         items.append(contentsOf: getDanDetails(cards: cards, rules: rules))
         items.append(contentsOf: getPiDetails(cards: cards, rules: rules))
+        items.append(contentsOf: getSpecialMoveBonusDetails(for: player, rules: rules))
         
         return items
     }
@@ -110,49 +111,78 @@ struct ScoringSystem {
         }
         return []
     }
-    
-    static func calculatePiCount(cards: [Card], rules: RuleConfig) -> Int {
-        var piCount = 0
-        
-        // Check for conditions
-        let danRules = rules.cards.dan
-        let hasCheongdan = cards.filter { $0.type == .ribbon && danRules.cheongdan.contains($0.month.rawValue) }.count == 3
-        
-        for card in cards {
-            // First check if a flexible role is selected (e.g., September Animal chosen as Double Pi)
-            if let role = card.selectedRole {
-                if role == .doublePi {
-                    piCount += 2
-                    continue // Counted as Double Pi based on selection
-                } else if role == .animal {
-                    continue // Explicitly animal, not pi
-                }
-            }
 
-            // Normal card type checks
-            if card.type == .doubleJunk {
-                piCount += 2
-            } else if card.type == .junk {
-                var currentVal = 1
-                
-                // Check if this junk card is a conditional double pi
-                for condRule in rules.cards.pi.conditional_double_pi ?? [] {
-                    if card.month.rawValue == condRule.month {
-                        if condRule.condition == "has_cheongdan" && hasCheongdan {
-                            currentVal += condRule.bonus_points
-                        }
-                    }
-                }
-                piCount += currentVal
-            } else if card.month == .sep && card.type == .animal {
-                // September Animal card can be used as Double Pi (fallback if selectedRole is nil)
-                let defaultRole = rules.cards.chrysanthemum_rule.default_role
-                if defaultRole == "double_pi" {
-                    piCount += 2
-                }
+    private static func getSpecialMoveBonusDetails(for player: Player, rules: RuleConfig) -> [ScoreItem] {
+        var items: [ScoreItem] = []
+
+        if player.awardedFirstTurnTtadakBonus {
+            let points = rules.special_moves.ttadak.first_turn_bonus_score ?? 0
+            if points > 0 {
+                items.append(ScoreItem(name: "첫 따닥 (Opening Ttadak)", points: points, count: nil))
             }
         }
-        return piCount
+
+        if player.awardedFirstTurnSeolsaBonus {
+            let points = rules.special_moves.seolsa.first_turn_bonus_score ?? 0
+            if points > 0 {
+                items.append(ScoreItem(name: "첫 뻑 (Opening Seolsa)", points: points, count: nil))
+            }
+        }
+
+        return items
+    }
+    
+    static func calculatePiCount(cards: [Card], rules: RuleConfig) -> Int {
+        let hasCheongdan = hasCompleteCheongdan(in: cards, rules: rules)
+        return cards.reduce(0) { total, card in
+            total + piValue(for: card, rules: rules, hasCheongdan: hasCheongdan)
+        }
+    }
+
+    static func piValue(for card: Card, in cards: [Card], rules: RuleConfig) -> Int {
+        let hasCheongdan = hasCompleteCheongdan(in: cards, rules: rules)
+        return piValue(for: card, rules: rules, hasCheongdan: hasCheongdan)
+    }
+
+    private static func hasCompleteCheongdan(in cards: [Card], rules: RuleConfig) -> Bool {
+        let danRules = rules.cards.dan
+        return cards.filter { $0.type == .ribbon && danRules.cheongdan.contains($0.month.rawValue) }.count == 3
+    }
+
+    private static func piValue(for card: Card, rules: RuleConfig, hasCheongdan: Bool) -> Int {
+        if let role = card.selectedRole {
+            if role == .doublePi {
+                return 2
+            }
+            if role == .animal {
+                return 0
+            }
+        }
+
+        if card.type == .doubleJunk {
+            return 2
+        }
+
+        if card.type == .junk {
+            var currentValue = 1
+            for condRule in rules.cards.pi.conditional_double_pi ?? [] {
+                if card.month.rawValue == condRule.month,
+                   condRule.condition == "has_cheongdan",
+                   hasCheongdan {
+                    currentValue += condRule.bonus_points
+                }
+            }
+            return currentValue
+        }
+
+        if card.month == .sep && card.type == .animal {
+            let defaultRole = rules.cards.chrysanthemum_rule.default_role
+            if defaultRole == "double_pi" {
+                return 2
+            }
+        }
+
+        return 0
     }
     
     

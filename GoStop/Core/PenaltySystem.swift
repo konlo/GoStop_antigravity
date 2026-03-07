@@ -13,6 +13,21 @@ struct PenaltySystem {
     }
     
     static func calculatePenalties(winner: Player, loser: Player, rules: RuleConfig) -> PenaltyResult {
+        if rules.go_stop.require_opponent_capture_for_scoring,
+           winner.score > 0,
+           !loser.hasCapturedThisRound {
+            return PenaltyResult(
+                finalScore: 0,
+                isGwangbak: false,
+                isPibak: false,
+                isGobak: false,
+                isMungbak: false,
+                isJabak: false,
+                isYeokbak: false,
+                scoreFormula: "Blocked: opponent captured nothing this round"
+            )
+        }
+
         var multiplier = 1
         var isGwangbak = false
         var isPibak = false

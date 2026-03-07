@@ -3,6 +3,50 @@ import SwiftUI
 // MARK: - V2 Area Implementations
 // These views consume LayoutContext directly.
 
+enum CapturedCardGrouping {
+    static let orderedTypes = ["gwang", "animal", "ribbon", "pi"]
+
+    static func matches(_ card: Card, targetType: String) -> Bool {
+        // September animal can score either as animal or double-pi depending on chosen role.
+        if card.month == .sep && card.type == .animal {
+            let role = card.selectedRole ?? {
+                let defaultRoleStr = RuleLoader.shared.config?.cards.chrysanthemum_rule.default_role ?? "animal"
+                return CardRole(rawValue: defaultRoleStr) ?? .animal
+            }()
+
+            if targetType == "animal" { return role == .animal }
+            if targetType == "pi" { return role == .doublePi }
+            return false
+        }
+
+        if card.month == .nov && (card.type == .junk || card.type == .doubleJunk) {
+            return targetType == "pi"
+        }
+
+        if targetType == "gwang" { return card.type == .bright }
+        if targetType == "animal" { return card.type == .animal }
+        if targetType == "ribbon" { return card.type == .ribbon }
+        if targetType == "pi" { return card.type == .junk || card.type == .doubleJunk }
+        return false
+    }
+
+    static func sortedCards(for targetType: String, from cards: [Card]) -> [Card] {
+        cards
+            .filter { matches($0, targetType: targetType) }
+            .sorted { lhs, rhs in
+                if lhs.month != rhs.month { return lhs.month < rhs.month }
+                if lhs.imageIndex != rhs.imageIndex { return lhs.imageIndex < rhs.imageIndex }
+                return lhs.id < rhs.id
+            }
+    }
+}
+
+enum CapturedCardCenterKey {
+    static func make(ownerPlayerId: String, cardId: String) -> String {
+        "\(ownerPlayerId):\(cardId)"
+    }
+}
+
 // MARK: - Setting Area V2
 struct SettingAreaV2: View {
     let ctx: LayoutContext
@@ -95,6 +139,8 @@ struct OpponentAreaV2: View {
     @ObservedObject var gameManager: GameManager
     @Binding var capturedGroupCenters: [String: CGPoint]
     @Binding var capturedCardCenters: [String: CGPoint]
+    let onGroupPreviewRequested: ((String, String) -> Void)?
+    let onGroupPreviewEnded: ((String, String) -> Void)?
     
     var body: some View {
         let areaConfig = ctx.config.areas.opponent
@@ -125,7 +171,20 @@ struct OpponentAreaV2: View {
                 let maxY = frame.height - halfHeight - (padding / 2)
                 let finalY = min(desiredY, maxY)
                 
-                CapturedAreaV2(ctx: ctx, animationNamespace: animationNamespace, gameManager: gameManager, layoutConfig: capConfig.layout, cards: gameManager.players[1].capturedCards, ownerPlayerId: gameManager.players[1].id.uuidString, scale: capConfig.scale, alignLeading: false, capturedGroupCenters: $capturedGroupCenters, capturedCardCenters: $capturedCardCenters)
+                CapturedAreaV2(
+                    ctx: ctx,
+                    animationNamespace: animationNamespace,
+                    gameManager: gameManager,
+                    layoutConfig: capConfig.layout,
+                    cards: gameManager.players[1].capturedCards,
+                    ownerPlayerId: gameManager.players[1].id.uuidString,
+                    scale: capConfig.scale,
+                    alignLeading: false,
+                    capturedGroupCenters: $capturedGroupCenters,
+                    capturedCardCenters: $capturedCardCenters,
+                    onGroupPreviewRequested: onGroupPreviewRequested,
+                    onGroupPreviewEnded: onGroupPreviewEnded
+                )
                     .position(x: frame.width * capConfig.x, y: finalY)
                     .zIndex(capConfig.zIndex)
             }
@@ -201,6 +260,8 @@ struct PlayerAreaV2: View {
     var slotManager: PlayerHandSlotManager?
     @Binding var capturedGroupCenters: [String: CGPoint]
     @Binding var capturedCardCenters: [String: CGPoint]
+    let onGroupPreviewRequested: ((String, String) -> Void)?
+    let onGroupPreviewEnded: ((String, String) -> Void)?
     
     var body: some View {
         let areaConfig = ctx.config.areas.player
@@ -223,7 +284,20 @@ struct PlayerAreaV2: View {
             // Captured (Player)
             let capConfig = areaConfig.elements.captured
             if let player = gameManager.players.first {
-                CapturedAreaV2(ctx: ctx, animationNamespace: animationNamespace, gameManager: gameManager, layoutConfig: capConfig.layout, cards: player.capturedCards, ownerPlayerId: player.id.uuidString, scale: capConfig.scale, alignLeading: true, capturedGroupCenters: $capturedGroupCenters, capturedCardCenters: $capturedCardCenters)
+                CapturedAreaV2(
+                    ctx: ctx,
+                    animationNamespace: animationNamespace,
+                    gameManager: gameManager,
+                    layoutConfig: capConfig.layout,
+                    cards: player.capturedCards,
+                    ownerPlayerId: player.id.uuidString,
+                    scale: capConfig.scale,
+                    alignLeading: true,
+                    capturedGroupCenters: $capturedGroupCenters,
+                    capturedCardCenters: $capturedCardCenters,
+                    onGroupPreviewRequested: onGroupPreviewRequested,
+                    onGroupPreviewEnded: onGroupPreviewEnded
+                )
                     .position(x: frame.width * capConfig.x, y: frame.height * capConfig.y)
                     .zIndex(capConfig.zIndex)
             }
@@ -490,10 +564,25 @@ struct CapturedAreaV2: View {
     let alignLeading: Bool
     @Binding var capturedGroupCenters: [String: CGPoint]
     @Binding var capturedCardCenters: [String: CGPoint]
+    let onGroupPreviewRequested: ((String, String) -> Void)?
+    let onGroupPreviewEnded: ((String, String) -> Void)?
     
     var body: some View {
         if let groups = layoutConfig.groups {
-            CapturedGroupsAreaV2(ctx: ctx, animationNamespace: animationNamespace, gameManager: gameManager, layoutConfig: layoutConfig, groups: groups, cards: cards, ownerPlayerId: ownerPlayerId, scale: scale, capturedGroupCenters: $capturedGroupCenters, capturedCardCenters: $capturedCardCenters)
+            CapturedGroupsAreaV2(
+                ctx: ctx,
+                animationNamespace: animationNamespace,
+                gameManager: gameManager,
+                layoutConfig: layoutConfig,
+                groups: groups,
+                cards: cards,
+                ownerPlayerId: ownerPlayerId,
+                scale: scale,
+                capturedGroupCenters: $capturedGroupCenters,
+                capturedCardCenters: $capturedCardCenters,
+                onGroupPreviewRequested: onGroupPreviewRequested,
+                onGroupPreviewEnded: onGroupPreviewEnded
+            )
         } else {
             legacyScrollView
         }
@@ -546,6 +635,8 @@ struct CapturedGroupsAreaV2: View {
     let scale: CGFloat
     @Binding var capturedGroupCenters: [String: CGPoint]
     @Binding var capturedCardCenters: [String: CGPoint]
+    let onGroupPreviewRequested: ((String, String) -> Void)?
+    let onGroupPreviewEnded: ((String, String) -> Void)?
     
     var body: some View {
         GeometryReader { geo in
@@ -559,7 +650,7 @@ struct CapturedGroupsAreaV2: View {
             
             HStack(alignment: .bottom, spacing: vSpacing) {
                 ForEach(groups, id: \.type) { group in
-                    let groupCards = cards.filter { matchCardType(card: $0, targetType: group.type) }
+                    let groupCards = cards.filter { CapturedCardGrouping.matches($0, targetType: group.type) }
                     let groupWidth = totalWeight > 0 ? baseActiveWidth * (group.priorityWeight / totalWeight) : 0
                     
                     CapturedGroupSlotView(
@@ -572,12 +663,15 @@ struct CapturedGroupsAreaV2: View {
                         ownerPlayerId: ownerPlayerId,
                         scale: scale,
                         allocatedWidth: groupWidth,
-                        capturedCardCenters: $capturedCardCenters
+                        capturedCardCenters: $capturedCardCenters,
+                        onGroupPreviewRequested: onGroupPreviewRequested,
+                        onGroupPreviewEnded: onGroupPreviewEnded
                     )
                     .overlay(
                         GeometryReader { slotGeo in
                             let frame = slotGeo.frame(in: .named("GameSpace"))
                             Color.clear
+                                .allowsHitTesting(false)
                                 .onAppear {
                                     upsertCapturedGroupCenter(
                                         ownerPlayerId: ownerPlayerId,
@@ -626,31 +720,6 @@ struct CapturedGroupsAreaV2: View {
         }
     }
     
-    func matchCardType(card: Card, targetType: String) -> Bool {
-        // Special case: September Animal (Chrysanthemum) can switch between Animal and Pi
-        if card.month == .sep && card.type == .animal {
-            let role = card.selectedRole ?? {
-                let defaultRoleStr = RuleLoader.shared.config?.cards.chrysanthemum_rule.default_role ?? "animal"
-                return CardRole(rawValue: defaultRoleStr) ?? .animal
-            }()
-            
-            if targetType == "animal" { return role == .animal }
-            if targetType == "pi" { return role == .doublePi }
-            return false
-        }
-        
-        // Special case: November Junk is actually Double Pi
-        if card.month == .nov && (card.type == .junk || card.type == .doubleJunk) {
-            if targetType == "pi" { return true }
-            return false
-        }
-        
-        if targetType == "gwang" { return card.type == .bright }
-        if targetType == "animal" { return card.type == .animal }
-        if targetType == "ribbon" { return card.type == .ribbon }
-        if targetType == "pi" { return card.type == .junk || card.type == .doubleJunk }
-        return false
-    }
 }
 
 struct CapturedGroupSlotView: View {
@@ -664,6 +733,8 @@ struct CapturedGroupSlotView: View {
     let scale: CGFloat
     let allocatedWidth: CGFloat
     @Binding var capturedCardCenters: [String: CGPoint]
+    let onGroupPreviewRequested: ((String, String) -> Void)?
+    let onGroupPreviewEnded: ((String, String) -> Void)?
     
     var body: some View {
         let cardW = ctx.cardSize.width * scale
@@ -758,14 +829,18 @@ struct CapturedGroupSlotView: View {
                 .overlay(
                     GeometryReader { cardGeo in
                         Color.clear
+                            .allowsHitTesting(false)
                             .onAppear {
-                                capturedCardCenters[card.id] = cardGeo.frame(in: .named("GameSpace")).center
+                                let key = CapturedCardCenterKey.make(ownerPlayerId: ownerPlayerId, cardId: card.id)
+                                capturedCardCenters[key] = cardGeo.frame(in: .named("GameSpace")).center
                             }
                             .onChange(of: cards.count) { _ in
-                                capturedCardCenters[card.id] = cardGeo.frame(in: .named("GameSpace")).center
+                                let key = CapturedCardCenterKey.make(ownerPlayerId: ownerPlayerId, cardId: card.id)
+                                capturedCardCenters[key] = cardGeo.frame(in: .named("GameSpace")).center
                             }
                             .onChange(of: ownerPlayerId) { _ in
-                                capturedCardCenters[card.id] = cardGeo.frame(in: .named("GameSpace")).center
+                                let key = CapturedCardCenterKey.make(ownerPlayerId: ownerPlayerId, cardId: card.id)
+                                capturedCardCenters[key] = cardGeo.frame(in: .named("GameSpace")).center
                             }
                     }
                 )
@@ -783,6 +858,20 @@ struct CapturedGroupSlotView: View {
                 .zIndex(1000)
         }
         .frame(width: frameWidth, height: totalHeight)
+        .contentShape(RoundedRectangle(cornerRadius: groupConfig.background.cornerRadiusPt * ctx.globalScale))
+        .onLongPressGesture(
+            minimumDuration: 0.28,
+            maximumDistance: 24,
+            pressing: { isPressing in
+                if !isPressing {
+                    onGroupPreviewEnded?(ownerPlayerId, groupConfig.type)
+                }
+            },
+            perform: {
+                guard !cards.isEmpty else { return }
+                onGroupPreviewRequested?(ownerPlayerId, groupConfig.type)
+            }
+        )
     }
 }
 
@@ -941,6 +1030,7 @@ struct TableFixedSlotsView: View {
                      .overlay(
                          GeometryReader { geo in
                              Color.clear
+                                 .allowsHitTesting(false)
                                  .onAppear {
                                      let center = geo.frame(in: .named("GameSpace")).center
                                      updateTableCardCenters(slot: slot, center: center, cardW: cardW, cardH: cardH)

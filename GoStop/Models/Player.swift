@@ -5,6 +5,7 @@ class Player: ObservableObject, Identifiable, Codable {
     let name: String
     @Published var hand: [Card] = []
     @Published var capturedCards: [Card] = []
+    @Published var hasCapturedThisRound: Bool = false
     @Published var score: Int = 0
     @Published var money: Int
     @Published var goCount: Int = 0
@@ -16,6 +17,8 @@ class Player: ObservableObject, Identifiable, Codable {
     @Published var ttadakCount: Int = 0
     @Published var jjokCount: Int = 0
     @Published var seolsaCount: Int = 0
+    @Published var awardedFirstTurnTtadakBonus: Bool = false
+    @Published var awardedFirstTurnSeolsaBonus: Bool = false
     @Published var seolsaEatCount: Int = 0
     @Published var isPiMungbak: Bool = false
     @Published var mungddaCount: Int = 0
@@ -24,15 +27,19 @@ class Player: ObservableObject, Identifiable, Codable {
     @Published var dummyCardCount: Int = 0
     
     enum CodingKeys: String, CodingKey {
-        case id, name, hand, capturedCards, score, money, goCount, lastGoScore, shakeCount, shakenMonths, bombCount, sweepCount, ttadakCount, jjokCount, seolsaCount, seolsaEatCount, isPiMungbak, mungddaCount, bombMungddaCount, isComputer, dummyCardCount
+        case id, name, hand, capturedCards, hasCapturedThisRound, score, money, goCount, lastGoScore, shakeCount, shakenMonths, bombCount, sweepCount, ttadakCount, jjokCount, seolsaCount, awardedFirstTurnTtadakBonus, awardedFirstTurnSeolsaBonus, seolsaEatCount, isPiMungbak, mungddaCount, bombMungddaCount, isComputer, dummyCardCount
     }
     
     required init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        let decodedHand = try container.decode([Card].self, forKey: .hand)
+        let decodedCapturedCards = try container.decode([Card].self, forKey: .capturedCards)
+
         id = try container.decode(UUID.self, forKey: .id)
         name = try container.decode(String.self, forKey: .name)
-        hand = try container.decode([Card].self, forKey: .hand)
-        capturedCards = try container.decode([Card].self, forKey: .capturedCards)
+        hand = decodedHand
+        capturedCards = decodedCapturedCards
+        hasCapturedThisRound = try container.decodeIfPresent(Bool.self, forKey: .hasCapturedThisRound) ?? !decodedCapturedCards.isEmpty
         score = try container.decode(Int.self, forKey: .score)
         money = try container.decode(Int.self, forKey: .money)
         goCount = try container.decode(Int.self, forKey: .goCount)
@@ -44,6 +51,8 @@ class Player: ObservableObject, Identifiable, Codable {
         ttadakCount = try container.decode(Int.self, forKey: .ttadakCount)
         jjokCount = try container.decode(Int.self, forKey: .jjokCount)
         seolsaCount = try container.decode(Int.self, forKey: .seolsaCount)
+        awardedFirstTurnTtadakBonus = try container.decodeIfPresent(Bool.self, forKey: .awardedFirstTurnTtadakBonus) ?? false
+        awardedFirstTurnSeolsaBonus = try container.decodeIfPresent(Bool.self, forKey: .awardedFirstTurnSeolsaBonus) ?? false
         seolsaEatCount = try container.decodeIfPresent(Int.self, forKey: .seolsaEatCount) ?? 0
         isPiMungbak = try container.decode(Bool.self, forKey: .isPiMungbak)
         mungddaCount = try container.decode(Int.self, forKey: .mungddaCount)
@@ -58,6 +67,7 @@ class Player: ObservableObject, Identifiable, Codable {
         try container.encode(name, forKey: .name)
         try container.encode(hand, forKey: .hand)
         try container.encode(capturedCards, forKey: .capturedCards)
+        try container.encode(hasCapturedThisRound, forKey: .hasCapturedThisRound)
         try container.encode(score, forKey: .score)
         try container.encode(money, forKey: .money)
         try container.encode(goCount, forKey: .goCount)
@@ -69,6 +79,8 @@ class Player: ObservableObject, Identifiable, Codable {
         try container.encode(ttadakCount, forKey: .ttadakCount)
         try container.encode(jjokCount, forKey: .jjokCount)
         try container.encode(seolsaCount, forKey: .seolsaCount)
+        try container.encode(awardedFirstTurnTtadakBonus, forKey: .awardedFirstTurnTtadakBonus)
+        try container.encode(awardedFirstTurnSeolsaBonus, forKey: .awardedFirstTurnSeolsaBonus)
         try container.encode(seolsaEatCount, forKey: .seolsaEatCount)
         try container.encode(isPiMungbak, forKey: .isPiMungbak)
         try container.encode(mungddaCount, forKey: .mungddaCount)
@@ -86,6 +98,7 @@ class Player: ObservableObject, Identifiable, Codable {
     func reset() {
         hand.removeAll()
         capturedCards.removeAll()
+        hasCapturedThisRound = false
         score = 0
         goCount = 0
         lastGoScore = 0
@@ -96,6 +109,8 @@ class Player: ObservableObject, Identifiable, Codable {
         ttadakCount = 0
         jjokCount = 0
         seolsaCount = 0
+        awardedFirstTurnTtadakBonus = false
+        awardedFirstTurnSeolsaBonus = false
         seolsaEatCount = 0
         isPiMungbak = false
         mungddaCount = 0
@@ -129,6 +144,9 @@ class Player: ObservableObject, Identifiable, Codable {
     func capture(cards: [Card]) {
         self.objectWillChange.send()
         capturedCards.append(contentsOf: cards)
+        if !cards.isEmpty {
+            hasCapturedThisRound = true
+        }
         self.score = ScoringSystem.calculateScore(for: self)
     }
     
@@ -142,6 +160,7 @@ class Player: ObservableObject, Identifiable, Codable {
             "name": name,
             "hand": hand.map { $0.serialize() },
             "capturedCards": capturedCards.map { $0.serialize() },
+            "hasCapturedThisRound": hasCapturedThisRound,
             "score": score,
             "money": money,
             "goCount": goCount,
@@ -153,6 +172,8 @@ class Player: ObservableObject, Identifiable, Codable {
             "ttadakCount": ttadakCount,
             "jjokCount": jjokCount,
             "seolsaCount": seolsaCount,
+            "awardedFirstTurnTtadakBonus": awardedFirstTurnTtadakBonus,
+            "awardedFirstTurnSeolsaBonus": awardedFirstTurnSeolsaBonus,
             "seolsaEatCount": seolsaEatCount,
             "isPiMungbak": isPiMungbak,
             "mungddaCount": mungddaCount,

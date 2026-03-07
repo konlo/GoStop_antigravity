@@ -116,11 +116,22 @@ class CLIEngine {
 
             var didChange = false
 
-            if var rules = RuleLoader.shared.config,
-               let dummyCardCount = data["rule_dummy_card_count"]?.value as? Int {
-                rules.special_moves.bomb.dummy_card_count = max(0, dummyCardCount)
-                RuleLoader.shared.updateRules(rules)
-                didChange = true
+            if var rules = RuleLoader.shared.config {
+                if let dummyCardCount = data["rule_dummy_card_count"]?.value as? Int {
+                    rules.special_moves.bomb.dummy_card_count = max(0, dummyCardCount)
+                    didChange = true
+                }
+                if let initialScore = data["rule_chongtong_initial_score"]?.value as? Int {
+                    rules.special_moves.chongtong.initial_chongtong_score = max(0, initialScore)
+                    didChange = true
+                }
+                if let midgameScore = data["rule_chongtong_midgame_score"]?.value as? Int {
+                    rules.special_moves.chongtong.midgame_chongtong_score = max(0, midgameScore)
+                    didChange = true
+                }
+                if didChange {
+                    RuleLoader.shared.updateRules(rules)
+                }
             }
 
             if let rawDelay = data["animation_opponent_action_delay"]?.value {
@@ -179,15 +190,21 @@ class CLIEngine {
                     }
                 }
 
+                if let mockEventLogs = data["mock_event_logs"]?.value as? [String] {
+                    gameManager.eventLogs = mockEventLogs
+                }
+
                 if let mockCaptured = data["mock_captured_cards"]?.value as? [[String: Any]] {
                      let player = gameManager.players[0]
                      player.capturedCards = parseCards(mockCaptured)
+                     player.hasCapturedThisRound = !player.capturedCards.isEmpty
                      player.score = ScoringSystem.calculateScore(for: player)
                 }
                 
                 if let mockOpponentCaptured = data["mock_opponent_captured_cards"]?.value as? [[String: Any]] {
                      let opponent = gameManager.players[1]
                      opponent.capturedCards = parseCards(mockOpponentCaptured)
+                     opponent.hasCapturedThisRound = !opponent.capturedCards.isEmpty
                      opponent.score = ScoringSystem.calculateScore(for: opponent)
                 }
 
@@ -220,6 +237,7 @@ class CLIEngine {
                         if let bombCount = pData["bombCount"] as? Int { p.bombCount = bombCount }
                         if let captured = pData["capturedCards"] as? [[String: Any]] {
                             p.capturedCards = self.parseCards(captured)
+                            p.hasCapturedThisRound = !p.capturedCards.isEmpty
                             p.score = ScoringSystem.calculateScore(for: p)
                         }
                         if let hand = pData["hand"] as? [[String: Any]] {
@@ -229,6 +247,15 @@ class CLIEngine {
                         if let ttadakCount = pData["ttadakCount"] as? Int { p.ttadakCount = ttadakCount }
                         if let jjokCount = pData["jjokCount"] as? Int { p.jjokCount = jjokCount }
                         if let seolsaCount = pData["seolsaCount"] as? Int { p.seolsaCount = seolsaCount }
+                        if let awardedFirstTurnTtadakBonus = pData["awardedFirstTurnTtadakBonus"] as? Bool {
+                            p.awardedFirstTurnTtadakBonus = awardedFirstTurnTtadakBonus
+                        }
+                        if let awardedFirstTurnSeolsaBonus = pData["awardedFirstTurnSeolsaBonus"] as? Bool {
+                            p.awardedFirstTurnSeolsaBonus = awardedFirstTurnSeolsaBonus
+                        }
+                        if let hasCapturedThisRound = pData["hasCapturedThisRound"] as? Bool {
+                            p.hasCapturedThisRound = hasCapturedThisRound
+                        }
                         if let isPiMungbak = pData["isPiMungbak"] as? Bool { p.isPiMungbak = isPiMungbak }
                         if let mungddaCount = pData["mungddaCount"] as? Int { p.mungddaCount = mungddaCount }
                         if let bombMungddaCount = pData["bombMungddaCount"] as? Int { p.bombMungddaCount = bombMungddaCount }
@@ -242,6 +269,10 @@ class CLIEngine {
                    gameManager.players.indices.contains(turnIdx) {
                     gameManager.currentTurnIndex = turnIdx
                 }
+
+                if let mockCompletedTurnCount = data["mock_completed_turn_count"]?.value as? Int {
+                    gameManager.setCompletedTurnCountForTesting(mockCompletedTurnCount)
+                }
                 
                 // Allow tests to pre-set month ownership (for Seolsa testing)
                 // Format: {"mock_month_owners": {7: 1}} means month 7 is 'owned' by players[1]
@@ -253,7 +284,9 @@ class CLIEngine {
                         }
                     }
                 }
-                if let mockEndReason = data["mock_gameEndReason"]?.value as? String {
+                if let mockEndReason =
+                    (data["mock_game_end_reason"]?.value as? String) ??
+                    (data["mock_gameEndReason"]?.value as? String) {
                     gameManager.gameEndReason = GameEndReason(rawValue: mockEndReason)
                 }
             }
@@ -470,6 +503,8 @@ class CLIEngine {
     private func persistenceProbeData() -> [String: Any] {
         [
             "rule_dummy_card_count": RuleLoader.shared.config?.special_moves.bomb.dummy_card_count ?? -1,
+            "rule_chongtong_initial_score": RuleLoader.shared.config?.special_moves.chongtong.initial_chongtong_score ?? -1,
+            "rule_chongtong_midgame_score": RuleLoader.shared.config?.special_moves.chongtong.midgame_chongtong_score ?? -1,
             "animation_opponent_action_delay": AnimationManager.shared.config.opponent_action_delay,
             "first_launch_starter_applied": ConfigurationStore.shared.firstLaunchStarterApplied(),
             "configuration_path": ConfigurationStore.shared.configurationPath

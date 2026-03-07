@@ -43,6 +43,7 @@ go_stop:
   min_score_2_players: 7
   apply_bak_on_stop: false
   bak_only_if_opponent_go: true
+  require_opponent_capture_for_scoring: true # If opponent has not captured any card this round, do not allow score claim yet
   go_bonuses:
     1: 
       add: 1
@@ -107,17 +108,20 @@ special_moves:
   ttadak:
     enabled: true
     steal_pi_count: 1
+    first_turn_bonus_score: 10
     description: "Match a floor card with hand and deck draw simultaneously"
   jjok:
     enabled: true
     steal_pi_count: 1
-    description: "Match a card you just put down with deck draw"
+    description: "Match a card you just put down with deck draw. Invalid if it comes from the last hand card."
   seolsa:
     enabled: true
     penalty_pi_count: 0
     instant_win_count: 3
     instant_win_score: 10
-    description: "Play and draw matching cards but making it a triple, leaving them on table (no automatic Pi transfer penalty)"
+    invalid_on_last_hand: true
+    first_turn_bonus_score: 10
+    description: "Play and draw matching cards but making it a triple, leaving them on table (no automatic Pi transfer penalty). Last-hand Seolsa is ignored."
   mungbak_pi_threshold: 5 # threshold for Mung-dda condition
   mungdda:
     enabled: true

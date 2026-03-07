@@ -189,6 +189,39 @@ struct RuleSettingsView: View {
             settingToggle(label: "흔들기 활성화", isOn: Binding(get: { configManager.ruleConfig?.special_moves.shake.enabled ?? false }, set: { configManager.ruleConfig?.special_moves.shake.enabled = $0 }))
             settingToggle(label: "폭탄 활성화", isOn: Binding(get: { configManager.ruleConfig?.special_moves.bomb.enabled ?? false }, set: { configManager.ruleConfig?.special_moves.bomb.enabled = $0 }))
             settingToggle(label: "쓸기 활성화", isOn: Binding(get: { configManager.ruleConfig?.special_moves.sweep.enabled ?? false }, set: { configManager.ruleConfig?.special_moves.sweep.enabled = $0 }))
+
+            Divider().background(Color.white.opacity(0.1))
+
+            settingToggle(label: "총통 활성화", isOn: Binding(get: { configManager.ruleConfig?.special_moves.chongtong.enabled ?? false }, set: { configManager.ruleConfig?.special_moves.chongtong.enabled = $0 }))
+
+            if config.special_moves.chongtong.distinguish_timing {
+                settingStepper(
+                    label: "초기 총통 점수",
+                    value: Binding(
+                        get: { configManager.ruleConfig?.special_moves.chongtong.initial_chongtong_score ?? 20 },
+                        set: { configManager.ruleConfig?.special_moves.chongtong.initial_chongtong_score = max(0, $0) }
+                    )
+                )
+                settingStepper(
+                    label: "중반 총통 점수",
+                    value: Binding(
+                        get: { configManager.ruleConfig?.special_moves.chongtong.midgame_chongtong_score ?? 10 },
+                        set: { configManager.ruleConfig?.special_moves.chongtong.midgame_chongtong_score = max(0, $0) }
+                    )
+                )
+            } else {
+                settingStepper(
+                    label: "총통 점수",
+                    value: Binding(
+                        get: { configManager.ruleConfig?.special_moves.chongtong.initial_chongtong_score ?? 10 },
+                        set: { newValue in
+                            let clampedValue = max(0, newValue)
+                            configManager.ruleConfig?.special_moves.chongtong.initial_chongtong_score = clampedValue
+                            configManager.ruleConfig?.special_moves.chongtong.midgame_chongtong_score = clampedValue
+                        }
+                    )
+                )
+            }
         }
     }
     
