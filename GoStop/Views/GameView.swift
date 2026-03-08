@@ -1239,16 +1239,17 @@ struct GameView: View {
         guard let owner = previewOwnerPlayer(for: preview.ownerPlayerId) else { return nil }
         let groups = previewGroupConfigs(for: preview.ownerPlayerId)
         guard !groups.isEmpty else { return nil }
+        let groupedCards = CapturedCardGrouping.groupedSortedCards(from: owner.capturedCards)
 
         let summaries = groups.map { group in
             CapturedPreviewGroupSummary(
                 type: group.type,
                 label: group.label,
                 accentColor: group.background.colorSwiftUI,
-                count: CapturedCardGrouping.sortedCards(for: group.type, from: owner.capturedCards).count
+                count: groupedCards[group.type, default: []].count
             )
         }
-        let selectedCards = CapturedCardGrouping.sortedCards(for: preview.groupType, from: owner.capturedCards)
+        let selectedCards = groupedCards[preview.groupType, default: []]
         guard !selectedCards.isEmpty else { return nil }
         guard let selectedGroup = groups.first(where: { $0.type == preview.groupType }) else { return nil }
 

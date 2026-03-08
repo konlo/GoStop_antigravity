@@ -4,6 +4,7 @@ import Combine
 class TableSlotManager: ObservableObject {
     @Published var slots: [Int: TableSlotState] = [:]
     private let config: LayoutConfigV2
+    private let emptySlotPreferenceOrder: [Int]
     
     struct TableSlotState {
         var card: Card? // Table slots hold a stack of cards in GoStop, but for fixed layout usually the *base* card determines position? 
@@ -40,6 +41,7 @@ class TableSlotManager: ObservableObject {
     
     init(config: LayoutConfigV2) {
         self.config = config
+        self.emptySlotPreferenceOrder = Self.makeEmptySlotPreferenceOrder(config: config)
         self.initializeSlots()
     }
     
@@ -113,48 +115,32 @@ class TableSlotManager: ObservableObject {
     }
     
     private func getEmptySlotsSortedByPreference() -> [Int] {
-        // Preference: Distance to Center (0.5, 0.5)
-        // Deck is at 0.5, 0.5.
-        // Get all empty slots
-        let emptyIndices = slots.filter { !$0.value.isOccupied }.keys
-        
-        guard let fixedSlots = config.areas.center.elements.table.fixedSlots else { return Array(emptyIndices).sorted() }
-        
-        // Helper to get anchor for index
-        func getAnchor(idx: Int) -> (x: CGFloat, y: CGFloat) {
-            if let slot = fixedSlots.slots.first(where: { $0.slotIndex == idx }) {
-                return (slot.anchorX, slot.anchorY)
-            }
-            return (0,0) // Should not happen
+        if !emptySlotPreferenceOrder.isEmpty {
+            return emptySlotPreferenceOrder.filter { slots[$0]?.isOccupied == false }
         }
-        
-        return emptyIndices.sorted { idx1, idx2 in
-            let p1 = getAnchor(idx: idx1)
-            let p2 = getAnchor(idx: idx2)
-            
-            // Dist sq to (0.5, 0.5)
-            // Note: Use aspect ratio? "Coordinate space 0..1".
-            // Visual distance depends on width/height ratio of area.
-            // Area is 0.95 width, 0.35 height.
-            // visualX = x * 0.95, visualY = y * 0.35.
-            // Deck center (0.5, 0.5).
-            
-            let dx1 = (p1.x - 0.5) * 0.95
-            let dy1 = (p1.y - 0.5) * 0.35
-            let d1 = (dx1 * dx1) + (dy1 * dy1)
-            
-            let dx2 = (p2.x - 0.5) * 0.95
-            let dy2 = (p2.y - 0.5) * 0.35
-            let d2 = (dx2 * dx2) + (dy2 * dy2)
-            
-            if abs(d1 - d2) < 0.0001 {
-                return idx1 < idx2 // Tie-break
-            }
-            return d1 < d2
-        }
+        return slots.compactMap { !$0.value.isOccupied ? $0.key : nil }.sorted()
     }
     
     func cards(at index: Int) -> [Card] {
         return slots[index]?.cards ?? []
+    }
+
+    private static func makeEmptySlotPreferenceOrder(config: LayoutConfigV2) -> [Int] {
+        guard let fixedSlots = config.areas.center.elements.table.fixedSlots else { return [] }
+
+        return fixedSlots.slots
+            .map { slot in
+                let dx = (slot.anchorX - 0.5) * 0.95
+                let dy = (slot.anchorY - 0.5) * 0.35
+                let distance = (dx * dx) + (dy * dy)
+                return (slot.slotIndex, distance)
+            }
+            .sorted { lhs, rhs in
+                if abs(lhs.1 - rhs.1) < 0.0001 {
+                    return lhs.0 < rhs.0
+                }
+                return lhs.1 < rhs.1
+            }
+            .map(\.0)
     }
 }

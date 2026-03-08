@@ -1,17 +1,17 @@
 # Project Progress Log
 
 ## Current Status
-- **Last Updated**: 2026-03-07
+- **Last Updated**: 2026-03-08
 - **Status**: In Progress
-- **Summary**: 설정/오디오 영속화, 규칙·점수·피이동 보강, UI playability 개선, 브리지/테스트 안정화가 함께 반영된 미커밋 상태다. 최근 검증 기준으로 CLI 전체 82개와 socket 전체 82개 test scenario는 모두 PASS했다.
-- **Next Session Focus**: 전체 iOS XCTest 재검증, overlay/preview 수동 스모크 확인, `xcodeproj`/`xcuserdata` 변경 범위 정리.
+- **Summary**: 3광+고도리 scoring 보강, `test_scenarios` interactive/runtime 계측, SwiftUI 렌더·슬롯 계산 최적화, 그리고 `SimulatorBridge`/`GoStopCLI` 공통 제어 로직 추출이 반영된 미커밋 상태다. 최신 검증 기준으로 iOS 앱과 GoStopCLI 빌드는 성공했지만, 모듈 분리 이후 socket 시나리오 `shake_decline`/`capture_choice`는 다시 확인이 필요하다.
+- **Next Session Focus**: `TestControlSupport` 경유 `set_condition` 상태 초기화 범위를 좁혀 socket 회귀 2건을 먼저 복구하고, 이후 전체 socket/iOS XCTest 및 UI 수동 스모크를 다시 확인.
 
 ---
 
 ## Next Action Items
-- [ ] 시뮬레이터가 안정된 상태에서 전체 iOS XCTest를 다시 실행해 현재 워크트리 기준 녹색 여부를 확인.
-- [ ] `captured` 롱프레스 확대, 흔들기 카드 프리뷰, special popup defer, 시작 직후 탭 가능 여부를 수동 스모크 체크.
-- [ ] `GoStop.xcodeproj`와 `xcuserdata` 변경 중 실제로 커밋할 범위를 정리.
+- [ ] `TestControlSupport`/`set_condition` 적용 후 `shake_decline`, `capture_choice`가 `askingShake`/`choosingCapture`로 정확히 진입하도록 회귀를 복구.
+- [ ] socket 타깃 재검증 후 전체 `python3 tests/test_agent/test_scenarios.py --mode socket`와 전체 iOS XCTest를 다시 실행해 현재 워크트리 기준 녹색 여부를 확인.
+- [ ] `captured` 확대 패널, special popup defer, `--debug_level 1/2` handoff 흐름을 수동 스모크하고 `GoStop.xcodeproj` 변경 범위를 정리.
 
 ---
 
@@ -63,6 +63,14 @@
 
 ## Log Entries
 
+### [2026-03-08 11:22:34 KST] User Request: code 최적화를 수행해줘
+- **Skills Planned**: ["swift_code_optimizer", "project_logger"]
+- **Skills Used**: ["swift_code_optimizer", "project_logger"]
+- **Trigger Reason**: "SwiftUI 렌더링 경로와 슬롯 매니저에서 반복되는 분류/정렬/선형 탐색을 줄이는 실제 코드 최적화가 필요했고, 작업 전후 결과를 프로젝트 로그에 남겨야 했음."
+- **Files Touched**: ["GoStop/Views/GameAreaViews.swift", "GoStop/Views/GameView.swift", "GoStop/Core/TableSlotManager.swift", "GoStop/Core/PlayerHandSlotManager.swift", "project_progress.md"]
+- **Validation**: "`xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n 'error:|warning:|BUILD SUCCEEDED|BUILD FAILED'` 결과 `BUILD SUCCEEDED`. 이어서 `xcrun simctl install booted /tmp/gostop_ios_build/Build/Products/Debug-iphonesimulator/GoStop.app`, `xcrun simctl launch booted com.konlona.GoStop`, `nc -vz 127.0.0.1 8080`로 최신 앱/브리지 기동을 확인했고, `python3 tests/test_agent/test_scenarios.py --mode socket` 전체 실행 결과 `PASS=83 FAIL=0 MANUAL=0`, `TOTAL RUNTIME: 00:05:31.80 (331.80s)`를 확인했다."
+- **Outcome**: "획득패 그룹 분류는 `CapturedCardGrouping`에서 한 번만 bucket/sort 하도록 바꿔 preview summary와 group slot이 동일 데이터를 재사용하게 했고, 손패/상대패/덱 렌더에서는 이동 중 카드 ID를 `Set`으로 한 번만 계산해 반복 `contains(where:)`를 제거했다. 또한 `TableSlotManager`는 빈 슬롯 우선순위를 초기화 시점에 미리 계산해 sync마다 재정렬하지 않게 했고, `PlayerHandSlotManager`는 슬롯 인덱스 순서를 캐시해 compaction/빈 슬롯 탐색 비용을 줄였다. 동작 변화 없이 렌더/배치 경로의 불필요한 반복 계산을 줄였고, 전체 socket 회귀 83개가 모두 통과했다."
+
 ### [2026-03-08 11:06:11 KST] User Request: 이번에 코드 수정된 내용 commit message 만들어줘
 - **Skills Planned**: ["project_logger"]
 - **Skills Used**: ["project_logger"]
@@ -70,6 +78,30 @@
 - **Files Touched**: ["project_progress.md"]
 - **Validation**: "`git status --short`, `git diff --stat`, `git diff -- GoStop/Views/GameAreaViews.swift GoStop/Views/GameView.swift GoStopTests/GoStopTests.swift tests/test_agent/main.py tests/test_agent/test_scenarios.py`, `git diff -- project_progress.md`로 이번 미커밋 변경의 범위와 핵심 내용을 확인했다."
 - **Outcome**: "이번 변경은 크게 세 축이다. 획득패 확대 패널은 롱프레스 해제 기반 dismiss를 제거하고 패널 탭 dismiss UX로 바뀌었고, Godori 관련 Swift/Python 테스트 입력은 실제 8월 새 카드 `imageIndex` 기준으로 정정됐다. 동시에 외부 test agent에는 `--debug_level 1/2` interactive 모드, manual handoff, 전체 실행 시간 요약이 추가됐으며, `삼광+고도리` scoring scenario가 runner 목록에 등록됐다. 이 내용을 반영한 커밋 메시지를 제안했다."
+
+### [2026-03-08 11:09:05 KST] User Request: code optimation skill 이 있는지 확인해줘
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "현재 세션에서 사용할 수 있는 스킬 목록과 로컬 skill registry 양쪽을 대조해, `code optimization` 성격의 스킬 존재 여부를 사실 기준으로 확인하고 로그에 남겨야 했음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`rg -n --glob '*/SKILL.md' -i 'code optimization|optimization|optimiz|performance' /Users/najongseong/.codex/skills /Users/najongseong/git_repository/skills-registry`, `rg --files /Users/najongseong/.codex/skills /Users/najongseong/git_repository/skills-registry | rg -i 'optimization|optimiz|performance|perf'`, `rg -n 'Available skills|### Available skills|- .*skill' AGENTS.md`로 로컬 스킬 파일 존재 여부와 현재 AGENTS 등록 목록을 교차 확인했다."
+- **Outcome**: "로컬 registry에는 `/Users/najongseong/git_repository/skills-registry/apple/swift_code_optimizer/SKILL.md`가 존재한다. 다만 현재 `AGENTS.md`의 Available skills 목록에는 이 스킬이 포함되어 있지 않아, 이 세션에서 자동 적용 대상 스킬로 노출된 상태는 아니다."
+
+### [2026-03-08 11:09:05 KST] User Request: agents.md 파일 available skills 내용에 apple/swift_code_optimizer 를 추가해줘
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "사용 가능한 스킬 목록에 누락된 `apple/swift_code_optimizer` 항목을 실제 skill 메타데이터와 경로 기준으로 `AGENTS.md`에 추가하고, 그 변경을 작업 로그에 남겨야 했음."
+- **Files Touched**: ["AGENTS.md", "project_progress.md"]
+- **Validation**: "`sed -n '1,220p' /Users/najongseong/git_repository/skills-registry/apple/swift_code_optimizer/SKILL.md`, `rg -n 'swift_code_optimizer' AGENTS.md`로 스킬 설명과 추가 여부를 확인했다."
+- **Outcome**: "`AGENTS.md`의 `Available skills` 목록에 `swift_code_optimizer` 항목을 추가했다. 설명은 스킬 front matter의 description을 따르고, 파일 경로는 `/Users/najongseong/git_repository/skills-registry/apple/swift_code_optimizer/SKILL.md`로 연결했다."
+
+### [2026-03-08 11:13:25 KST] User Request: code 최적화 skill이 있는지 확인해줘
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "현재 저장소 기준으로 코드 최적화용 스킬이 실제 등록돼 있는지와 스킬 파일이 존재하는지를 다시 확인하고, 그 결과를 작업 로그에 남겨야 했음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`rg -n 'swift_code_optimizer|optimization|optimiz|performance' AGENTS.md`, `test -f /Users/najongseong/git_repository/skills-registry/apple/swift_code_optimizer/SKILL.md && echo EXISTS`로 AGENTS 등록 상태와 실제 스킬 파일 존재를 교차 확인했다."
+- **Outcome**: "`code 최적화` 성격의 스킬은 존재한다. 현재 저장소의 `AGENTS.md`에는 `swift_code_optimizer`가 Available skills로 등록되어 있고, 실제 파일 `/Users/najongseong/git_repository/skills-registry/apple/swift_code_optimizer/SKILL.md`도 존재한다."
 
 ### [2026-03-08 11:02:47 KST] User Request: test_scenario 전체 수행되는 시간을 기록할 수 있도록 해주면 좋을 것 같아
 - **Skills Planned**: ["game-external-test-agent", "project_logger"]
@@ -1514,3 +1546,35 @@
 - **Files Touched**: ["GoStop/Models/Player.swift", "GoStop/Models/RuleConfig.swift", "GoStop/Core/PenaltySystem.swift", "GoStop/Core/GameManager.swift", "GoStop/Core/SimulatorBridge.swift", "rule.yaml", "configuration.yaml", "GoStop/Resources/rule.yaml", "tests/test_agent/rule.yaml", "tests/test_agent/test_scenarios.py", "project_progress.md"]
 - **Validation**: "1) `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n 'error:|warning:|BUILD SUCCEEDED|BUILD FAILED'` => `BUILD SUCCEEDED`. 2) `python3 tests/test_agent/test_scenarios.py --mode socket -k block_score_claim_until_opponent_captures` PASS. 3) 회귀 영향 확인: `python3 tests/test_agent/test_scenarios.py --mode socket -k endgame_conditions` PASS, `python3 tests/test_agent/test_scenarios.py --mode socket -k pibak_zero_pi_exception` PASS."
 - **Outcome**: "기존 구현에는 `피박`의 `loserPi > 0` 예외만 있고 '상대가 이번 라운드에 한 번도 못 먹었으면 점수 확정 보류' 규칙은 없었다. `Player.hasCapturedThisRound`를 추가해 실제 캡처/피 이동/테스트 모킹 경로에서 추적하고, `GoStopRule.require_opponent_capture_for_scoring`(기본/설정값 true)을 도입해 Go/Stop 및 점수 확정 경로를 막도록 구현했다. 또한 `scenario_bugfix_block_score_claim_until_opponent_captures`를 추가해 실제 턴 진행과 강제 `askingGoStop` 주입 모두에서 점수 확정이 차단되는지를 검증했다."
+
+### [2026-03-08 11:34:48 KST] User Request: 파일 구조나 모듈화 관점에서는 더 수정할 것이 없는지 확인해줘
+- **Skills Planned**: ["basic-code-review", "project_logger"]
+- **Skills Used**: ["basic-code-review", "project_logger"]
+- **Trigger Reason**: "최근 최적화 이후, 성능이 아닌 파일 구조와 모듈 경계 관점에서 추가 정리가 필요한지 코드베이스 전반을 리뷰할 필요가 있었음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`wc -l GoStop/Core/GameManager.swift GoStop/Views/GameView.swift GoStop/Views/GameAreaViews.swift GoStop/Core/SimulatorBridge.swift GoStopCLI/main.swift GoStop/Models/Player.swift GoStop/Models/RuleConfig.swift GoStop/Core/ConfigManager.swift`, `rg -n \"class GameManager|func onAppearAction|SimulatorBridge\\.shared|class Player:|final class RuleLoader|final class ConfigurationStore|class ConfigManager|switch action|set_condition\" GoStop/Core/GameManager.swift GoStop/Views/GameView.swift GoStop/Core/SimulatorBridge.swift GoStopCLI/main.swift GoStop/Models/Player.swift GoStop/Models/RuleConfig.swift GoStop/Core/ConfigManager.swift GoStop/Models/LayoutConfig.swift GoStop/Models/LayoutConfigV2.swift GoStop/Core/LayoutContext.swift GoStop/Core/AnimationManager.swift`, 그리고 `nl -ba`로 관련 구간을 재검토해 책임 혼합과 중복 엔트리포인트를 확인."
+- **Outcome**: "구조상 추가 수정 포인트가 남아 있다. 특히 `GameManager`의 규칙/애니메이션/UI probe/자동화/직렬화 혼합, `GameView`의 bootstrap+overlay 집적, `Player`/`GameManager`/layout 모델의 UI 프레임워크 결합, `RuleConfig`/`ConfigManager`의 설정 모델+영속화 혼합, 그리고 `SimulatorBridge`와 `GoStopCLI`의 명령 처리 중복이 다음 모듈화 대상이다."
+
+### [2026-03-08 12:02:56 KST] User Request: 모듈 분리 패치를 시작해줘
+- **Skills Planned**: ["game_engine_iteration", "project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "구조 리뷰에서 우선순위가 가장 높았던 `SimulatorBridge`/`GoStopCLI` 중복 제어 로직을 실제 공통 모듈로 추출해 모듈 분리를 시작해야 했음. `game_engine_iteration`은 확인했지만 `engine_design_document.md`가 없어 전체 절차를 적용하지 못해 fallback으로 진행."
+- **Files Touched**: ["GoStop/Core/TestControlSupport.swift", "GoStop/Core/SimulatorBridge.swift", "GoStopCLI/main.swift", "GoStop.xcodeproj/project.pbxproj", "project_progress.md"]
+- **Validation**: "1) `xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI -configuration Debug -derivedDataPath /tmp/gostop_cli_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n \"error:|warning:|BUILD SUCCEEDED|BUILD FAILED\"` => `BUILD SUCCEEDED`. 2) `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n \"error:|warning:|BUILD SUCCEEDED|BUILD FAILED\"` => `BUILD SUCCEEDED` (AppIntents metadata warning only). 3) `xcrun simctl install booted /tmp/gostop_ios_build/Build/Products/Debug-iphonesimulator/GoStop.app`, `xcrun simctl launch booted com.konlona.GoStop`, `nc -vz 127.0.0.1 8080`로 브리지 포트 확인. 4) 타깃 socket 시나리오 재검증: `python3 tests/test_agent/test_scenarios.py --mode socket -k setup_condition_and_act` PASS, `python3 tests/test_agent/test_scenarios.py --mode socket -k configuration_yaml_persistence_after_app_restart` PASS, `python3 tests/test_agent/test_scenarios.py --mode socket -k shake_decline` FAIL(`Expected askingShake, got playing`), `python3 tests/test_agent/test_scenarios.py --mode socket -k capture_choice` FAIL(`Expected gameState='choosingCapture' ... got 'playing'`)."
+- **Outcome**: "새 공통 파일 `TestControlSupport`를 추가해 카드/역할 파싱, JSON 상태 직렬화, persistence probe 처리, `set_condition` 적용 로직을 한 곳으로 모았다. `GoStopCLI`와 `SimulatorBridge`는 이 helper를 사용하도록 바뀌었고 중복 구현을 상당 부분 제거했다. 또한 mock 적용 전후에 `emergencyResetBusyState()`를 호출해 테스트 제어 상태를 더 결정적으로 만들었다. 다만 `start_game` 직후 `set_condition` 후속 `play_card`가 바로 이어지는 일부 socket 시나리오(`shake_decline`, `capture_choice`)는 여전히 `playing`에 머무는 회귀/기존 불안정성이 남아 있어 다음 패치에서 `set_condition`의 턴/상태 초기화 범위를 더 좁혀 확인할 필요가 있다."
+
+### [2026-03-08 12:44:13 KST] User Request: 오늘 추가로 했던 내용 정리해줘
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "오늘(2026-03-08) 작업을 사용자 공유용으로 다시 묶어야 했고, 같은 내용이 이후 세션에서도 추적 가능하도록 daily wrap-up 아티팩트와 상단 상태를 함께 갱신해야 했음."
+- **Files Touched**: ["project_progress.md", "test_artifacts/daily_wrapup_2026-03-08.md"]
+- **Validation**: "`rg -n \"### \\[2026-03-08\" project_progress.md`, `sed -n '60,240p' project_progress.md`, `sed -n '1548,1588p' project_progress.md`, `sed -n '1,220p' test_artifacts/daily_wrapup_2026-03-07.md`로 오늘 엔트리와 기존 wrap-up 형식을 확인하고, 요약 범위를 오늘 기록으로만 제한했다."
+- **Outcome**: "2026-03-08 기준 추가 작업을 scoring/시나리오, test agent 계측, 최적화, 모듈 분리 축으로 정리한 `test_artifacts/daily_wrapup_2026-03-08.md`를 작성했다. 또한 `project_progress.md` 상단 상태와 다음 액션을 최신 모듈 분리 검증 결과(`shake_decline`, `capture_choice` 재확인 필요) 기준으로 갱신했다."
+
+### [2026-03-08 14:38:30 KST] User Request: commit message 생성해줘
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "현재 워크트리 diff를 다시 훑어 가장 큰 변경 축이 무엇인지 정리한 뒤, 그대로 재사용 가능한 커밋 제목/본문을 제안하고 로그에 남겨야 했음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`git status --short`, `git diff --stat`, `git diff -- GoStop/Core/TestControlSupport.swift GoStop/Core/SimulatorBridge.swift GoStopCLI/main.swift`, `git diff -- GoStop/Views/GameAreaViews.swift GoStop/Views/GameView.swift GoStop/Core/TableSlotManager.swift GoStop/Core/PlayerHandSlotManager.swift configuration.yaml agents.md`로 공통 제어 추출, 렌더/슬롯 최적화, 보조 설정 변경을 교차 확인했다."
+- **Outcome**: "현재 변경은 `TestControlSupport` 기반 CLI/socket 공통 제어 로직 추출이 가장 큰 축이고, 그 위에 캡처 그룹/슬롯 매니저 최적화와 skill 목록 갱신이 함께 얹혀 있다. 이를 반영한 커밋 메시지 초안을 제안했다."

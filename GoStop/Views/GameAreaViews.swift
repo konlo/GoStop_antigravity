@@ -6,38 +6,62 @@ import SwiftUI
 enum CapturedCardGrouping {
     static let orderedTypes = ["gwang", "animal", "ribbon", "pi"]
 
-    static func matches(_ card: Card, targetType: String) -> Bool {
-        // September animal can score either as animal or double-pi depending on chosen role.
-        if card.month == .sep && card.type == .animal {
-            let role = card.selectedRole ?? {
-                let defaultRoleStr = RuleLoader.shared.config?.cards.chrysanthemum_rule.default_role ?? "animal"
-                return CardRole(rawValue: defaultRoleStr) ?? .animal
-            }()
-
-            if targetType == "animal" { return role == .animal }
-            if targetType == "pi" { return role == .doublePi }
-            return false
-        }
-
-        if card.month == .nov && (card.type == .junk || card.type == .doubleJunk) {
-            return targetType == "pi"
-        }
-
-        if targetType == "gwang" { return card.type == .bright }
-        if targetType == "animal" { return card.type == .animal }
-        if targetType == "ribbon" { return card.type == .ribbon }
-        if targetType == "pi" { return card.type == .junk || card.type == .doubleJunk }
-        return false
+    private static func defaultChrysanthemumRole() -> CardRole {
+        let defaultRole = RuleLoader.shared.config?.cards.chrysanthemum_rule.default_role ?? "animal"
+        return CardRole(rawValue: defaultRole) ?? .animal
     }
 
-    static func sortedCards(for targetType: String, from cards: [Card]) -> [Card] {
-        cards
-            .filter { matches($0, targetType: targetType) }
-            .sorted { lhs, rhs in
+    private static func groupType(for card: Card, defaultSepRole: CardRole) -> String? {
+        if card.month == .sep && card.type == .animal {
+            let role = card.selectedRole ?? defaultSepRole
+            return role == .doublePi ? "pi" : "animal"
+        }
+
+        switch card.type {
+        case .bright:
+            return "gwang"
+        case .animal:
+            return "animal"
+        case .ribbon:
+            return "ribbon"
+        case .junk, .doubleJunk:
+            return "pi"
+        case .dummy:
+            return nil
+        }
+    }
+
+    static func matches(_ card: Card, targetType: String) -> Bool {
+        groupType(for: card, defaultSepRole: defaultChrysanthemumRole()) == targetType
+    }
+
+    static func groupedCards(from cards: [Card]) -> [String: [Card]] {
+        let defaultSepRole = defaultChrysanthemumRole()
+        var grouped = Dictionary(uniqueKeysWithValues: orderedTypes.map { ($0, [Card]()) })
+        grouped.reserveCapacity(orderedTypes.count)
+
+        for card in cards {
+            guard let type = groupType(for: card, defaultSepRole: defaultSepRole) else { continue }
+            grouped[type, default: []].append(card)
+        }
+
+        return grouped
+    }
+
+    static func groupedSortedCards(from cards: [Card]) -> [String: [Card]] {
+        var grouped = groupedCards(from: cards)
+        for type in orderedTypes {
+            grouped[type]?.sort { lhs, rhs in
                 if lhs.month != rhs.month { return lhs.month < rhs.month }
                 if lhs.imageIndex != rhs.imageIndex { return lhs.imageIndex < rhs.imageIndex }
                 return lhs.id < rhs.id
             }
+        }
+        return grouped
+    }
+
+    static func sortedCards(for targetType: String, from cards: [Card]) -> [Card] {
+        groupedSortedCards(from: cards)[targetType, default: []]
     }
 }
 
@@ -395,6 +419,9 @@ struct OpponentHandV2: View {
         let cardW = ctx.cardSize.width * handConfig.scale
         let overlap = handConfig.grid?.overlapRatio ?? 0.0
         let spacing = cardW * (1.0 - overlap)
+        let movingCardIds = Set(gameManager.currentMovingCards.map { $0.id })
+        let handActsAsSource = gameManager.currentMoveSourceZone == "hand"
+        let handActsAsTarget = gameManager.currentMoveTargetZone == "hand"
         // If overlap is 0, use hSpacingCardRatio?
         // JSON has both: "hSpacingCardRatio": 0.04, "overlapRatio": 0.62.
         // Usually overlap implies negative spacing in HStack or manual offset in ZStack.
@@ -402,10 +429,8 @@ struct OpponentHandV2: View {
         
         ZStack(alignment: .leading) {
             ForEach(Array(hand.enumerated()), id: \.element.id) { index, card in
-                let isHidden = gameManager.currentMovingCards.contains(where: { $0.id == card.id }) || gameManager.hiddenInSourceCardIds.contains(card.id)
+                let isHidden = movingCardIds.contains(card.id) || gameManager.hiddenInSourceCardIds.contains(card.id)
                 let isPreplayReveal = gameManager.opponentPreplayRevealCardId == card.id
-                let handActsAsSource = gameManager.currentMoveSourceZone == "hand"
-                let handActsAsTarget = gameManager.currentMoveTargetZone == "hand"
                 let isSourceCue = handActsAsSource && gameManager.sourceCueCardIds.contains(card.id)
                 let isTargetCue = handActsAsTarget && gameManager.targetCueCardIds.contains(card.id)
                 // Opponent Hand remains source
@@ -451,6 +476,9 @@ struct PlayerHandFixedSlotsView: View {
         let cardW = ctx.cardSize.width * config.scale
         let cardH = ctx.cardSize.height * config.scale
         let currentHandIds = Set((gameManager.players.first?.hand ?? []).map { $0.id })
+        let movingCardIds = Set(gameManager.currentMovingCards.map { $0.id })
+        let handActsAsSource = gameManager.currentMoveSourceZone == "hand"
+        let handActsAsTarget = gameManager.currentMoveTargetZone == "hand"
         
         ZStack {
              if let fixedSlots = config.fixedSlots {
@@ -481,9 +509,7 @@ struct PlayerHandFixedSlotsView: View {
                          // Card
                          if let card = manager.card(at: slot.slotIndex), currentHandIds.contains(card.id) {
                              ZStack {
-                                 let isHidden = gameManager.currentMovingCards.contains(where: { $0.id == card.id }) || gameManager.hiddenInSourceCardIds.contains(card.id)
-                                 let handActsAsSource = gameManager.currentMoveSourceZone == "hand"
-                                 let handActsAsTarget = gameManager.currentMoveTargetZone == "hand"
+                                 let isHidden = movingCardIds.contains(card.id) || gameManager.hiddenInSourceCardIds.contains(card.id)
                                  let isSourceCue = handActsAsSource && gameManager.sourceCueCardIds.contains(card.id)
                                  let isTargetCue = handActsAsTarget && gameManager.targetCueCardIds.contains(card.id)
                                  // Hand card remains source
@@ -518,6 +544,9 @@ struct PlayerHandGridV1: View {
         let scale = config.scale
         let scaledW = cardSize.width * scale
         let scaledH = cardSize.height * scale
+        let movingCardIds = Set(gameManager.currentMovingCards.map { $0.id })
+        let handActsAsSource = gameManager.currentMoveSourceZone == "hand"
+        let handActsAsTarget = gameManager.currentMoveTargetZone == "hand"
         
         let vSpacing = scaledH * (config.grid?.vSpacingCardRatio ?? 0.05)
         let hSpacing = scaledW * (config.grid?.hSpacingCardRatio ?? 0.0)
@@ -535,9 +564,7 @@ struct PlayerHandGridV1: View {
                 ForEach(0..<chunks.count, id: \.self) { rowIndex in
                     HStack(spacing: hSpacing) {
                      ForEach(chunks[rowIndex]) { card in
-                             let isHidden = gameManager.currentMovingCards.contains(where: { $0.id == card.id }) || gameManager.hiddenInSourceCardIds.contains(card.id)
-                             let handActsAsSource = gameManager.currentMoveSourceZone == "hand"
-                             let handActsAsTarget = gameManager.currentMoveTargetZone == "hand"
+                             let isHidden = movingCardIds.contains(card.id) || gameManager.hiddenInSourceCardIds.contains(card.id)
                              let isSourceCue = handActsAsSource && gameManager.sourceCueCardIds.contains(card.id)
                              let isTargetCue = handActsAsTarget && gameManager.targetCueCardIds.contains(card.id)
                              CardView(card: card, isFaceUp: true, scale: scale, animationNamespace: animationNamespace, isSource: true, isMoveSourceCue: isSourceCue, isMoveTargetCue: isTargetCue)
@@ -647,10 +674,11 @@ struct CapturedGroupsAreaV2: View {
             let totalSpacing = vSpacing * CGFloat(groups.count - 1)
             let baseActiveWidth = max(0, totalWidth - padding - totalSpacing)
             let totalWeight = groups.reduce(0) { $0 + $1.priorityWeight }
+            let groupedCards = CapturedCardGrouping.groupedCards(from: cards)
             
             HStack(alignment: .bottom, spacing: vSpacing) {
                 ForEach(groups, id: \.type) { group in
-                    let groupCards = cards.filter { CapturedCardGrouping.matches($0, targetType: group.type) }
+                    let groupCards = groupedCards[group.type, default: []]
                     let groupWidth = totalWeight > 0 ? baseActiveWidth * (group.priorityWeight / totalWeight) : 0
                     
                     CapturedGroupSlotView(
@@ -1138,6 +1166,7 @@ struct DeckAreaV2: View {
     @ObservedObject var gameManager: GameManager
     
     var body: some View {
+        let movingCardIds = Set(gameManager.currentMovingCards.map { $0.id })
         ZStack {
             if deckCount > 0 {
                 // Background stack of cards (visual only)
@@ -1155,7 +1184,7 @@ struct DeckAreaV2: View {
                     let deckToTableSourceCueScale: CGFloat = (gameManager.currentMoveSourceZone == "deck" && gameManager.currentMoveTargetZone == "table") ? 1.0 : 1.06
                     CardView(card: topCard, isFaceUp: false, scale: config.scale, animationNamespace: animationNamespace, isMoveSourceCue: isSourceCue, isMoveTargetCue: isTargetCue, sourceCueScaleMultiplier: deckToTableSourceCueScale)
                         .offset(x: CGFloat(min(5, deckCount - 1)) * 0.5, y: CGFloat(min(5, deckCount - 1)) * 0.5)
-                        .opacity((gameManager.currentMovingCards.contains(where: { $0.id == topCard.id }) || gameManager.hiddenInSourceCardIds.contains(topCard.id)) ? 0 : 1)
+                        .opacity((movingCardIds.contains(topCard.id) || gameManager.hiddenInSourceCardIds.contains(topCard.id)) ? 0 : 1)
                 }
             } else {
                 Color.clear

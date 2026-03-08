@@ -67,12 +67,12 @@ rule:
     bak_only_if_opponent_go: true
     require_opponent_capture_for_scoring: true
     go_bonuses:
-      4:
-        add: 0
-        multiply: 4
       3:
         add: 0
         multiply: 2
+      4:
+        add: 0
+        multiply: 4
       1:
         add: 1
         multiply: 1

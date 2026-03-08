@@ -111,8 +111,7 @@ class SimulatorBridge {
                 }
             }
             
-            let playActions: Set<String> = ["play_card", "respond_to_go", "respond_to_capture", "decide_shake", "decide_chrysanthemum"]
-            if playActions.contains(action) {
+            if TestControlSupport.externallyControlledActions.contains(action) {
                 DispatchQueue.main.async {
                     self.gameManager.externalControlMode = true
                 }
@@ -137,16 +136,7 @@ class SimulatorBridge {
                     sendErrorResponse(message: "Missing month or type", connection: connection)
                     return
                 }
-                
-                let type: CardType
-                switch typeStr {
-                case "bright": type = .bright
-                case "animal": type = .animal
-                case "ribbon": type = .ribbon
-                case "doubleJunk": type = .doubleJunk
-                case "dummy": type = .dummy
-                default: type = .junk
-                }
+                let type = TestControlSupport.parseCardType(typeStr)
                 
                 DispatchQueue.main.async {
                     if let player = self.gameManager.currentPlayer,
@@ -202,8 +192,7 @@ class SimulatorBridge {
                     sendErrorResponse(message: "Missing role", connection: connection)
                     return
                 }
-                
-                let role: CardRole = roleStr == "doublePi" ? .doublePi : .animal
+                let role = TestControlSupport.parseCardRole(roleStr)
                 
                 DispatchQueue.main.async {
                     self.gameManager.respondToChrysanthemumChoice(role: role)
@@ -216,7 +205,7 @@ class SimulatorBridge {
                         payload: [
                             "status": "ok",
                             "action": action,
-                            "data": self.persistenceProbeData()
+                            "data": TestControlSupport.persistenceProbeData()
                         ],
                         connection: connection
                     )
@@ -229,71 +218,20 @@ class SimulatorBridge {
                 }
 
                 DispatchQueue.main.async {
-                    var didChange = false
-
-                    if dataDict["rule_dummy_card_count"] != nil ||
-                        dataDict["rule_chongtong_initial_score"] != nil ||
-                        dataDict["rule_chongtong_midgame_score"] != nil {
-                        guard var rules = RuleLoader.shared.config else {
-                            self.sendErrorResponse(message: "Rule config is not loaded", connection: connection)
-                            return
-                        }
-                        if let dummyCardCount = dataDict["rule_dummy_card_count"] as? Int {
-                            rules.special_moves.bomb.dummy_card_count = max(0, dummyCardCount)
-                            didChange = true
-                        }
-                        if let initialScore = dataDict["rule_chongtong_initial_score"] as? Int {
-                            rules.special_moves.chongtong.initial_chongtong_score = max(0, initialScore)
-                            didChange = true
-                        }
-                        if let midgameScore = dataDict["rule_chongtong_midgame_score"] as? Int {
-                            rules.special_moves.chongtong.midgame_chongtong_score = max(0, midgameScore)
-                            didChange = true
-                        }
-                        if didChange {
-                            RuleLoader.shared.updateRules(rules)
-                        }
+                    switch TestControlSupport.updatePersistenceProbeConfig(with: dataDict) {
+                    case .success(let payload):
+                        self.sendJSONResponse(
+                            payload: [
+                                "status": "ok",
+                                "action": action,
+                                "data": payload
+                            ],
+                            connection: connection
+                        )
+                    case .failure(let error):
+                        let message = error.localizedDescription
+                        self.sendErrorResponse(message: message, connection: connection)
                     }
-
-                    if let rawDelay = dataDict["animation_opponent_action_delay"] {
-                        let parsedDelay: Double?
-                        if let delay = rawDelay as? Double {
-                            parsedDelay = delay
-                        } else if let delay = rawDelay as? Int {
-                            parsedDelay = Double(delay)
-                        } else if let delay = rawDelay as? NSNumber {
-                            parsedDelay = delay.doubleValue
-                        } else {
-                            parsedDelay = nil
-                        }
-
-                        if let parsedDelay {
-                            var nextConfig = AnimationManager.shared.config
-                            nextConfig.opponent_action_delay = max(0.0, parsedDelay)
-                            AnimationManager.shared.config = nextConfig
-                            AnimationManager.shared.saveConfig()
-                            didChange = true
-                        }
-                    }
-
-                    if let isApplied = dataDict["first_launch_starter_applied"] as? Bool {
-                        _ = ConfigurationStore.shared.setFirstLaunchStarterApplied(isApplied)
-                        didChange = true
-                    }
-
-                    guard didChange else {
-                        self.sendErrorResponse(message: "No supported persistence probe keys provided", connection: connection)
-                        return
-                    }
-
-                    self.sendJSONResponse(
-                        payload: [
-                            "status": "ok",
-                            "action": action,
-                            "data": self.persistenceProbeData()
-                        ],
-                        connection: connection
-                    )
                 }
                 
             case "click_restart_button":
@@ -409,137 +347,21 @@ class SimulatorBridge {
                 }
                 
                 DispatchQueue.main.async {
-                    if let customRules = data["custom_rules"] as? [String: Any] {
-                        do {
-                            try self.applyCustomRules(customRules)
-                        } catch {
-                            self.sendErrorResponse(message: "Failed to apply custom_rules: \(error.localizedDescription)", connection: connection)
-                            return
-                        }
-                    }
-
-                    if let seed = data["rng_seed"] as? Int {
-                        self.gameManager.setupGame(seed: seed)
-                    }
-                    
-                    if let scenario = data["mock_scenario"] as? String, scenario == "game_over" {
-                        self.gameManager.gameState = .ended
-                    }
-                    
-                    if let turnIndex = data["currentTurnIndex"] as? Int {
-                        self.gameManager.currentTurnIndex = turnIndex
-                    }
-                    
-                    if let mockState = data["mock_gameState"] as? String {
-                        switch mockState {
-                        case "ready": self.gameManager.gameState = .ready
-                        case "playing": self.gameManager.gameState = .playing
-                        case "askingGoStop": self.gameManager.gameState = .askingGoStop
-                        case "askingShake": self.gameManager.gameState = .askingShake
-                        case "ended": self.gameManager.gameState = .ended
-                        default: break
-                        }
-                    }
-
-                    if let mockEndReason = data["mock_game_end_reason"] as? String {
-                        self.gameManager.gameEndReason = GameEndReason(rawValue: mockEndReason)
-                    } else if let mockEndReason = data["mock_gameEndReason"] as? String {
-                        self.gameManager.gameEndReason = GameEndReason(rawValue: mockEndReason)
-                    }
-
-                    if let mockEventLogs = data["mock_event_logs"] as? [String] {
-                        self.gameManager.eventLogs = mockEventLogs
-                        self.simulateSpecialEventProbe(for: mockEventLogs)
-                    }
-                    
-                    if let mockCaptured = data["mock_captured_cards"] as? [[String: Any]] {
-                         let player = self.gameManager.players[0]
-                         player.capturedCards = self.parseCards(mockCaptured)
-                         player.hasCapturedThisRound = !player.capturedCards.isEmpty
-                         player.score = ScoringSystem.calculateScore(for: player)
-                    }
-                    
-                    if let mockOpponentCaptured = data["mock_opponent_captured_cards"] as? [[String: Any]] {
-                         let opponent = self.gameManager.players[1]
-                         opponent.capturedCards = self.parseCards(mockOpponentCaptured)
-                         opponent.hasCapturedThisRound = !opponent.capturedCards.isEmpty
-                         opponent.score = ScoringSystem.calculateScore(for: opponent)
-                    }
-                    
-                    if let mockHand = data["mock_hand"] as? [[String: Any]] {
-                         self.gameManager.players[0].hand = self.parseCards(mockHand)
-                    }
-
-                    if let clearDeck = data["clear_deck"] as? Bool, clearDeck {
-                        _ = self.gameManager.deck.drainAll()
-                    }
-                    
-                    if let mockDeckArr = data["mock_deck"] as? [[String: Any]] {
-                        self.gameManager.mockDeck(cards: self.parseCards(mockDeckArr))
-                    }
-                    
-                    if let mockTable = data["mock_table"] as? [[String: Any]] {
-                         self.gameManager.tableCards = self.parseCards(mockTable)
-                    }
-                    
-                    // Advanced player mocking
-                    for i in 0..<self.gameManager.players.count {
-                        let key = "player\(i)_data"
-                        if let pData = data[key] as? [String: Any] {
-                            let p = self.gameManager.players[i]
-                            if let goCount = pData["goCount"] as? Int { p.goCount = goCount }
-                            if let lastGoScore = pData["lastGoScore"] as? Int { p.lastGoScore = lastGoScore }
-                            if let money = pData["money"] as? Int { p.money = money }
-                            if let score = pData["score"] as? Int { p.score = score }
-                            if let shakeCount = pData["shakeCount"] as? Int { p.shakeCount = shakeCount }
-                            if let bombCount = pData["bombCount"] as? Int { p.bombCount = bombCount }
-                            if let sweepCount = pData["sweepCount"] as? Int { p.sweepCount = sweepCount }
-                            if let ttadakCount = pData["ttadakCount"] as? Int { p.ttadakCount = ttadakCount }
-                            if let jjokCount = pData["jjokCount"] as? Int { p.jjokCount = jjokCount }
-                            if let seolsaCount = pData["seolsaCount"] as? Int { p.seolsaCount = seolsaCount }
-                            if let awardedFirstTurnTtadakBonus = pData["awardedFirstTurnTtadakBonus"] as? Bool {
-                                p.awardedFirstTurnTtadakBonus = awardedFirstTurnTtadakBonus
+                    do {
+                        try TestControlSupport.applyTestCondition(
+                            data,
+                            to: self.gameManager,
+                            applyCustomRules: { customRules in
+                                try self.applyCustomRules(customRules)
+                            },
+                            didUpdateMockEventLogs: { eventLogs in
+                                self.simulateSpecialEventProbe(for: eventLogs)
                             }
-                            if let awardedFirstTurnSeolsaBonus = pData["awardedFirstTurnSeolsaBonus"] as? Bool {
-                                p.awardedFirstTurnSeolsaBonus = awardedFirstTurnSeolsaBonus
-                            }
-                            if let isPiMungbak = pData["isPiMungbak"] as? Bool { p.isPiMungbak = isPiMungbak }
-                            if let mungddaCount = pData["mungddaCount"] as? Int { p.mungddaCount = mungddaCount }
-                            if let bombMungddaCount = pData["bombMungddaCount"] as? Int { p.bombMungddaCount = bombMungddaCount }
-                            if let isComputer = pData["isComputer"] as? Bool { p.isComputer = isComputer }
-                            if let dummyCardCount = pData["dummyCardCount"] as? Int { p.dummyCardCount = dummyCardCount }
-                            if let hasCapturedThisRound = pData["hasCapturedThisRound"] as? Bool {
-                                p.hasCapturedThisRound = hasCapturedThisRound
-                            }
-                            
-                            if let h = pData["hand"] as? [[String: Any]] {
-                                p.hand = self.parseCards(h)
-                            }
-                            if let c = pData["capturedCards"] as? [[String: Any]] {
-                                p.capturedCards = self.parseCards(c)
-                                p.hasCapturedThisRound = !p.capturedCards.isEmpty
-                                p.score = ScoringSystem.calculateScore(for: p)
-                            }
-                        }
+                        )
+                        self.sendSimpleResponse(status: "condition set", action: action, connection: connection)
+                    } catch {
+                        self.sendErrorResponse(message: "Failed to apply custom_rules: \(error.localizedDescription)", connection: connection)
                     }
-
-                    if let mockCompletedTurnCount = data["mock_completed_turn_count"] as? Int {
-                        self.gameManager.setCompletedTurnCountForTesting(mockCompletedTurnCount)
-                    }
-                    
-                    // Mock month owners for Seolsa testing
-                    if let ownersDict = data["mock_month_owners"] as? [String: Int] {
-                        self.gameManager.monthOwners = [:]
-                        for (monthStr, playerIdx) in ownersDict {
-                            if let monthInt = Int(monthStr),
-                               let month = Month(rawValue: monthInt),
-                               self.gameManager.players.indices.contains(playerIdx) {
-                                self.gameManager.monthOwners[month.rawValue] = self.gameManager.players[playerIdx]
-                            }
-                        }
-                    }
-                    
-                    self.sendSimpleResponse(status: "condition set", action: action, connection: connection)
                 }
                 
             default:
@@ -551,33 +373,6 @@ class SimulatorBridge {
         }
     }
     
-    // Helper to parse card list from JSON dictionary
-    private func parseCards(_ dictList: [[String: Any]]) -> [Card] {
-        var cards: [Card] = []
-        for dict in dictList {
-            if let monthIdx = dict["month"] as? Int,
-               let typeStr = dict["type"] as? String {
-                let month = Month(rawValue: monthIdx) ?? .jan
-                var type: CardType = .junk
-                switch typeStr {
-                case "bright": type = .bright
-                case "animal": type = .animal
-                case "ribbon": type = .ribbon
-                case "doubleJunk": type = .doubleJunk
-                case "dummy": type = .dummy
-                default: type = .junk
-                }
-                let imageIndex = dict["imageIndex"] as? Int ?? 0
-                var card = Card(month: month, type: type, imageIndex: imageIndex)
-                if let roleStr = dict["selectedRole"] as? String {
-                    card.selectedRole = CardRole(rawValue: roleStr)
-                }
-                cards.append(card)
-            }
-        }
-        return cards
-    }
-
     private func resetTemporaryRulesIfNeeded() {
         guard hasTemporaryRuleOverride else { return }
         RuleLoader.shared.loadRules()
@@ -775,17 +570,6 @@ class SimulatorBridge {
             finalData.append("\n".data(using: .utf8)!)
             connection.send(content: finalData, completion: .contentProcessed({ _ in }))
         }
-    }
-
-    private func persistenceProbeData() -> [String: Any] {
-        [
-            "rule_dummy_card_count": RuleLoader.shared.config?.special_moves.bomb.dummy_card_count ?? -1,
-            "rule_chongtong_initial_score": RuleLoader.shared.config?.special_moves.chongtong.initial_chongtong_score ?? -1,
-            "rule_chongtong_midgame_score": RuleLoader.shared.config?.special_moves.chongtong.midgame_chongtong_score ?? -1,
-            "animation_opponent_action_delay": AnimationManager.shared.config.opponent_action_delay,
-            "first_launch_starter_applied": ConfigurationStore.shared.firstLaunchStarterApplied(),
-            "configuration_path": ConfigurationStore.shared.configurationPath
-        ]
     }
 
     private func enqueueStateResponse(connection: NWConnection?) {

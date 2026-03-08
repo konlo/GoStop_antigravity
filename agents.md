@@ -156,6 +156,7 @@ A skill is a local instruction set in a `SKILL.md` file that can be triggered by
 - skill-installer: Install Codex skills from curated lists or GitHub paths. (file: /Users/najongseong/git_repository/skills-registry/.system/skill-installer/SKILL.md)
 - apple_app_test_agent: Setup and run a Python-based test agent for Apple apps. (file: /Users/najongseong/git_repository/skills-registry/apple/apple-app-test-agent/SKILL.md)
 - apple_app_init: Guardrails for creating a runnable iOS SwiftUI app project. (file: /Users/najongseong/git_repository/skills-registry/apple/apple_app_init/SKILL.md)
+- swift_code_optimizer: Senior Swift Performance Engineer skill for analyzing and optimizing Swift, SwiftUI, and UIKit code for iOS and macOS applications. (file: /Users/najongseong/git_repository/skills-registry/apple/swift_code_optimizer/SKILL.md)
 - review-issue-scenario: Add regression scenarios after issue review and fixes. (file: /Users/najongseong/git_repository/skills-registry/apple/review-issue-scenario/SKILL.md)
 - add-bug-fix-scenario: Add bug-fix regression scenarios while avoiding duplicates. (file: /Users/najongseong/git_repository/skills-registry/apple/review-issue-scenario/add-bug-fix-scenario/SKILL.md)
 - game_UI: UX-first game UI blueprint with logic/view separation and slot-based layout. (file: /Users/najongseong/git_repository/skills-registry/game_development/game_UI/SKILL.md)

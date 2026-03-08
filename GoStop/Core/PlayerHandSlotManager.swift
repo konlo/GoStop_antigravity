@@ -4,6 +4,7 @@ import Combine
 class PlayerHandSlotManager: ObservableObject {
     @Published var slots: [Int: HandSlotState] = [:]
     private let config: LayoutConfigV2
+    private let orderedSlotIndices: [Int]
     
     struct HandSlotState {
         var card: Card?
@@ -12,6 +13,7 @@ class PlayerHandSlotManager: ObservableObject {
     
     init(config: LayoutConfigV2) {
         self.config = config
+        self.orderedSlotIndices = config.areas.player.elements.hand.fixedSlots?.slots.map(\.slotIndex).sorted() ?? []
         self.initializeSlots()
     }
     
@@ -25,6 +27,10 @@ class PlayerHandSlotManager: ObservableObject {
     private var preserveEmptySlots: Bool {
         return config.areas.player.elements.hand.slotPlacementPolicy?.preserveEmptySlots ?? true
     }
+
+    private var slotIndicesInOrder: [Int] {
+        orderedSlotIndices.isEmpty ? slots.keys.sorted() : orderedSlotIndices
+    }
     
     func sync(with hand: [Card], compactToFront: Bool = true) {
         // Sort hand based on user criteria: Month -> Type
@@ -36,8 +42,7 @@ class PlayerHandSlotManager: ObservableObject {
         if !preserveEmptySlots {
             if compactToFront {
                 // Fill from slot 1 whenever compaction is desired.
-                let sortedKeys = slots.keys.sorted()
-                for key in sortedKeys {
+                for key in slotIndicesInOrder {
                     if var state = slots[key] {
                         state.card = nil
                         state.isOccupied = false
@@ -45,8 +50,8 @@ class PlayerHandSlotManager: ObservableObject {
                     }
                 }
                 
-                for (i, card) in sortedHand.enumerated() where i < sortedKeys.count {
-                    let idx = sortedKeys[i]
+                for (i, card) in sortedHand.enumerated() where i < slotIndicesInOrder.count {
+                    let idx = slotIndicesInOrder[i]
                     if var state = slots[idx] {
                         state.card = card
                         state.isOccupied = true
@@ -137,8 +142,7 @@ class PlayerHandSlotManager: ObservableObject {
     }
     
     private func findFirstEmptySlot() -> Int? {
-        let sortedKeys = slots.keys.sorted()
-        for idx in sortedKeys {
+        for idx in slotIndicesInOrder {
             if let state = slots[idx], !state.isOccupied {
                 return idx
             }
@@ -163,16 +167,15 @@ class PlayerHandSlotManager: ObservableObject {
         if !preserveEmptySlots {
             // Compaction: Re-assign to slots 1..N
             // 1. Clear all
-            for key in slots.keys {
+            for key in slotIndicesInOrder {
                 slots[key]?.card = nil
                 slots[key]?.isOccupied = false
             }
             
             // 2. Assign
-            let sortedKeys = slots.keys.sorted()
             for (i, card) in sortedCards.enumerated() {
-                if i < sortedKeys.count {
-                    let idx = sortedKeys[i]
+                if i < slotIndicesInOrder.count {
+                    let idx = slotIndicesInOrder[i]
                     var state = slots[idx]!
                     state.card = card
                     state.isOccupied = true
