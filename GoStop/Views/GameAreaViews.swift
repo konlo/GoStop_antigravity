@@ -862,11 +862,6 @@ struct CapturedGroupSlotView: View {
         .onLongPressGesture(
             minimumDuration: 0.28,
             maximumDistance: 24,
-            pressing: { isPressing in
-                if !isPressing {
-                    onGroupPreviewEnded?(ownerPlayerId, groupConfig.type)
-                }
-            },
             perform: {
                 guard !cards.isEmpty else { return }
                 onGroupPreviewRequested?(ownerPlayerId, groupConfig.type)

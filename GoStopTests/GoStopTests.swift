@@ -95,7 +95,7 @@ final class GoStopTests: XCTestCase {
         player.capturedCards = [
             Card(month: .feb, type: .animal, imageIndex: 0), // Bird
             Card(month: .apr, type: .animal, imageIndex: 0), // Bird
-            Card(month: .aug, type: .animal, imageIndex: 0)  // Geese
+            Card(month: .aug, type: .animal, imageIndex: 1)  // Geese
         ]
         
         // We need to ensure these are actually recognized as birds in isBird

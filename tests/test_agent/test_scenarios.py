@@ -115,9 +115,9 @@ def scenario_verify_scoring_suite(agent: TestAgent):
         {
             "name": "Godori (Feb, Apr, Aug Animals)",
             "cards": [
-                {"month": 2, "type": "animal"},
-                {"month": 4, "type": "animal"},
-                {"month": 8, "type": "animal"}
+                {"month": 2, "type": "animal", "imageIndex": 0},
+                {"month": 4, "type": "animal", "imageIndex": 0},
+                {"month": 8, "type": "animal", "imageIndex": 1}
             ],
             "expected_score": 5,
             "category": "Godori"
@@ -2745,6 +2745,71 @@ def scenario_bugfix_double_shake_pibak_multiplier(agent: TestAgent):
         formula
     )
 
+def scenario_verify_samgwang_godori_scoring(agent: TestAgent):
+    """
+    Scenario: Verify combined scoring when the winner has Samgwang and Godori together.
+    Expected base score: 3 (Samgwang) + 5 (Godori) = 8, with no extra multipliers.
+    """
+    logger.info("Running Samgwang + Godori scoring verification...")
+
+    winner_cards = [
+        {"month": 1, "type": "bright", "imageIndex": 0},
+        {"month": 3, "type": "bright", "imageIndex": 0},
+        {"month": 8, "type": "bright", "imageIndex": 0},
+        {"month": 2, "type": "animal", "imageIndex": 0},
+        {"month": 4, "type": "animal", "imageIndex": 0},
+        {"month": 8, "type": "animal", "imageIndex": 1},
+    ]
+    loser_cards = [
+        {"month": 12, "type": "bright", "imageIndex": 0},  # Block Gwangbak so the final score stays at base 8.
+        {"month": 1, "type": "junk", "imageIndex": 2},
+        {"month": 2, "type": "junk", "imageIndex": 2},
+        {"month": 3, "type": "junk", "imageIndex": 2},
+        {"month": 4, "type": "junk", "imageIndex": 2},
+        {"month": 5, "type": "junk", "imageIndex": 2},
+        {"month": 6, "type": "junk", "imageIndex": 2},
+    ]
+
+    agent.set_condition({
+        "mock_captured_cards": winner_cards,
+        "mock_opponent_captured_cards": loser_cards,
+        "player0_data": {"goCount": 0, "shakeCount": 0},
+        "player1_data": {"goCount": 0},
+        "mock_scenario": "game_over"
+    })
+
+    state = agent.get_all_information()
+    winner = state["players"][0]
+    score_items = winner.get("scoreItems", [])
+    penalty = state.get("penaltyResult", {})
+
+    samgwang_item = next(
+        (item for item in score_items if "3 Brights" in item["name"] or "삼광" in item["name"]),
+        None
+    )
+    godori_item = next(
+        (item for item in score_items if "Godori" in item["name"] or "고도리" in item["name"]),
+        None
+    )
+
+    assert samgwang_item is not None, f"Expected Samgwang score item, got {score_items}"
+    assert samgwang_item["points"] == 3, f"Expected Samgwang 3 points, got {samgwang_item}"
+    assert godori_item is not None, f"Expected Godori score item, got {score_items}"
+    assert godori_item["points"] == 5, f"Expected Godori 5 points, got {godori_item}"
+    assert winner.get("score") == 8, f"Expected base score 8, got {winner.get('score')}. scoreItems={score_items}"
+
+    assert penalty.get("isGwangbak") is False, f"Gwangbak should be blocked in this scenario: {penalty}"
+    assert penalty.get("isPibak") is False, f"Pibak should not apply in this scenario: {penalty}"
+    assert penalty.get("isMungbak") is False, f"Mungbak should not apply in this scenario: {penalty}"
+    assert penalty.get("isGobak") is False, f"Gobak should not apply in this scenario: {penalty}"
+    assert penalty.get("finalScore") == 8, f"Expected finalScore 8, got {penalty.get('finalScore')}. penalty={penalty}"
+
+    logger.info(
+        "Samgwang + Godori verified: baseScore=%s, finalScore=%s",
+        winner.get("score"),
+        penalty.get("finalScore")
+    )
+
 def scenario_bugfix_empty_start_jjok_counts_as_sweep(agent: TestAgent):
     """
     Bug: `sweep.allow_empty_start_via_jjok` was declared in rules but not enforced.
@@ -3747,7 +3812,7 @@ def scenario_bugfix_seolsa_eat_flag_reset_between_turns(agent: TestAgent):
     agent.send_user_action("start_game")
 
     agent.set_condition({
-        "mock_deck": [{"month": 8, "type": "animal"}, {"month": 12, "type": "junk"}],
+        "mock_deck": [{"month": 8, "type": "animal", "imageIndex": 1}, {"month": 12, "type": "junk", "imageIndex": 2}],
         "mock_table": [
             {"month": 1, "type": "junk"},
             {"month": 1, "type": "ribbon"},
@@ -4145,7 +4210,11 @@ def scenario_verify_exponential_multipliers(agent: TestAgent):
     # Sub-case 1: 1 Shake -> 2x (Base 7 -> 14)
     winner_cards = [{"month": m, "type": "junk"} for m in range(1, 11)] # 1 pt (10 Pi)
     winner_cards += [{"month": 1, "type": "bright"}, {"month": 3, "type": "bright"}, {"month": 8, "type": "bright"}] # 3 pts (Samgwang)
-    winner_cards += [{"month": 2, "type": "animal"}, {"month": 4, "type": "animal"}, {"month": 8, "type": "animal"}] # 5 pts (Godori)
+    winner_cards += [
+        {"month": 2, "type": "animal", "imageIndex": 0},
+        {"month": 4, "type": "animal", "imageIndex": 0},
+        {"month": 8, "type": "animal", "imageIndex": 1}
+    ] # 5 pts (Godori)
     # Total Base Score: 1 + 3 + 5 = 9 (Wait, let's keep it simpler)
     
     # Simpler base: 7 Normal Pi (0 pts) + 3 Cheongdan Ribbons (3 pts) + 10 Pi total (1 pt) = 4 pts? No.
@@ -4732,11 +4801,8 @@ def scenario_verify_chrysanthemum_choice(agent: TestAgent):
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description="Run GoStop Test Scenarios")
-    parser.add_argument("--mode", choices=["cli", "socket"], default="cli", help="Connection mode (cli or socket)")
-    parser.add_argument("-k", "--filter", type=str, help="Run only tests matching this substring")
+    parser = argparse.ArgumentParser(description="Run GoStop Test Scenarios", add_help=False)
     parser.add_argument("--executable", type=str, help="Path to GoStopCLI binary (overrides search)")
-    parser.add_argument("indices", type=int, nargs="*", help="Scenario indices to run (e.g. 1 35 36)")
 
     # Resolve CLI paths relative to this file so execution is stable from any cwd.
     import os
@@ -4750,7 +4816,7 @@ if __name__ == "__main__":
         os.path.join(repo_root, "build/Debug/GoStopCLI"), # Simple output
     ]
     
-    args = parser.parse_args()
+    args, _ = parser.parse_known_args()
     
     # 1. Use --executable if provided
     app_executable = args.executable
@@ -5178,10 +5244,19 @@ def main():
     parser.add_argument("--executable", default=default_executable, help="Path to GoStopCLI (default: %(default)s)")
     parser.add_argument("--mode", choices=["cli", "socket"], default="cli", help="Connection mode")
     parser.add_argument("-k", "--filter", type=str, help="Filter scenarios by name")
+    parser.add_argument(
+        "--debug_level",
+        type=int,
+        choices=[0, 1, 2],
+        default=0,
+        help="0=normal, 1=press Enter before each setup/user action, 2=run setup only then hand off to manual simulator play"
+    )
     parser.add_argument("--indices", type=int, nargs="+", help="Indices of scenarios to run")
     parser.add_argument("pos_indices", type=int, nargs="*", help="Positional indices (legacy support)")
     
     args = parser.parse_args()
+    if args.debug_level == 2 and args.mode != "socket":
+        parser.error("--debug_level 2 requires --mode socket so you can interact with the simulator UI.")
     
     # Merge indices
     final_indices = []
@@ -5190,7 +5265,11 @@ def main():
     if args.pos_indices:
         final_indices.extend(args.pos_indices)
 
-    agent = TestAgent(app_executable_path=args.executable, connection_mode=args.mode)
+    agent = TestAgent(
+        app_executable_path=args.executable,
+        connection_mode=args.mode,
+        debug_level=args.debug_level
+    )
 
     # 1. Register all scenarios
     all_scenarios = [
@@ -5229,6 +5308,7 @@ def main():
         scenario_bugfix_chongtong_score_respects_configuration,
         scenario_verify_dummy_draw_phase,
         scenario_verify_score_formula,
+        scenario_verify_samgwang_godori_scoring,
         scenario_verify_pibak_zero_pi_exception,
         scenario_verify_sweep_no_multiplier,
         scenario_verify_bomb_sweep,

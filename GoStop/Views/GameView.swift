@@ -52,6 +52,7 @@ struct GameView: View {
     private struct CapturedPreviewPanel: View {
         let ctx: LayoutContext
         let model: CapturedPreviewModel
+        let onDismiss: () -> Void
 
         var body: some View {
             GeometryReader { geo in
@@ -116,7 +117,7 @@ struct GameView: View {
                         }
                         .frame(maxHeight: maxScrollHeight)
 
-                        Text("길게 누르는 동안만 중앙에서 크게 보여줍니다")
+                        Text("길게 눌러 열고, 확대 패널을 탭하면 닫습니다")
                             .font(.system(size: max(11, 12 * ctx.globalScale), weight: .medium, design: .rounded))
                             .foregroundColor(.white.opacity(0.66))
                     }
@@ -133,8 +134,11 @@ struct GameView: View {
                     .shadow(color: Color.black.opacity(0.38), radius: 20, x: 0, y: 12)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    onDismiss()
+                }
             }
-            .allowsHitTesting(false)
         }
     }
 
@@ -1133,7 +1137,9 @@ struct GameView: View {
            let preview = activeCapturedPreview,
            let ctx = config.layoutContext,
            let model = resolvedCapturedPreviewModel(for: preview) {
-            CapturedPreviewPanel(ctx: ctx, model: model)
+            CapturedPreviewPanel(ctx: ctx, model: model) {
+                dismissCapturedPreview()
+            }
                 .transition(.scale(scale: 0.96).combined(with: .opacity))
         }
     }

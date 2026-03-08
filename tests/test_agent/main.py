@@ -48,13 +48,29 @@ try:
 except (PermissionError, OSError) as e:
     print(f"Warning: Could not create log file at {log_file} due to permissions. Console logging only.")
 
+DEBUG_SETUP_ACTIONS = {"start_game", "click_restart_button"}
+
+
+def format_elapsed_duration(elapsed_sec: float) -> str:
+    total_centiseconds = int(round(max(elapsed_sec, 0.0) * 100))
+    hours, remainder = divmod(total_centiseconds, 360000)
+    minutes, remainder = divmod(remainder, 6000)
+    seconds, centiseconds = divmod(remainder, 100)
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d}.{centiseconds:02d}"
+
+
+class ManualScenarioPause(RuntimeError):
+    """Raised when debug_level 2 hands control over to the user."""
+    pass
+
 class TestAgent:
     def __init__(self, 
                  app_executable_path: str = None, 
                  connection_mode: str = "cli",
                  action_timeout_sec: float = 5.0,
                  max_steps_per_scenario: int = 100,
-                 rng_seed: int = None):
+                 rng_seed: int = None,
+                 debug_level: int = 0):
         """
         Initializes the Test Agent.
         :param app_executable_path: Path to the Apple App executable (e.g. built CLI tool)
@@ -62,22 +78,37 @@ class TestAgent:
         :param action_timeout_sec: Maximum time to wait for the app to respond to an action.
         :param max_steps_per_scenario: Safety guard against infinite testing loops.
         :param rng_seed: Fixed seed for deterministic testing across runs.
+        :param debug_level:
+            0 = normal run,
+            1 = wait for Enter before each setup/user action,
+            2 = run setup only, then hand off to manual simulator play.
         """
         self.app_executable_path = app_executable_path
         self.connection_mode = connection_mode
         self.action_timeout_sec = action_timeout_sec
         self.max_steps_per_scenario = max_steps_per_scenario
         self.rng_seed = rng_seed
+        self.debug_level = debug_level
         self.process = None
         self.action_log = []
         self.last_state = {}
         self.results = [] # Track (Iteration, Index, Scenario, Status, Message)
+        self.current_scenario_name = None
+        self.current_scenario_index = None
+        self._debug_setup_performed = False
+        self._manual_handoff_done = False
+        if self.debug_level == 2 and self.connection_mode != "socket":
+            raise ValueError("--debug_level 2 requires --mode socket so you can interact with the simulator UI.")
         logger.info(f"TestAgent initialized with mode: {connection_mode}")
+        if self.debug_level > 0:
+            logger.info(f"Interactive debug mode enabled: level {self.debug_level}")
 
     def start_app(self):
         """Starts the Apple App process."""
         self.action_log = [] # Reset log per scenario/run
         self.last_state = {}
+        self._debug_setup_performed = False
+        self._manual_handoff_done = False
         
         if self.connection_mode == "cli":
             if not self.app_executable_path:
@@ -108,6 +139,82 @@ class TestAgent:
                 self._wait_for_socket_bridge_ready()
                 self._reset_socket_app_state()
             # Implement HTTP connection here if needed
+
+    def _scenario_label(self) -> str:
+        if self.current_scenario_index is None or self.current_scenario_name is None:
+            return "current scenario"
+        return f"[{self.current_scenario_index}] {self.current_scenario_name}"
+
+    def _format_debug_step(self, step_type: str, payload=None) -> str:
+        if payload is None:
+            return step_type
+        try:
+            rendered = json.dumps(payload, ensure_ascii=False)
+        except TypeError:
+            rendered = str(payload)
+        return f"{step_type} {rendered}"
+
+    def _await_debug_enter(self, message: str):
+        try:
+            response = input(message)
+        except EOFError:
+            logger.warning("Interactive debug prompt received EOF. Continuing automatically.")
+            return
+        if response.strip().lower() in {"q", "quit"}:
+            raise KeyboardInterrupt("Debug run aborted by user.")
+
+    def _enter_manual_handoff(self, upcoming_step: str):
+        if self._manual_handoff_done:
+            raise ManualScenarioPause(f"Manual handoff already active for {self._scenario_label()}.")
+        self._manual_handoff_done = True
+
+        state_summary = "state unavailable"
+        try:
+            state = self._send_command({"action": "get_state"}, record_action=False)
+            state_summary = (
+                f"gameState={state.get('gameState')}, "
+                f"currentTurnIndex={state.get('currentTurnIndex')}, "
+                f"deckCount={state.get('deckCount')}, "
+                f"historyCount={state.get('historyCount')}"
+            )
+            self.save_snapshot(
+                f"manual_handoff_{self.current_scenario_index if self.current_scenario_index is not None else 'scenario'}",
+                state_data=state
+            )
+        except Exception as e:
+            logger.warning(f"Failed to capture manual handoff snapshot: {e}")
+
+        prompt = (
+            f"\n[DEBUG2] Setup complete for {self._scenario_label()}.\n"
+            f"Automation stopped before: {upcoming_step}\n"
+            f"Current state: {state_summary}\n"
+            "Interact with the simulator UI manually now.\n"
+            "Press Enter here when you want to end this scenario and continue.\n> "
+        )
+        self._await_debug_enter(prompt)
+        raise ManualScenarioPause(f"Manual handoff before {upcoming_step}")
+
+    def _debug_gate_step(self, step_type: str, payload=None, is_setup: bool = False):
+        if self.debug_level <= 0:
+            return
+
+        step_label = self._format_debug_step(step_type, payload)
+        if self.debug_level == 1:
+            self._await_debug_enter(
+                f"\n[DEBUG1] {self._scenario_label()} next step: {step_label}\n"
+                "Press Enter to execute this step.\n> "
+            )
+            return
+
+        if is_setup:
+            logger.info(f"[DEBUG2] Auto setup step: {step_label}")
+            return
+
+        self._enter_manual_handoff(step_label)
+
+    def _debug_gate_state_read(self):
+        if self.debug_level == 2 and self._debug_setup_performed and not self._manual_handoff_done:
+            self._enter_manual_handoff("get_all_information")
 
     def stop_app(self):
         """Stops the Apple App."""
@@ -287,29 +394,35 @@ class TestAgent:
             pass
         return {}
 
-    def get_all_information(self) -> dict:
+    def get_all_information(self, allow_manual_handoff: bool = True) -> dict:
         """
         6. Reads all state and information from the App.
         Returns the full current state for inspection.
         """
+        if allow_manual_handoff:
+            self._debug_gate_state_read()
         logger.info("Requesting all information from app.")
         return self._send_command({"action": "get_state"})
 
-    def set_condition(self, condition_data: dict) -> dict:
+    def set_condition(self, condition_data: dict, is_setup: bool = True) -> dict:
         """
         7. Provides an interface to set specific mock scenarios or conditions.
         :param condition_data: Data defining the state to set (e.g. {"player_score": 100})
         """
+        self._debug_gate_step("set_condition", condition_data, is_setup=is_setup)
         logger.info(f"Setting specific condition: {condition_data}")
-        return self._send_command({
+        resp = self._send_command({
             "action": "set_condition",
             "data": condition_data
         })
+        if is_setup:
+            self._debug_setup_performed = True
+        return resp
         
     def save_snapshot(self, tag: str, state_data: dict = None):
         """Saves a state snapshot to artifacts."""
         if not state_data:
-            state_data = self.get_all_information()
+            state_data = self.get_all_information(allow_manual_handoff=False)
         
         filename = os.path.join(snapshot_dir, f"snapshot_{tag}_{int(time.time()*1000)}.json")
         with open(filename, 'w') as f:
@@ -321,8 +434,12 @@ class TestAgent:
         cmd = {"action": action_type}
         if action_data:
             cmd["data"] = action_data
+        is_setup_action = action_type in DEBUG_SETUP_ACTIONS
+        self._debug_gate_step(f"user_action:{action_type}", action_data, is_setup=is_setup_action)
         logger.info(f"Sending user action: {action_type} with data: {action_data}")
         resp = self._send_command(cmd)
+        if is_setup_action:
+            self._debug_setup_performed = True
         # In socket mode, the simulator app stays alive and animations may finish after the command ACK.
         # Wait for a stable post-action state so scenarios observe the same semantics as CLI mode.
         if self.connection_mode == "socket" and action_type != "get_state":
@@ -333,50 +450,74 @@ class TestAgent:
         """
         5. Runs a suite of scenarios, potentially repeating them.
         """
+        run_started_at = datetime.now()
+        run_start_perf = time.perf_counter()
         logger.info(f"Starting test run. Total scenarios: {len(scenarios)}, Repeat count: {repeat_count}")
-        
-        for iteration in range(repeat_count):
-            logger.info(f"--- Starting Iteration {iteration + 1}/{repeat_count} ---")
-            for idx, scenario_func in enumerate(scenarios):
-                scenario_name = scenario_func.__name__
-                scenario_idx = getattr(scenario_func, "scenario_index", idx)
-                logger.info(f"Running Scenario [{scenario_idx}]: {scenario_name}")
-                
-                try:
-                    self.start_app()
-                    
-                    # If deterministic replay is requested
-                    if self.rng_seed is not None:
-                        self.set_condition({"rng_seed": self.rng_seed})
-                        
-                    # Run the actual test scenario logic
-                    scenario_func(self)
-                    
-                    # Save normal execution path
-                    self._save_repro_steps()
-                    logger.info(f"Scenario {scenario_name} completed successfully.")
-                    self.results.append((iteration + 1, scenario_idx, scenario_name, "PASS", "Success"))
-                except Exception as e:
-                    # Check if the exception was expected (scenarios can signal this by raising specific errors or returning status)
-                    # For now, we'll continue logging errors but scenarios will be updated to catch them.
-                    logger.error(f"Scenario {scenario_name} failed with exception: {e}")
-                    self.handle_crash(e, scenario_name)
-                    self.results.append((iteration + 1, scenario_idx, scenario_name, "FAIL", str(e)))
-                finally:
-                    self.stop_app()
-                    
-            logger.info(f"--- Finished Iteration {iteration + 1}/{repeat_count} ---")
-            
-        self.print_summary()
+        try:
+            for iteration in range(repeat_count):
+                logger.info(f"--- Starting Iteration {iteration + 1}/{repeat_count} ---")
+                for idx, scenario_func in enumerate(scenarios):
+                    scenario_name = scenario_func.__name__
+                    scenario_idx = getattr(scenario_func, "scenario_index", idx)
+                    self.current_scenario_name = scenario_name
+                    self.current_scenario_index = scenario_idx
+                    logger.info(f"Running Scenario [{scenario_idx}]: {scenario_name}")
 
-    def print_summary(self):
+                    try:
+                        self.start_app()
+
+                        # If deterministic replay is requested
+                        if self.rng_seed is not None:
+                            self.set_condition({"rng_seed": self.rng_seed}, is_setup=False)
+
+                        # Run the actual test scenario logic
+                        scenario_func(self)
+
+                        # Save normal execution path
+                        self._save_repro_steps()
+                        logger.info(f"Scenario {scenario_name} completed successfully.")
+                        self.results.append((iteration + 1, scenario_idx, scenario_name, "PASS", "Success"))
+                    except ManualScenarioPause as e:
+                        self._save_repro_steps()
+                        logger.info(f"Scenario {scenario_name} handed off for manual play: {e}")
+                        self.results.append((iteration + 1, scenario_idx, scenario_name, "MANUAL", str(e)))
+                    except Exception as e:
+                        # Check if the exception was expected (scenarios can signal this by raising specific errors or returning status)
+                        # For now, we'll continue logging errors but scenarios will be updated to catch them.
+                        logger.error(f"Scenario {scenario_name} failed with exception: {e}")
+                        self.handle_crash(e, scenario_name)
+                        self.results.append((iteration + 1, scenario_idx, scenario_name, "FAIL", str(e)))
+                    finally:
+                        self.stop_app()
+                        self.current_scenario_name = None
+                        self.current_scenario_index = None
+
+                logger.info(f"--- Finished Iteration {iteration + 1}/{repeat_count} ---")
+        finally:
+            total_elapsed_sec = time.perf_counter() - run_start_perf
+            logger.info(
+                "Finished test run. Started at %s, elapsed %s (%.2fs).",
+                run_started_at.strftime("%Y-%m-%d %H:%M:%S"),
+                format_elapsed_duration(total_elapsed_sec),
+                total_elapsed_sec
+            )
+            self.print_summary(total_duration_sec=total_elapsed_sec)
+
+    def print_summary(self, total_duration_sec=None):
         """Prints a clear summary table of all test results."""
+        pass_count = sum(1 for _, _, _, status, _ in self.results if status == "PASS")
+        fail_count = sum(1 for _, _, _, status, _ in self.results if status == "FAIL")
+        manual_count = sum(1 for _, _, _, status, _ in self.results if status == "MANUAL")
         print("\n" + "="*70)
         print(f"{'ITER':<5} | {'ID':<4} | {'SCENARIO':<35} | {'STATUS':<10}")
         print("-" * 70)
         for iter_num, s_idx, name, status, msg in self.results:
             print(f"{iter_num:<5} | {s_idx:<4} | {name:<35} | {status:<10}")
         print("="*70 + "\n")
+        print(f"RESULT COUNTS: PASS={pass_count} FAIL={fail_count} MANUAL={manual_count}")
+        if total_duration_sec is not None:
+            print(f"TOTAL RUNTIME: {format_elapsed_duration(total_duration_sec)} ({total_duration_sec:.2f}s)")
+        print()
 
     def handle_crash(self, exception: Exception, context: str):
         """
@@ -414,7 +555,7 @@ class TestAgent:
         # Try to capture last known state if possible
         try:
            # First try a fresh fetch (may fail if app crashed)
-           current_state = self.get_all_information()
+           current_state = self.get_all_information(allow_manual_handoff=False)
            crash_data["last_known_state"] = current_state
         except Exception as state_exc:
            logger.warning(f"Could not fetch fresh state after crash: {state_exc}. Using cached state.")

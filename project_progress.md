@@ -63,6 +63,118 @@
 
 ## Log Entries
 
+### [2026-03-08 11:06:11 KST] User Request: 이번에 코드 수정된 내용 commit message 만들어줘
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "현재 워크트리 diff를 빠르게 훑어 이번 수정 묶음을 가장 잘 설명하는 커밋 메시지 제목/본문을 제안하고, 그 작업 자체를 저장소 로그에 남겨야 했음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`git status --short`, `git diff --stat`, `git diff -- GoStop/Views/GameAreaViews.swift GoStop/Views/GameView.swift GoStopTests/GoStopTests.swift tests/test_agent/main.py tests/test_agent/test_scenarios.py`, `git diff -- project_progress.md`로 이번 미커밋 변경의 범위와 핵심 내용을 확인했다."
+- **Outcome**: "이번 변경은 크게 세 축이다. 획득패 확대 패널은 롱프레스 해제 기반 dismiss를 제거하고 패널 탭 dismiss UX로 바뀌었고, Godori 관련 Swift/Python 테스트 입력은 실제 8월 새 카드 `imageIndex` 기준으로 정정됐다. 동시에 외부 test agent에는 `--debug_level 1/2` interactive 모드, manual handoff, 전체 실행 시간 요약이 추가됐으며, `삼광+고도리` scoring scenario가 runner 목록에 등록됐다. 이 내용을 반영한 커밋 메시지를 제안했다."
+
+### [2026-03-08 11:02:47 KST] User Request: test_scenario 전체 수행되는 시간을 기록할 수 있도록 해주면 좋을 것 같아
+- **Skills Planned**: ["game-external-test-agent", "project_logger"]
+- **Skills Used**: ["game-external-test-agent", "project_logger"]
+- **Trigger Reason**: "전체 `test_scenarios` 실행 기준의 총 소요 시간을 로그/요약에 남기도록 Python 외부 테스트 러너를 보강하고, 저장소 작업 로그도 함께 기록해야 하는 요청이었음."
+- **Files Touched**: ["tests/test_agent/main.py", "project_progress.md"]
+- **Validation**: "`PYTHONPYCACHEPREFIX=/tmp/pycache python3 -m py_compile tests/test_agent/main.py tests/test_agent/test_scenarios.py`로 Python 문법을 확인했고, `PYTHONPATH=tests/test_agent python3 -c \"from main import TestAgent, format_elapsed_duration; ... agent.print_summary(3723.45)\"`로 요약 출력 형식을 검증했다. 이어서 `python3 tests/test_agent/test_scenarios.py --indices 0 --executable build/Build/Products/Debug/GoStopCLI`를 실행해 실제 러너 경로에서 `Finished test run ... elapsed ...` 로그와 `TOTAL RUNTIME: 00:00:01.01 (1.01s)` 출력이 표시되는 것을 확인했다."
+- **Outcome**: "`TestAgent.run_tests()`가 이제 전체 테스트 시작 시각과 누적 수행 시간을 측정하고, 종료 시 logger에 사람이 읽기 쉬운 `HH:MM:SS.cc` 형식과 raw seconds를 함께 남긴다. 요약 표 아래에도 `RESULT COUNTS`와 `TOTAL RUNTIME`이 추가되어 `tests/test_agent/test_scenarios.py` 전체 실행 시간을 한눈에 확인할 수 있다."
+
+### [2026-03-07 23:16:00 KST] User Request: 확대 패널이 나오고 확대 패널 어디를 다시 클릭하면 사라지는 것으로 해줘
+- **Skills Planned**: ["gostop-ui-playability", "project_logger"]
+- **Skills Used**: ["gostop-ui-playability", "project_logger"]
+- **Trigger Reason**: "기존 획득패 확대 보기가 롱프레스 해제 타이밍에 의존해 사용자가 다시 같은 그룹을 눌러야 닫히는 체감이 있었고, 이를 패널 탭 dismiss UX로 바꿔야 했음."
+- **Files Touched**: ["GoStop/Views/GameView.swift", "GoStop/Views/GameAreaViews.swift", "project_progress.md"]
+- **Validation**: "`xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n 'error:|warning:|BUILD SUCCEEDED|BUILD FAILED'` 결과 `BUILD SUCCEEDED`."
+- **Outcome**: "획득패 그룹 확대 보기는 이제 롱프레스로 열리고, 표시된 확대 패널이나 배경을 탭하면 즉시 닫힌다. 기존 `pressing(false)` 기반 자동 dismiss는 제거해 release/perform 순서에 따라 preview가 남는 문제를 피했고, 안내 문구도 현재 UX에 맞게 갱신했다."
+
+### [2026-03-07 23:11:16 KST] User Request: 지금 롱프레스를 누른 곳을 다시 눌러야만 사라지는 것으로 보이는데 확인해줘
+- **Skills Planned**: ["gostop-ui-playability", "project_logger"]
+- **Skills Used**: ["gostop-ui-playability", "project_logger"]
+- **Trigger Reason**: "확대 보기 dismiss 타이밍이 실제 체감과 어긋나는지 제스처 콜백 순서와 상태 변경 연결을 다시 확인해야 했음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`rg -n 'CapturedAreaV2|CapturedGroupsAreaV2|CapturedGroupSlotView|onGroupPreviewRequested|onGroupPreviewEnded|activeCapturedPreview|capturedPreviewOverlay|allowsHitTesting\\(false\\)' GoStop/Views -S`, `sed -n '390,610p' GoStop/Views/GameView.swift`, `sed -n '980,1125p' GoStop/Views/GameView.swift`, `nl -ba GoStop/Views/GameAreaViews.swift | sed -n '860,874p'`, `nl -ba GoStop/Views/GameView.swift | sed -n '1177,1195p'`로 제스처와 preview state 연결 순서를 코드상 재검토."
+- **Outcome**: "현재 구현은 `onLongPressGesture`의 `pressing(false)`에서 dismiss를 시도하고, `perform`에서 preview를 활성화한다. 이 순서 때문에 preview가 아직 열리기 전 release 이벤트에서 dismiss가 no-op이 되고, release 이후 preview가 열리면 사용자가 다시 같은 그룹을 눌렀다 떼야 닫히는 체감이 발생할 수 있다. 즉 사용자가 본 현상은 현재 코드와 일치하는 방향이다."
+
+### [2026-03-07 23:07:52 KST] User Request: 지금 확대 보기 에서 나왔던 화면이 어떻게 하면 사라지는지 확인해줘
+- **Skills Planned**: ["gostop-ui-playability", "project_logger"]
+- **Skills Used**: ["gostop-ui-playability", "project_logger"]
+- **Trigger Reason**: "획득패 그룹 롱프레스 확대 보기 오버레이의 현재 dismiss 조건을 UI 코드 기준으로 확인하고 작업 로그를 남겨야 했음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`rg -n 'showCapturedPreview|endCapturedPreview|onLongPressGesture|activeCapturedPreview|dismissCapturedPreview' GoStop/Views -S`, `sed -n '40,170p' GoStop/Views/GameView.swift`, `sed -n '300,390p' GoStop/Views/GameView.swift`, `sed -n '1100,1285p' GoStop/Views/GameView.swift`, `sed -n '760,980p' GoStop/Views/GameAreaViews.swift`, `nl -ba GoStop/Views/GameView.swift | sed -n '70,130p'`, `nl -ba GoStop/Views/GameView.swift | sed -n '330,380p'`, `nl -ba GoStop/Views/GameView.swift | sed -n '1128,1205p'`, `nl -ba GoStop/Views/GameAreaViews.swift | sed -n '850,890p'`로 표시/종료 조건을 코드상 확인."
+- **Outcome**: "현재 확대 보기 화면은 획득패 그룹 슬롯의 롱프레스(`minimumDuration: 0.28`)로 열리고, 같은 제스처의 `pressing`이 false가 되는 순간 `endCapturedPreview -> dismissCapturedPreview`로 닫힌다. 즉 손을 떼거나 허용 이동 거리(`maximumDistance: 24`)를 벗어나면 사라진다. 별도 배경 탭 dismiss 로직은 없고, 게임 상태가 `.playing`이 아니게 되거나 카드 이동 중, 설정/이벤트 로그/개발자 정보, 특수 이벤트 팝업이 뜨면 `canShowCapturedPreview`가 false가 되어 함께 닫힌다. 또한 선택 그룹 카드가 비거나 owner/group 해석이 실패하면 오버레이 렌더링 자체가 중단된다."
+
+### [2026-03-07 23:09:34 KST] User Request: 이벤트 팝업 보이는 시간이 어떻게 관리 되나 ?
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "특수 이벤트 팝업의 표시 지속 시간과 큐 전환 방식이 어디서 관리되는지 코드 기준으로 확인하고 turn 로그를 남겨야 했음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`rg -n 'specialEventPopupCoordinator|SpecialEventPopupTiming|displayDuration|dismissDuration|queueAdvanceDelay|process\\(eventLogs' GoStop/Views GoStop/Core -S`, `nl -ba GoStop/Views/SpecialEventPopupModule.swift | sed -n '1,420p'`, `nl -ba GoStop/Views/GameView.swift | sed -n '320,390p'`, `nl -ba GoStop/Views/GameView.swift | sed -n '580,610p'`, `nl -ba GoStop/Views/GameView.swift | sed -n '948,980p'`, `nl -ba GoStop/Views/GameView.swift | sed -n '995,1145p'`, `nl -ba GoStop/Core/SimulatorBridge.swift | sed -n '585,625p'`로 시간 상수와 호출 흐름을 확인."
+- **Outcome**: "이벤트 팝업 표시는 `SpecialEventPopupTiming.default`에서 기본값을 관리하며, 현재 값은 `displayDuration = 1.7초`, `dismissDuration = 0.18초`, `queueAdvanceDelay = 0.12초`다. `GameView`는 `gameManager.eventLogs.count` 변경 시 coordinator에 새 로그만 넘기고, coordinator가 매핑된 팝업을 큐에 넣은 뒤 `DispatchQueue.main.asyncAfter`로 1.7초 표시 후 닫고 0.12초 뒤 다음 팝업을 연다. 팝업이 active/pending 상태면 종료 summary와 Go/Stop 등 decision overlay는 defer된다. 시뮬레이터 probe 경로도 `SimulatorBridge`에서 같은 1.7초/0.12초 값을 별도로 사용한다."
+
+### [2026-03-07 23:12:23 KST] User Request: 고도리로 점수가 났을 때 고도리 이벤트 팝업이 너무 짧게 있다가 사라지는지 확인
+- **Skills Planned**: ["gostop-ui-playability", "project_logger"]
+- **Skills Used**: ["gostop-ui-playability", "project_logger"]
+- **Trigger Reason**: "고도리 특수 이벤트 팝업이 유독 짧은지, 아니면 공용 팝업 타이밍과 애니메이션 구조 때문에 그렇게 체감되는지 UI 코드 기준으로 확인해야 했음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`sed -n '1,220p' /Users/najongseong/.codex/skills/gostop-ui-playability/SKILL.md`, `rg -n 'godori|고도리|SpecialEventPopupTiming|displayDuration|pendingQueueCount|shouldDefer|triggered 고도리' GoStop GoStopTests tests/test_agent -S`, `nl -ba GoStop/Views/SpecialEventPopupModule.swift | sed -n '88,358p'`, `nl -ba GoStop/Core/GameManager.swift | sed -n '305,333p'`, `nl -ba GoStop/Views/GameView.swift | sed -n '320,350p'`, `nl -ba GoStop/Views/GameView.swift | sed -n '956,972p'`로 고도리 로그 생성 위치, 공용 팝업 타이밍, defer 조건을 함께 점검."
+- **Outcome**: "현재 코드상 고도리 팝업만 별도로 짧게 처리하는 로직은 없다. 고도리는 `GameManager.emitScoreEventsIfNeeded`에서 일반 score-event 로그로 추가되고, `SpecialEventPopupCoordinator`의 공용 타이밍(`displayDuration 1.7초`, 진입 spring `0.28`, 퇴장 `0.18`)을 그대로 사용한다. 따라서 체감상 짧은 이유는 고도리 전용 예외가 아니라, 정지 상태로 크게 보이는 시간이 실제로 1.7초 전체보다 더 짧기 때문이며, 같은 구조가 청단/홍단/구사에도 동일하게 적용된다."
+
+### [2026-03-07 23:14:50 KST] User Request: 고도리해서 나는 test scenario가 있는지 확인
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "고도리 점수/발생을 검증하는 테스트가 실제로 존재하는지, 외부 시나리오와 Swift 테스트를 구분해서 확인하고 로그를 남겨야 했음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`rg -n 'godori|고도리|Godori' tests/test_agent GoStopTests GoStop -S`, `nl -ba GoStopTests/GoStopTests.swift | sed -n '80,110p'`, `nl -ba tests/test_agent/test_scenarios.py | sed -n '90,175p'`, `nl -ba tests/test_agent/test_scenarios.py | sed -n '4128,4175p'`, `rg -n 'scenario_verify_scoring_suite|scenario_verify_exponential_multipliers|scenario_verify_godori' tests/test_agent/test_scenarios.py -S`, `nl -ba tests/test_agent/test_scenarios.py | sed -n '5195,5205p'`, `nl -ba tests/test_agent/test_scenarios.py | sed -n '5210,5265p'`로 고도리 테스트 존재 여부와 runner 등록 상태를 확인."
+- **Outcome**: "고도리 점수 자체를 검증하는 테스트는 있다. Swift 단위 테스트로는 `GoStopTests.swift`의 `testGodori()`가 2·4·8월 열끗 3장으로 5점을 검증한다. 외부 test agent 쪽은 `scenario_verify_scoring_suite`에 `Godori (Feb, Apr, Aug Animals)` 케이스가 포함되어 있고 runner 목록에도 등록돼 있다. 반면 고도리 전용 이름의 독립 시나리오나, 고도리 이벤트 팝업 UI를 직접 검증하는 시나리오는 현재 없다. `scenario_verify_exponential_multipliers` 안에도 고도리 카드가 잠깐 등장하지만 runner에는 등록되지 않았다."
+
+### [2026-03-08 09:15:05 KST] User Request: `scenario_verify_scoring_suite`가 몇 번 시나리오인지 확인
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "시나리오 실행 인덱스가 0-based인지 포함해 `scenario_verify_scoring_suite`의 실제 runner 번호를 코드 기준으로 확인하고 기록해야 했음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`rg -n 'all_scenarios =|enumerate\\(all_scenarios|final_indices|scenario_verify_scoring_suite' tests/test_agent/test_scenarios.py -S`, `nl -ba tests/test_agent/test_scenarios.py | sed -n '5195,5205p'`, `nl -ba tests/test_agent/test_scenarios.py | sed -n '5278,5302p'`, `python3 - <<'PY' ...`로 runner 목록에서 해당 함수의 위치를 계산해 인덱스를 교차 확인."
+- **Outcome**: "runner는 `enumerate(all_scenarios)`와 `all_scenarios[idx]`를 사용하므로 0-based 인덱스다. `scenario_verify_scoring_suite`는 등록 목록에서 다섯 번째 항목이며, 실행 번호는 `4`번이다."
+
+### [2026-03-08 09:20:13 KST] User Request: 내가 3광이고 고도리를 해서 점수가 나는 test scenario를 만들어줘
+- **Skills Planned**: ["add-bug-fix-scenario", "gostop-game-builder", "project_logger"]
+- **Skills Used**: ["add-bug-fix-scenario", "gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "기존 활성 시나리오에 3광+고도리 조합의 독립 검증이 없어, score item과 최종 점수를 함께 확인하는 전용 scenario를 추가하고 단독 실행으로 검증해야 했음."
+- **Files Touched**: ["tests/test_agent/test_scenarios.py", "project_progress.md"]
+- **Validation**: "1) `python3 -c \"import ast, pathlib; ast.parse(pathlib.Path('tests/test_agent/test_scenarios.py').read_text(encoding='utf-8')); print('AST_OK')\"` 결과 `AST_OK`. 2) `python3 tests/test_agent/test_scenarios.py -k samgwang_godori` 결과 `scenario_verify_samgwang_godori_scoring` PASS. 실행 시 runner 인덱스는 `35`로 출력됨."
+- **Outcome**: "`tests/test_agent/test_scenarios.py`에 `scenario_verify_samgwang_godori_scoring`을 추가하고 runner 목록에 등록했다. 시나리오는 승자 획득패를 `1·3·8광 + 2·4·8 열끗`으로 구성해 삼광 3점과 고도리 5점이 동시에 score item으로 잡히는지 확인하고, 상대에게 광 1장을 줘서 `Gwangbak`을 차단한 뒤 최종 점수가 배수 없이 `8점`으로 유지되는지 검증한다."
+
+### [2026-03-08 09:28:54 KST] User Request: 3광+고도리 테스트가 실제 고도리 화투를 쓰도록 수정
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "방금 추가한 3광+고도리 시나리오와 관련 Godori 테스트들이 실제 덱에 없는 카드 조합(`8월 animal imageIndex 기본값 0`)을 사용하고 있어, 실제 화투 이미지 인덱스 기준으로 테스트 입력을 바로잡아야 했음."
+- **Files Touched**: ["tests/test_agent/test_scenarios.py", "GoStopTests/GoStopTests.swift", "project_progress.md"]
+- **Validation**: "1) `nl -ba GoStop/Models/Deck.swift | sed -n '80,122p'`로 실제 고도리 카드 인덱스(`2월 animal=0`, `4월 animal=0`, `8월 animal=1`) 확인. 2) `python3 -c \"import ast, pathlib; ast.parse(pathlib.Path('tests/test_agent/test_scenarios.py').read_text(encoding='utf-8')); print('AST_OK')\"` 결과 `AST_OK`. 3) `python3 tests/test_agent/test_scenarios.py -k samgwang_godori` PASS. 4) `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_test_build -destination 'platform=iOS Simulator,name=iPhone 16' -only-testing:GoStopTests/GoStopTests/testGodori test CODE_SIGNING_ALLOWED=NO` 결과 `TEST SUCCEEDED`."
+- **Outcome**: "Python 시나리오의 Godori 입력과 Swift 단위 테스트 `testGodori()`를 실제 덱 정의에 맞는 카드로 수정했다. 특히 8월 고도리 새 카드는 `imageIndex: 1`로 명시했고, 3광+고도리 시나리오와 scoring suite의 Godori 케이스도 실제 `imageIndex`를 넣도록 바꿨다. 추가로 같은 패턴이 있던 일부 테스트 입력의 8월 animal 카드도 실존 카드 인덱스로 정리했다."
+
+### [2026-03-08 09:32:43 KST] User Request: `test_scenarios`에 debug option이 있는지 확인
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "`tests/test_agent/test_scenarios.py` 실행 인자에 debug 전용 옵션이 있는지와, 실제 로그 레벨이 어떻게 동작하는지 코드 기준으로 확인하고 기록해야 했음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`rg -n 'debug|--debug|argparse|add_argument|logging|basicConfig|verbose' tests/test_agent/test_scenarios.py tests/test_agent/main.py tests/test_agent/ai_player.py -S`, `nl -ba tests/test_agent/test_scenarios.py | sed -n '4798,4810p'`, `nl -ba tests/test_agent/test_scenarios.py | sed -n '5242,5252p'`, `sed -n '1,40p' tests/test_agent/test_scenarios.py`, `sed -n '1,60p' tests/test_agent/main.py`로 argparse와 logger 설정을 확인."
+- **Outcome**: "`tests/test_agent/test_scenarios.py`에는 `--debug`나 `--debug_level` 같은 전용 debug CLI 옵션이 없다. 현재 노출된 인자는 `--mode`, `-k/--filter`, `--executable`, `--indices`/positional index뿐이다. 대신 내부 `TestAgent`(`tests/test_agent/main.py`)는 logger를 `DEBUG`로 열고 파일 핸들러를 `DEBUG`, 콘솔 핸들러를 `INFO`로 설정하므로, 실행 시 상세 로그는 `/tmp/gostop_test_artifacts/logs/test_agent_*.log` 쪽에 남는 구조다. 참고로 `tests/test_agent/ai_player.py`에는 별도로 `--debug_level` 옵션이 존재한다."
+
+### [2026-03-08 09:40:10 KST] User Request: `test_scenarios`에 `--debug_level 1/2` interactive 모드 구현
+- **Skills Planned**: ["game-external-test-agent", "project_logger"]
+- **Skills Used**: ["game-external-test-agent", "project_logger"]
+- **Trigger Reason**: "외부 test agent 실행이 너무 빨라 어떤 단계가 진행되는지 확인하기 어려워, step-through와 setup-only manual handoff를 `test_scenarios.py`/`TestAgent`에 직접 추가해야 했음."
+- **Files Touched**: ["tests/test_agent/main.py", "tests/test_agent/test_scenarios.py", "project_progress.md"]
+- **Validation**: "1) `python3 - <<'PY' ... ast.parse(...) ... PY`로 `tests/test_agent/main.py`, `tests/test_agent/test_scenarios.py` 문법 확인 (`AST_OK`). 2) `python3 tests/test_agent/test_scenarios.py --debug_level 2 -k bomb_and_steal`는 의도대로 `--mode socket` 필요 에러를 출력. 3) PTY로 `python3 tests/test_agent/test_scenarios.py -k scenario_setup_condition_and_act --debug_level 1 1` 실행 후 Enter 2회 입력 시 `set_condition`, `click_restart_button`이 한 단계씩 진행되며 최종 PASS 확인. 4) `xcrun simctl launch booted com.konlona.GoStop` 후 PTY로 `python3 tests/test_agent/test_scenarios.py --mode socket --debug_level 2 -k bomb_and_steal` 실행 시 setup 단계만 자동 수행되고 스냅샷 저장 후 manual handoff prompt가 뜨며, Enter 입력 시 시나리오 상태가 `MANUAL`로 종료되는 것 확인."
+- **Outcome**: "`test_scenarios.py`에 `--debug_level {0,1,2}`를 추가했다. `debug_level 1`은 `set_condition`과 user action 실행 전에 Enter를 기다리며, `debug_level 2`는 `start_game`/`click_restart_button`/`set_condition` 같은 setup까지만 자동 수행한 뒤 첫 gameplay 또는 첫 state inspection 직전에 수동 조작으로 넘긴다. 이때 현재 상태 스냅샷을 `/tmp/gostop_test_artifacts/state_snapshots/`에 저장하고 summary 표에는 `MANUAL` 상태로 남긴다. 또한 중간 배너용 구식 argparse 블록은 `parse_known_args(add_help=False)`로 바꿔 새 옵션을 막지 않도록 정리했다."
+
+### [2026-03-08 10:53:52 KST] User Request: `python3 test_scenarios.py --mode socket -debug_level 1 --indices 35` 명령 형식 확인
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "새로 추가한 interactive 옵션 사용법에서 단일 대시/이중 대시와 경로 기준이 맞는지 빠르게 확인하고 기록해야 했음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "현재 구현 기준으로 `tests/test_agent/test_scenarios.py`의 argparse 옵션 이름(`--debug_level`, `--mode`, `--indices`)과 앞서 검증한 실행 예시를 대조해 명령 형식을 확인."
+- **Outcome**: "질문한 명령은 거의 맞지만 `-debug_level`이 아니라 `--debug_level`이어야 한다. 저장소 루트에서 실행한다면 `python3 tests/test_agent/test_scenarios.py --mode socket --debug_level 1 --indices 35`가 맞고, `tests/test_agent` 디렉터리 안으로 이동해서 실행하면 `python3 test_scenarios.py --mode socket --debug_level 1 --indices 35`도 가능하다."
+
 ### [2026-03-07 22:59:20 KST] User Request: commit message 정리해줘
 - **Skills Planned**: ["project_logger"]
 - **Skills Used**: ["project_logger"]
