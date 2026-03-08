@@ -38,11 +38,17 @@ struct ScoringSystem {
         let count = kwangs.count
         let s = rules.scoring.kwang
         
-        if count == 5 { return [ScoreItem(name: "오광 (5 Brights)", points: s.ogwang, count: 5)] }
-        if count == 4 { return [ScoreItem(name: "사광 (4 Brights)", points: s.sagwang, count: 4)] }
+        if count == 5 { return [ScoreItem(name: gameText("score.item.ogwang"), points: s.ogwang, count: 5)] }
+        if count == 4 { return [ScoreItem(name: gameText("score.item.sagwang"), points: s.sagwang, count: 4)] }
         if count == 3 {
             let hasBiGwang = kwangs.contains { $0.month.rawValue == 12 }
-            return [ScoreItem(name: hasBiGwang ? "비삼광 (3 Brights incl. Rain)" : "삼광 (3 Brights)", points: hasBiGwang ? s.bisamgwang : s.samgwang, count: 3)]
+            return [
+                ScoreItem(
+                    name: gameText(hasBiGwang ? "score.item.bisamgwang" : "score.item.samgwang"),
+                    points: hasBiGwang ? s.bisamgwang : s.samgwang,
+                    count: 3
+                )
+            ]
         }
         return []
     }
@@ -63,7 +69,13 @@ struct ScoringSystem {
         
         if count >= s.min_count {
             let pts = s.min_score + (count - s.min_count) * s.additional_score
-            items.append(ScoreItem(name: "열끗 (\(count) Animals)", points: pts, count: count))
+            items.append(
+                ScoreItem(
+                    name: gameText("score.item.yul", ["count": count]),
+                    points: pts,
+                    count: count
+                )
+            )
         }
         
         let godoriMonths = rules.cards.yul.godori
@@ -71,7 +83,7 @@ struct ScoringSystem {
             godoriMonths.contains(card.month.rawValue) && (card.selectedRole == CardRole.animal || card.selectedRole == nil)
         }
         if godoriCards.count == 3 {
-            items.append(ScoreItem(name: "고도리 (Godori)", points: s.godori, count: 3))
+            items.append(ScoreItem(name: gameText("score.item.godori"), points: s.godori, count: 3))
         }
         
         return items
@@ -85,18 +97,24 @@ struct ScoringSystem {
         
         if count >= s.min_count {
             let pts = s.min_score + (count - s.min_count) * s.additional_score
-            items.append(ScoreItem(name: "띠 (\(count) Ribbons)", points: pts, count: count))
+            items.append(
+                ScoreItem(
+                    name: gameText("score.item.dan", ["count": count]),
+                    points: pts,
+                    count: count
+                )
+            )
         }
         
         let danRules = rules.cards.dan
         if dans.filter({ danRules.hongdan.contains($0.month.rawValue) }).count == 3 {
-            items.append(ScoreItem(name: "홍단 (Red Ribbons)", points: s.hongdan, count: 3))
+            items.append(ScoreItem(name: gameText("score.item.hongdan"), points: s.hongdan, count: 3))
         }
         if dans.filter({ danRules.cheongdan.contains($0.month.rawValue) }).count == 3 {
-            items.append(ScoreItem(name: "청단 (Blue Ribbons)", points: s.cheongdan, count: 3))
+            items.append(ScoreItem(name: gameText("score.item.cheongdan"), points: s.cheongdan, count: 3))
         }
         if dans.filter({ danRules.chodan.contains($0.month.rawValue) }).count == 3 {
-            items.append(ScoreItem(name: "초단 (Grass Ribbons)", points: s.chodan, count: 3))
+            items.append(ScoreItem(name: gameText("score.item.chodan"), points: s.chodan, count: 3))
         }
         
         return items
@@ -107,7 +125,13 @@ struct ScoringSystem {
         let s = rules.scoring.pi
         if piCount >= s.min_count {
             let pts = s.min_score + (piCount - s.min_count) * s.additional_score
-            return [ScoreItem(name: "피 (\(piCount) Junk)", points: pts, count: piCount)]
+            return [
+                ScoreItem(
+                    name: gameText("score.item.pi", ["count": piCount]),
+                    points: pts,
+                    count: piCount
+                )
+            ]
         }
         return []
     }
@@ -118,14 +142,14 @@ struct ScoringSystem {
         if player.awardedFirstTurnTtadakBonus {
             let points = rules.special_moves.ttadak.first_turn_bonus_score ?? 0
             if points > 0 {
-                items.append(ScoreItem(name: "첫 따닥 (Opening Ttadak)", points: points, count: nil))
+                items.append(ScoreItem(name: gameText("score.item.opening_ttadak"), points: points, count: nil))
             }
         }
 
         if player.awardedFirstTurnSeolsaBonus {
             let points = rules.special_moves.seolsa.first_turn_bonus_score ?? 0
             if points > 0 {
-                items.append(ScoreItem(name: "첫 뻑 (Opening Seolsa)", points: points, count: nil))
+                items.append(ScoreItem(name: gameText("score.item.opening_seolsa"), points: points, count: nil))
             }
         }
 

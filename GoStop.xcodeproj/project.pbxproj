@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 63;
+	objectVersion = 77;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -11,41 +11,58 @@
 		0A51A5C805AD7B89B9629632 /* layout_hwatu.json in Resources */ = {isa = PBXBuildFile; fileRef = 7FBDDC028B566FC10259D51C /* layout_hwatu.json */; };
 		0B20DD2801F7CBBF74EA9F8E /* Player.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D300F3C280AF301436D8732 /* Player.swift */; };
 		0BA4CE481822C60C3B313B0F /* Yams in Frameworks */ = {isa = PBXBuildFile; productRef = 782B42C2325803807AC3EBC4 /* Yams */; };
-		0DFA91B15C1A4B4CA1F7E101 /* TestControlSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DFA91B35C1A4B4CA1F7E101 /* TestControlSupport.swift */; };
-			13AA39B13AD565444986FE26 /* rule.yaml in Resources */ = {isa = PBXBuildFile; fileRef = B5F77E3038A87D0684F2961D /* rule.yaml */; };
-			1447E916E4EEA0AB610C9DAC /* layout_hwatu.json in Resources */ = {isa = PBXBuildFile; fileRef = 7FBDDC028B566FC10259D51C /* layout_hwatu.json */; };
-			16E4282522134F35A8D7AB11 /* hwatu_card_hit.wav in Resources */ = {isa = PBXBuildFile; fileRef = 96A852EC38AE473CA7E8B9ED /* hwatu_card_hit.wav */; };
-			4F28C762E6D54D20B0A23D01 /* hwatu_blanket_puck.wav in Resources */ = {isa = PBXBuildFile; fileRef = A1D40ACF765141A0A31C62F9 /* hwatu_blanket_puck.wav */; };
+		13AA39B13AD565444986FE26 /* rule.yaml in Resources */ = {isa = PBXBuildFile; fileRef = B5F77E3038A87D0684F2961D /* rule.yaml */; };
+		1447E916E4EEA0AB610C9DAC /* layout_hwatu.json in Resources */ = {isa = PBXBuildFile; fileRef = 7FBDDC028B566FC10259D51C /* layout_hwatu.json */; };
 		191BB9B8BDE5DDAE9E15BE36 /* Player.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D300F3C280AF301436D8732 /* Player.swift */; };
 		1C3280E8402A7ECBDC98D1BA /* DebugLayoutOverlayV2.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6121B38C070C592434D33A1 /* DebugLayoutOverlayV2.swift */; };
 		2213E7E34BA30D7E97366273 /* Pixel_Paradise_Groove.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = FDF9B6B8094E7BBA663D7D0E /* Pixel_Paradise_Groove.mp3 */; };
 		23D2B878BF856936154BE3BC /* GoStopTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D8325DC94A43A7AB5739F02 /* GoStopTests.swift */; };
+		2745E98B4D28747A273C51BF /* puck.wav in Resources */ = {isa = PBXBuildFile; fileRef = DD3D5674F2EC904520EE0A09 /* puck.wav */; };
+		29CA1100B381DA23CF93EDB9 /* chongtong.wav in Resources */ = {isa = PBXBuildFile; fileRef = 0C043E09FB6F416CC5D71507 /* chongtong.wav */; };
 		29E2F53E72ED922B7A2956C2 /* LayoutContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08DC9353031FD0D4F7EDF917 /* LayoutContext.swift */; };
+		2A8689C836A3BB15DCB189A5 /* message.yaml in Resources */ = {isa = PBXBuildFile; fileRef = 6D41BFAA63A26D90E4DCE582 /* message.yaml */; };
 		2A99D27AFA716635BD8BC829 /* AudioManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40A8AF9CA959E19695C3C65E /* AudioManager.swift */; };
+		331201CDECD16765570374D1 /* TestControlSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56803F9C45DB74B196110159 /* TestControlSupport.swift */; };
 		333625062232E46D6E78948F /* PlayerHandSlotManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB1897B0ADA42D7A7EEFCE34 /* PlayerHandSlotManager.swift */; };
 		33B94FCF62AD0125A4518094 /* PenaltySystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5D75C2B31530E390EDEB760 /* PenaltySystem.swift */; };
 		37977AD098390474259748DB /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 159C810168F262CE9273796F /* main.swift */; };
 		382086F1D4678D7A44AFEE6E /* rule.yaml in Resources */ = {isa = PBXBuildFile; fileRef = B5F77E3038A87D0684F2961D /* rule.yaml */; };
+		3C5A692B58A2151110EAE1E0 /* jjok.wav in Resources */ = {isa = PBXBuildFile; fileRef = 5F0BB6C6AFB6A3A5CACFF486 /* jjok.wav */; };
+		41CAA6DED7E8166226000DB5 /* bomb.wav in Resources */ = {isa = PBXBuildFile; fileRef = 2114BD27414D03C58BD142C6 /* bomb.wav */; };
+		4F27D2FD1F9143DAFA032D79 /* sweep.wav in Resources */ = {isa = PBXBuildFile; fileRef = 6C235371731C8EC39BB77518 /* sweep.wav */; };
 		541288BE1C1519BE2B7AE083 /* ConfigManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2857725433426BA8E4DE2D7C /* ConfigManager.swift */; };
+		566DD115DF123D91462F437B /* MessageCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8033CCBA11F2704126432C4D /* MessageCatalog.swift */; };
 		57E27E35C2BE9FD52C7DAA0E /* GameManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 116C189429DB2067520A3E08 /* GameManager.swift */; };
 		59AAB1C8D0D8BED80BEFA314 /* GoStopApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7012D53468CE7DEC0511F7AE /* GoStopApp.swift */; };
+		5A33D963396CDAD8764E5C50 /* hwatu_card_hit.wav in Resources */ = {isa = PBXBuildFile; fileRef = B8EE04E1E1EA50FD9FE85C24 /* hwatu_card_hit.wav */; };
 		5B299B27BA991E7E6C90AC94 /* PenaltySystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5D75C2B31530E390EDEB760 /* PenaltySystem.swift */; };
 		5B5DD40D481D19BFC2AFB9EC /* TableSlotManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B21CE98829137B4CABB2EDC /* TableSlotManager.swift */; };
 		5E0C21BF00A4D5D5A32CBB78 /* SimulatorBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B4991ECE6869B1AF81B963F /* SimulatorBridge.swift */; };
+		5E247EB35DD0BD9EE30C5B34 /* bomb.wav in Resources */ = {isa = PBXBuildFile; fileRef = 2114BD27414D03C58BD142C6 /* bomb.wav */; };
 		60B025C8886D9FE3C4D8B010 /* ConfigManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2857725433426BA8E4DE2D7C /* ConfigManager.swift */; };
 		621E32AC8A5257900A991AC4 /* PlayerHandSlotManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB1897B0ADA42D7A7EEFCE34 /* PlayerHandSlotManager.swift */; };
 		62FCE0F439432138C743176A /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8C0FD4111DFE67FB4B8757A /* ContentView.swift */; };
+		6766CEA6D9A9E1EC8A55324A /* message.yaml in Resources */ = {isa = PBXBuildFile; fileRef = 6D41BFAA63A26D90E4DCE582 /* message.yaml */; };
 		7191E1B975ABC707C15A1FF2 /* GameAreaViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A6AE872E752608836265117 /* GameAreaViews.swift */; };
+		73173C69A0C643CB13A06631 /* hwatu_blanket_puck.wav in Resources */ = {isa = PBXBuildFile; fileRef = 33D612FDCBC8C5EB5D3BEF35 /* hwatu_blanket_puck.wav */; };
+		7349A092998FD4B77219B017 /* puck.wav in Resources */ = {isa = PBXBuildFile; fileRef = DD3D5674F2EC904520EE0A09 /* puck.wav */; };
+		7880E82D1DF97DAC474A661A /* shake.wav in Resources */ = {isa = PBXBuildFile; fileRef = 1A6B182DBD528D1CD18DC6A5 /* shake.wav */; };
 		808657D99FB2F8247B9D373F /* Deck.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C9DC8F2B463C152AB92172B /* Deck.swift */; };
 		89D4C50CC12F800CCB24D5EA /* LayoutConfigV2.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3085BB433FB735CFD683B342 /* LayoutConfigV2.swift */; };
-		9A2B4C6D8E0F112233445566 /* SpecialEventPopupModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A2B4C6D8E0F112233445567 /* SpecialEventPopupModule.swift */; };
+		8E6BD2E070AD4476B8A6FC23 /* hwatu_blanket_puck.wav in Resources */ = {isa = PBXBuildFile; fileRef = 33D612FDCBC8C5EB5D3BEF35 /* hwatu_blanket_puck.wav */; };
+		8FB0050510CA73A17243B882 /* jjok.wav in Resources */ = {isa = PBXBuildFile; fileRef = 5F0BB6C6AFB6A3A5CACFF486 /* jjok.wav */; };
 		912AAFDB854A8A756615D5D9 /* DebugEndgameSummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2494B7B2463310B5E13410E /* DebugEndgameSummaryView.swift */; };
 		9EAF94310537CBCB3CE79C2A /* LayoutContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08DC9353031FD0D4F7EDF917 /* LayoutContext.swift */; };
+		A57DD44EA3EEA509F97B5A4E /* TestControlSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56803F9C45DB74B196110159 /* TestControlSupport.swift */; };
 		A8E8EE127772993DF00F279D /* LayoutConfigV2.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3085BB433FB735CFD683B342 /* LayoutConfigV2.swift */; };
 		AADA26BC43DE51BC8A314E35 /* AnimationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0017E840D6A35A68D6AA71CC /* AnimationManager.swift */; };
 		ABD95E004FE2778D4B2BFD78 /* AudioManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40A8AF9CA959E19695C3C65E /* AudioManager.swift */; };
+		AC00196FBFB67AA0311E5799 /* ttadak.wav in Resources */ = {isa = PBXBuildFile; fileRef = FFABCFBA7D5C0D514D4743B5 /* ttadak.wav */; };
 		ACBB19108BB2F7E1329AB3EA /* Card.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72B2E9B6CA4C4DB8CC0ED986 /* Card.swift */; };
+		AF9A0E3E3C85299B4B671CDC /* shake.wav in Resources */ = {isa = PBXBuildFile; fileRef = 1A6B182DBD528D1CD18DC6A5 /* shake.wav */; };
+		AFE099F3966A98298D996D24 /* chongtong.wav in Resources */ = {isa = PBXBuildFile; fileRef = 0C043E09FB6F416CC5D71507 /* chongtong.wav */; };
 		B0DBC6BF9FCA8453CB3B0FE4 /* LayoutConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D0615E5D598D1F92B7FAF92 /* LayoutConfig.swift */; };
+		B20D1CDDF9665706FA9A0135 /* MessageCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8033CCBA11F2704126432C4D /* MessageCatalog.swift */; };
 		B597523E68A8A42654B8DD0F /* GameView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BA63E4C6CDD8893D44DEAE5 /* GameView.swift */; };
 		B5EED1311F05C120AF7DA6E8 /* Card.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72B2E9B6CA4C4DB8CC0ED986 /* Card.swift */; };
 		C4E5C5B23D59D1A9058F7DB5 /* TableSlotManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B21CE98829137B4CABB2EDC /* TableSlotManager.swift */; };
@@ -54,16 +71,17 @@
 		C9143D8EC551B67551C39E84 /* Yams in Frameworks */ = {isa = PBXBuildFile; productRef = 0C4B856C14FB1AD4611276B9 /* Yams */; };
 		CA5E4294DC9C4A786488AA0C /* ScoringSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C817E2BC7A6C44D1434325E /* ScoringSystem.swift */; };
 		CCC8CAA072A943D537B4AD09 /* SimulatorBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B4991ECE6869B1AF81B963F /* SimulatorBridge.swift */; };
-		D0FA91B25C1A4B4CA1F7E101 /* TestControlSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DFA91B35C1A4B4CA1F7E101 /* TestControlSupport.swift */; };
+		D0E4A08815BEB6C3020DF40C /* hwatu_card_hit.wav in Resources */ = {isa = PBXBuildFile; fileRef = B8EE04E1E1EA50FD9FE85C24 /* hwatu_card_hit.wav */; };
+		D10F17574950F95096B2FF1F /* ttadak.wav in Resources */ = {isa = PBXBuildFile; fileRef = FFABCFBA7D5C0D514D4743B5 /* ttadak.wav */; };
 		D5F056BDDFEC23830D855C8B /* RuleConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81AA898E3DFB3E6CD81BCE89 /* RuleConfig.swift */; };
 		D647DAF14263DC898EF7E864 /* RuleConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81AA898E3DFB3E6CD81BCE89 /* RuleConfig.swift */; };
 		E10C501280BC9C36380E8474 /* GameManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 116C189429DB2067520A3E08 /* GameManager.swift */; };
 		E7421836888772ACFC22C581 /* replace_images.py in Resources */ = {isa = PBXBuildFile; fileRef = 5ED4756C56D9198EA7BB75DE /* replace_images.py */; };
-			E7E1A6CBEEB38C0BD1A1B3C2 /* Deck.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C9DC8F2B463C152AB92172B /* Deck.swift */; };
-			F618CAD8BE7161E2EF105F13 /* Pixel_Paradise_Groove.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = FDF9B6B8094E7BBA663D7D0E /* Pixel_Paradise_Groove.mp3 */; };
-			F646EB0313444F8E916B04C2 /* hwatu_card_hit.wav in Resources */ = {isa = PBXBuildFile; fileRef = 96A852EC38AE473CA7E8B9ED /* hwatu_card_hit.wav */; };
-			7B8828B09E4A4C9A8D2A1E11 /* hwatu_blanket_puck.wav in Resources */ = {isa = PBXBuildFile; fileRef = A1D40ACF765141A0A31C62F9 /* hwatu_blanket_puck.wav */; };
-			F79C65E2DC08F09BBA61EFE8 /* LayoutConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D0615E5D598D1F92B7FAF92 /* LayoutConfig.swift */; };
+		E7E1A6CBEEB38C0BD1A1B3C2 /* Deck.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C9DC8F2B463C152AB92172B /* Deck.swift */; };
+		E826419E04AF432E9B1D36B9 /* sweep.wav in Resources */ = {isa = PBXBuildFile; fileRef = 6C235371731C8EC39BB77518 /* sweep.wav */; };
+		EA289E188EA8ED0FE8FBA19D /* SpecialEventPopupModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99627E88FDDD3197942DBC91 /* SpecialEventPopupModule.swift */; };
+		F618CAD8BE7161E2EF105F13 /* Pixel_Paradise_Groove.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = FDF9B6B8094E7BBA663D7D0E /* Pixel_Paradise_Groove.mp3 */; };
+		F79C65E2DC08F09BBA61EFE8 /* LayoutConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D0615E5D598D1F92B7FAF92 /* LayoutConfig.swift */; };
 		F95644401EAA22B21356588D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 4A3C1F6EB55586E9BE2C8E36 /* Assets.xcassets */; };
 		FF8FF5B2CD92C35D053EDDDB /* CardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74DE360629BC09922C21C6DC /* CardView.swift */; };
 /* End PBXBuildFile section */
@@ -80,44 +98,53 @@
 
 /* Begin PBXFileReference section */
 		0017E840D6A35A68D6AA71CC /* AnimationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnimationManager.swift; sourceTree = "<group>"; };
-		0DFA91B35C1A4B4CA1F7E101 /* TestControlSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestControlSupport.swift; sourceTree = "<group>"; };
 		08DC9353031FD0D4F7EDF917 /* LayoutContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutContext.swift; sourceTree = "<group>"; };
+		0C043E09FB6F416CC5D71507 /* chongtong.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = chongtong.wav; sourceTree = "<group>"; };
 		1159B74760341B7FD625C040 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		116C189429DB2067520A3E08 /* GameManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameManager.swift; sourceTree = "<group>"; };
 		159C810168F262CE9273796F /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		1A6B182DBD528D1CD18DC6A5 /* shake.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = shake.wav; sourceTree = "<group>"; };
 		1D8325DC94A43A7AB5739F02 /* GoStopTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoStopTests.swift; sourceTree = "<group>"; };
+		2114BD27414D03C58BD142C6 /* bomb.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = bomb.wav; sourceTree = "<group>"; };
 		2857725433426BA8E4DE2D7C /* ConfigManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigManager.swift; sourceTree = "<group>"; };
 		2C9DC8F2B463C152AB92172B /* Deck.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Deck.swift; sourceTree = "<group>"; };
-		307B0A27C609202DD546A40A /* GoStopCLI */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = text; path = GoStopCLI; sourceTree = BUILT_PRODUCTS_DIR; };
+		307B0A27C609202DD546A40A /* GoStopCLI */ = {isa = PBXFileReference; includeInIndex = 0; path = GoStopCLI; sourceTree = BUILT_PRODUCTS_DIR; };
 		3085BB433FB735CFD683B342 /* LayoutConfigV2.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutConfigV2.swift; sourceTree = "<group>"; };
-		9A2B4C6D8E0F112233445567 /* SpecialEventPopupModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpecialEventPopupModule.swift; sourceTree = "<group>"; };
+		33D612FDCBC8C5EB5D3BEF35 /* hwatu_blanket_puck.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = hwatu_blanket_puck.wav; sourceTree = "<group>"; };
 		40A8AF9CA959E19695C3C65E /* AudioManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioManager.swift; sourceTree = "<group>"; };
 		4A3C1F6EB55586E9BE2C8E36 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		4C817E2BC7A6C44D1434325E /* ScoringSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoringSystem.swift; sourceTree = "<group>"; };
+		56803F9C45DB74B196110159 /* TestControlSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestControlSupport.swift; sourceTree = "<group>"; };
 		5BA63E4C6CDD8893D44DEAE5 /* GameView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameView.swift; sourceTree = "<group>"; };
 		5D0615E5D598D1F92B7FAF92 /* LayoutConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutConfig.swift; sourceTree = "<group>"; };
 		5ED4756C56D9198EA7BB75DE /* replace_images.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = replace_images.py; sourceTree = "<group>"; };
+		5F0BB6C6AFB6A3A5CACFF486 /* jjok.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = jjok.wav; sourceTree = "<group>"; };
+		6C235371731C8EC39BB77518 /* sweep.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = sweep.wav; sourceTree = "<group>"; };
+		6D41BFAA63A26D90E4DCE582 /* message.yaml */ = {isa = PBXFileReference; lastKnownFileType = text.yaml; path = message.yaml; sourceTree = "<group>"; };
 		7012D53468CE7DEC0511F7AE /* GoStopApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoStopApp.swift; sourceTree = "<group>"; };
 		72B2E9B6CA4C4DB8CC0ED986 /* Card.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Card.swift; sourceTree = "<group>"; };
 		74DE360629BC09922C21C6DC /* CardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardView.swift; sourceTree = "<group>"; };
 		7A6AE872E752608836265117 /* GameAreaViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameAreaViews.swift; sourceTree = "<group>"; };
 		7B4991ECE6869B1AF81B963F /* SimulatorBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimulatorBridge.swift; sourceTree = "<group>"; };
 		7FBDDC028B566FC10259D51C /* layout_hwatu.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = layout_hwatu.json; sourceTree = "<group>"; };
-			81AA898E3DFB3E6CD81BCE89 /* RuleConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuleConfig.swift; sourceTree = "<group>"; };
-			8B21CE98829137B4CABB2EDC /* TableSlotManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TableSlotManager.swift; sourceTree = "<group>"; };
-			8D300F3C280AF301436D8732 /* Player.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Player.swift; sourceTree = "<group>"; };
-			96A852EC38AE473CA7E8B9ED /* hwatu_card_hit.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = hwatu_card_hit.wav; sourceTree = "<group>"; };
-			A1D40ACF765141A0A31C62F9 /* hwatu_blanket_puck.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = hwatu_blanket_puck.wav; sourceTree = "<group>"; };
-			B2494B7B2463310B5E13410E /* DebugEndgameSummaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugEndgameSummaryView.swift; sourceTree = "<group>"; };
+		8033CCBA11F2704126432C4D /* MessageCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageCatalog.swift; sourceTree = "<group>"; };
+		81AA898E3DFB3E6CD81BCE89 /* RuleConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuleConfig.swift; sourceTree = "<group>"; };
+		8B21CE98829137B4CABB2EDC /* TableSlotManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TableSlotManager.swift; sourceTree = "<group>"; };
+		8D300F3C280AF301436D8732 /* Player.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Player.swift; sourceTree = "<group>"; };
+		99627E88FDDD3197942DBC91 /* SpecialEventPopupModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpecialEventPopupModule.swift; sourceTree = "<group>"; };
+		B2494B7B2463310B5E13410E /* DebugEndgameSummaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugEndgameSummaryView.swift; sourceTree = "<group>"; };
 		B5F77E3038A87D0684F2961D /* rule.yaml */ = {isa = PBXFileReference; lastKnownFileType = text.yaml; path = rule.yaml; sourceTree = "<group>"; };
 		B67ACAB0F7C90D1925FA8BC6 /* GoStopTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = GoStopTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B8C0FD4111DFE67FB4B8757A /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		B8EE04E1E1EA50FD9FE85C24 /* hwatu_card_hit.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = hwatu_card_hit.wav; sourceTree = "<group>"; };
 		CB1897B0ADA42D7A7EEFCE34 /* PlayerHandSlotManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerHandSlotManager.swift; sourceTree = "<group>"; };
+		DD3D5674F2EC904520EE0A09 /* puck.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = puck.wav; sourceTree = "<group>"; };
 		E2E17F950BAB90799F5D6CEE /* RuleSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuleSettingsView.swift; sourceTree = "<group>"; };
 		E5D75C2B31530E390EDEB760 /* PenaltySystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PenaltySystem.swift; sourceTree = "<group>"; };
 		E6121B38C070C592434D33A1 /* DebugLayoutOverlayV2.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugLayoutOverlayV2.swift; sourceTree = "<group>"; };
-		E802832BAB9D5CCCB8D64414 /* GoStop.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GoStop.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		E802832BAB9D5CCCB8D64414 /* GoStop.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = GoStop.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		FDF9B6B8094E7BBA663D7D0E /* Pixel_Paradise_Groove.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = Pixel_Paradise_Groove.mp3; sourceTree = "<group>"; };
+		FFABCFBA7D5C0D514D4743B5 /* ttadak.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = ttadak.wav; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -149,7 +176,7 @@
 				7A6AE872E752608836265117 /* GameAreaViews.swift */,
 				5BA63E4C6CDD8893D44DEAE5 /* GameView.swift */,
 				E2E17F950BAB90799F5D6CEE /* RuleSettingsView.swift */,
-				9A2B4C6D8E0F112233445567 /* SpecialEventPopupModule.swift */,
+				99627E88FDDD3197942DBC91 /* SpecialEventPopupModule.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -180,12 +207,13 @@
 				2857725433426BA8E4DE2D7C /* ConfigManager.swift */,
 				116C189429DB2067520A3E08 /* GameManager.swift */,
 				08DC9353031FD0D4F7EDF917 /* LayoutContext.swift */,
+				8033CCBA11F2704126432C4D /* MessageCatalog.swift */,
 				E5D75C2B31530E390EDEB760 /* PenaltySystem.swift */,
 				CB1897B0ADA42D7A7EEFCE34 /* PlayerHandSlotManager.swift */,
 				4C817E2BC7A6C44D1434325E /* ScoringSystem.swift */,
 				7B4991ECE6869B1AF81B963F /* SimulatorBridge.swift */,
 				8B21CE98829137B4CABB2EDC /* TableSlotManager.swift */,
-				0DFA91B35C1A4B4CA1F7E101 /* TestControlSupport.swift */,
+				56803F9C45DB74B196110159 /* TestControlSupport.swift */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -213,14 +241,22 @@
 			);
 			sourceTree = "<group>";
 		};
-			D338C3D47105DD0BD4179F62 /* Resources */ = {
-				isa = PBXGroup;
-				children = (
-					A1D40ACF765141A0A31C62F9 /* hwatu_blanket_puck.wav */,
-					96A852EC38AE473CA7E8B9ED /* hwatu_card_hit.wav */,
-					7FBDDC028B566FC10259D51C /* layout_hwatu.json */,
-					FDF9B6B8094E7BBA663D7D0E /* Pixel_Paradise_Groove.mp3 */,
-					B5F77E3038A87D0684F2961D /* rule.yaml */,
+		D338C3D47105DD0BD4179F62 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				2114BD27414D03C58BD142C6 /* bomb.wav */,
+				0C043E09FB6F416CC5D71507 /* chongtong.wav */,
+				33D612FDCBC8C5EB5D3BEF35 /* hwatu_blanket_puck.wav */,
+				B8EE04E1E1EA50FD9FE85C24 /* hwatu_card_hit.wav */,
+				5F0BB6C6AFB6A3A5CACFF486 /* jjok.wav */,
+				7FBDDC028B566FC10259D51C /* layout_hwatu.json */,
+				6D41BFAA63A26D90E4DCE582 /* message.yaml */,
+				FDF9B6B8094E7BBA663D7D0E /* Pixel_Paradise_Groove.mp3 */,
+				DD3D5674F2EC904520EE0A09 /* puck.wav */,
+				B5F77E3038A87D0684F2961D /* rule.yaml */,
+				1A6B182DBD528D1CD18DC6A5 /* shake.wav */,
+				6C235371731C8EC39BB77518 /* sweep.wav */,
+				FFABCFBA7D5C0D514D4743B5 /* ttadak.wav */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -338,6 +374,7 @@
 			packageReferences = (
 				8067FC4FB28066011D3F927B /* XCRemoteSwiftPackageReference "Yams" */,
 			);
+			preferredProjectObjectVersion = 77;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -355,11 +392,19 @@
 			files = (
 				F95644401EAA22B21356588D /* Assets.xcassets in Resources */,
 				F618CAD8BE7161E2EF105F13 /* Pixel_Paradise_Groove.mp3 in Resources */,
-				F646EB0313444F8E916B04C2 /* hwatu_card_hit.wav in Resources */,
-				7B8828B09E4A4C9A8D2A1E11 /* hwatu_blanket_puck.wav in Resources */,
+				5E247EB35DD0BD9EE30C5B34 /* bomb.wav in Resources */,
+				29CA1100B381DA23CF93EDB9 /* chongtong.wav in Resources */,
+				8E6BD2E070AD4476B8A6FC23 /* hwatu_blanket_puck.wav in Resources */,
+				5A33D963396CDAD8764E5C50 /* hwatu_card_hit.wav in Resources */,
+				3C5A692B58A2151110EAE1E0 /* jjok.wav in Resources */,
 				0A51A5C805AD7B89B9629632 /* layout_hwatu.json in Resources */,
+				6766CEA6D9A9E1EC8A55324A /* message.yaml in Resources */,
+				2745E98B4D28747A273C51BF /* puck.wav in Resources */,
 				E7421836888772ACFC22C581 /* replace_images.py in Resources */,
 				382086F1D4678D7A44AFEE6E /* rule.yaml in Resources */,
+				AF9A0E3E3C85299B4B671CDC /* shake.wav in Resources */,
+				E826419E04AF432E9B1D36B9 /* sweep.wav in Resources */,
+				AC00196FBFB67AA0311E5799 /* ttadak.wav in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -368,10 +413,18 @@
 			buildActionMask = 2147483647;
 			files = (
 				2213E7E34BA30D7E97366273 /* Pixel_Paradise_Groove.mp3 in Resources */,
-				16E4282522134F35A8D7AB11 /* hwatu_card_hit.wav in Resources */,
-				4F28C762E6D54D20B0A23D01 /* hwatu_blanket_puck.wav in Resources */,
+				41CAA6DED7E8166226000DB5 /* bomb.wav in Resources */,
+				AFE099F3966A98298D996D24 /* chongtong.wav in Resources */,
+				73173C69A0C643CB13A06631 /* hwatu_blanket_puck.wav in Resources */,
+				D0E4A08815BEB6C3020DF40C /* hwatu_card_hit.wav in Resources */,
+				8FB0050510CA73A17243B882 /* jjok.wav in Resources */,
 				1447E916E4EEA0AB610C9DAC /* layout_hwatu.json in Resources */,
+				2A8689C836A3BB15DCB189A5 /* message.yaml in Resources */,
+				7349A092998FD4B77219B017 /* puck.wav in Resources */,
 				13AA39B13AD565444986FE26 /* rule.yaml in Resources */,
+				7880E82D1DF97DAC474A661A /* shake.wav in Resources */,
+				4F27D2FD1F9143DAFA032D79 /* sweep.wav in Resources */,
+				D10F17574950F95096B2FF1F /* ttadak.wav in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -414,6 +467,7 @@
 				B0DBC6BF9FCA8453CB3B0FE4 /* LayoutConfig.swift in Sources */,
 				89D4C50CC12F800CCB24D5EA /* LayoutConfigV2.swift in Sources */,
 				9EAF94310537CBCB3CE79C2A /* LayoutContext.swift in Sources */,
+				B20D1CDDF9665706FA9A0135 /* MessageCatalog.swift in Sources */,
 				33B94FCF62AD0125A4518094 /* PenaltySystem.swift in Sources */,
 				191BB9B8BDE5DDAE9E15BE36 /* Player.swift in Sources */,
 				333625062232E46D6E78948F /* PlayerHandSlotManager.swift in Sources */,
@@ -421,7 +475,7 @@
 				C6EA8898DE29CBD4BD1297FB /* ScoringSystem.swift in Sources */,
 				CCC8CAA072A943D537B4AD09 /* SimulatorBridge.swift in Sources */,
 				5B5DD40D481D19BFC2AFB9EC /* TableSlotManager.swift in Sources */,
-				0DFA91B15C1A4B4CA1F7E101 /* TestControlSupport.swift in Sources */,
+				331201CDECD16765570374D1 /* TestControlSupport.swift in Sources */,
 				37977AD098390474259748DB /* main.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -454,6 +508,7 @@
 				F79C65E2DC08F09BBA61EFE8 /* LayoutConfig.swift in Sources */,
 				A8E8EE127772993DF00F279D /* LayoutConfigV2.swift in Sources */,
 				29E2F53E72ED922B7A2956C2 /* LayoutContext.swift in Sources */,
+				566DD115DF123D91462F437B /* MessageCatalog.swift in Sources */,
 				5B299B27BA991E7E6C90AC94 /* PenaltySystem.swift in Sources */,
 				0B20DD2801F7CBBF74EA9F8E /* Player.swift in Sources */,
 				621E32AC8A5257900A991AC4 /* PlayerHandSlotManager.swift in Sources */,
@@ -461,9 +516,9 @@
 				000CC2A3B7490B3336A542B2 /* RuleSettingsView.swift in Sources */,
 				CA5E4294DC9C4A786488AA0C /* ScoringSystem.swift in Sources */,
 				5E0C21BF00A4D5D5A32CBB78 /* SimulatorBridge.swift in Sources */,
-				9A2B4C6D8E0F112233445566 /* SpecialEventPopupModule.swift in Sources */,
+				EA289E188EA8ED0FE8FBA19D /* SpecialEventPopupModule.swift in Sources */,
 				C4E5C5B23D59D1A9058F7DB5 /* TableSlotManager.swift in Sources */,
-				D0FA91B25C1A4B4CA1F7E101 /* TestControlSupport.swift in Sources */,
+				A57DD44EA3EEA509F97B5A4E /* TestControlSupport.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -501,7 +556,6 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = CX4GUZT9FS;
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = GoStop/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = GoStop;
@@ -509,7 +563,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.konlona.GoStop;
+				PRODUCT_BUNDLE_IDENTIFIER = com.antigravity.GoStop;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -521,7 +575,6 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = CX4GUZT9FS;
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = GoStop/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = GoStop;
@@ -529,7 +582,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.konlona.GoStop;
+				PRODUCT_BUNDLE_IDENTIFIER = com.antigravity.GoStop;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};

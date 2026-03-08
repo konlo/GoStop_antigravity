@@ -63,6 +63,62 @@
 
 ## Log Entries
 
+### [2026-03-08 15:21:00 KST] User Request: 멀티플레이 관련 작업을 4개 agent로 나눠 관리 가능한 형태로 분리
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "온라인 맞고 멀티플레이 작업을 실제 multi-agent 운영 관점에서 병렬화하려면, 룰 엔진/서버/클라이언트/검증을 서로 충돌 없이 맡길 수 있게 책임, 산출물, 의존성, 순서를 명확히 분리해야 했음."
+- **Files Touched**: ["matgo_multiplayer_multi_agent_plan.md", "project_progress.md"]
+- **Validation**: "`sed -n '1,220p' /Users/najongseong/.codex/skills/gostop-game-builder/SKILL.md`, `sed -n '1,220p' /Users/najongseong/git_repository/skills-registry/project_management/project_logger/SKILL.md`, `sed -n '1,260p' matgo_multiplayer_draft.md`로 기존 멀티플레이 초안과 적용 스킬을 다시 확인했다."
+- **Outcome**: "루트에 `matgo_multiplayer_multi_agent_plan.md`를 추가했고, Agent 1(Core Engine), Agent 2(Backend/Lobby), Agent 3(iOS Client UX), Agent 4(Debugging/Test/Observability) 구조로 책임, 산출물, done criteria, 의존성, 단계별 작업 순서, 공통 ID/계약 관리 규칙까지 분리해 multi-agent 운영 초안을 정리했다."
+
+### [2026-03-08 15:19:32 KST] User Request: 멀티플레이 초안에 debugging 및 test scenario 내용 포함 여부 확인
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "방금 작성한 온라인 맞고 멀티플레이 초안이 실제로 디버깅/테스트 시나리오 관점을 얼마나 포함하는지 문서 기준으로 판정하고, 부족한 영역을 구체적으로 짚어줄 필요가 있었음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`rg -n 'debug|test|scenario|replay|log|monitor|observ|artifact|reject|desync' matgo_multiplayer_draft.md`, `nl -ba matgo_multiplayer_draft.md | sed -n '1,260p'`로 문서 내 관련 키워드와 위치를 확인했다."
+- **Outcome**: "`matgo_multiplayer_draft.md`에는 replay/log/monitoring/desync/reject 등 디버깅과 운영 관측성에 해당하는 항목은 일부 포함돼 있다. 하지만 별도의 debugging workflow, artifact policy, regression test scenario, automated validation section은 아직 명시적으로 정리돼 있지 않아 '부분 포함' 상태로 판단했다."
+
+### [2026-03-08 15:15:36 KST] User Request: 온라인 멀티플레이 맞고 개발 시 고려사항 초안 작성
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "현재 iOS 맞고 프로젝트를 온라인 2인 대전으로 확장하려면, 기존 Swift 룰 엔진을 어떻게 서버 권한형 구조로 재사용할지와 룸/동기화/재접속/운영 관점을 함께 정리할 필요가 있었음."
+- **Files Touched**: ["matgo_multiplayer_draft.md", "project_progress.md"]
+- **Validation**: "`sed -n '1,220p' /Users/najongseong/.codex/skills/gostop-game-builder/SKILL.md`, `sed -n '1,220p' /Users/najongseong/git_repository/skills-registry/project_management/project_logger/SKILL.md`, `sed -n '1,200p' ui_design_document.md`, `sed -n '1,200p' design_checklist.md`로 적용할 스킬/문서 톤을 확인했다."
+- **Outcome**: "루트에 `matgo_multiplayer_draft.md`를 추가했고, 서버 권한형 멀티플레이 구조, WebSocket/REST 분리, 공용 룰 엔진 패키지화, 룸/턴/상태 동기화, 재접속 복구, 보안/부정행위 방지, 운영 지표, 단계별 롤아웃까지 포함한 초안을 정리했다."
+
+### [2026-03-08 15:11:05 KST] User Request: 영어/한글 선택을 configuration.yaml 설정으로 이동
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "다국어 메시지 로더는 이미 추가되어 있으므로, 실제 언어 선택 값을 `configuration.yaml`에 저장하고 앱이 그 값을 읽도록 연결해야 했음."
+- **Files Touched**: ["GoStop/Core/ConfigManager.swift", "GoStop/Core/MessageCatalog.swift", "GoStop/Views/RuleSettingsView.swift", "GoStop/Resources/message.yaml", "configuration.yaml", "project_progress.md"]
+- **Validation**: "`sed -n '1,260p' GoStop/Models/RuleConfig.swift`, `sed -n '1,320p' GoStop/Core/ConfigManager.swift`, `sed -n '1,260p' configuration.yaml`, `rg -n 'GOSTOP_LANGUAGE|MessageCatalog|ruleConfig|configuration.yaml|language|locale' GoStop GoStopCLI GoStopTests`로 설정/로더 구조를 확인했다. 이후 `xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI -configuration Debug -derivedDataPath /tmp/gostop_cli_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n \"error:|warning:|BUILD SUCCEEDED|BUILD FAILED\"` => `BUILD SUCCEEDED`, `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n 'error:|warning:|BUILD SUCCEEDED|BUILD FAILED'` => `BUILD SUCCEEDED`를 확인했다."
+- **Outcome**: "`configuration.yaml`의 `app.language`를 새 언어 선택 원본으로 추가했고, `ConfigurationStore`/`ConfigManager`가 이를 로드·저장하도록 확장했다. `MessageCatalog`는 이제 환경변수 override가 없을 때 `app.language`를 읽어 locale을 결정하며, 설정 화면에도 한국어/English 선택 UI를 추가해 저장 시 `configuration.yaml`에 반영되도록 했다."
+
+### [2026-03-08 15:02:12 KST] User Request: cyber money 설계에 partial payment, 돈 연출, 데이터 안정성까지 반영
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "추가 요구사항인 잔액 부족 정산 정책, 돈 이동 애니메이션/포맷, 앱 비정상 종료·저장 안정성까지 현재 코드 구조에 맞춰 구체 설계해야 했음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`sed -n '1,260p' GoStop/Core/AnimationManager.swift`, `sed -n '1,260p' GoStop/Core/AudioManager.swift`, `sed -n '1,220p' GoStop/GoStopApp.swift`, `rg -n 'scenePhase|UserDefaults|Keychain|money|specialEventPopup|overlay' GoStop`, `sed -n '1,260p' GoStop/Views/SpecialEventPopupModule.swift`로 애니메이션/사운드/앱 생명주기/오버레이 패턴을 확인했다."
+- **Outcome**: "현재 저장소는 특수 이벤트 팝업 큐와 사운드 매니저는 있으나, 돈 정산 전용 애니메이션 이벤트와 scenePhase 저장 훅은 없다. 설계는 `공통 settleRound + partial payment(min(balance, due)) + persistent wallet store + configuration.yaml economy 설정 + GameView 오버레이 기반 정산 연출 + money 변경 즉시 원자 저장` 방향으로 정리했다. 비정상 종료 시에는 라운드 중간 점수는 복구하지 않고 마지막으로 확정 저장된 wallet만 복구하는 정책을 권장한다."
+
+### [2026-03-08 14:48:25 KST] User Request: 게임 다국어 지원을 위해 message.yaml 정리 및 메시지 호출부 전환
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "게임 내 하드코딩된 UI/이벤트 문자열을 YAML 기반 메시지 카탈로그로 옮기고, SwiftUI와 게임 로직이 그 카탈로그를 통해 문자열을 읽도록 바꾸는 기반 작업이 필요했음."
+- **Files Touched**: ["GoStop/Core/MessageCatalog.swift", "GoStop/Resources/message.yaml", "GoStop/Core/GameManager.swift", "GoStop/Core/PenaltySystem.swift", "GoStop/Core/ScoringSystem.swift", "GoStop/Core/SimulatorBridge.swift", "GoStop/Views/CardView.swift", "GoStop/Views/DebugEndgameSummaryView.swift", "GoStop/Views/GameAreaViews.swift", "GoStop/Views/GameView.swift", "GoStop/Views/RuleSettingsView.swift", "GoStop/Views/SpecialEventPopupModule.swift", "GoStop.xcodeproj/project.pbxproj", "project_progress.md"]
+- **Validation**: "`xcodegen generate`로 새 메시지 파일과 로더를 Xcode 프로젝트에 반영했다. 이후 `xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI -configuration Debug -derivedDataPath /tmp/gostop_cli_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n \"error:|warning:|BUILD SUCCEEDED|BUILD FAILED\"` => `BUILD SUCCEEDED`, `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n 'error:|warning:|BUILD SUCCEEDED|BUILD FAILED'` => `BUILD SUCCEEDED`를 확인했다. 추가로 `swift test`는 저장소 루트에 `Package.swift`가 없어 실행 불가였다."
+- **Outcome**: "`message.yaml` 기반 다국어 메시지 카탈로그와 `MessageCatalog` 로더를 추가했고, UI 텍스트와 게임 규칙/이벤트 로그 문자열이 하드코딩 대신 `gameText(...)`를 통해 메시지를 조회하도록 전환했다. 기본 로케일은 기존 동작 보존을 위해 `ko`로 유지하고, 런타임에서는 `GOSTOP_LANGUAGE` 또는 외부 `message.yaml` 경로로 언어/카탈로그를 바꿀 수 있게 했다."
+
+### [2026-03-08 14:44:37 KST] User Request: 점수 기반 누적을 cyber money 체계로 전환하는 기능 계획 수립
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "기존 점수/정산/설정/UI 구조를 확인해 초기 자금, 충전, 점수-현금 환산, 승리누적 대체 범위를 포함한 구체적 구현 계획을 세워야 했음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`rg -n 'score|money|cumulativeWinScore|setupGame|RuleSettingsView|configuration.yaml' GoStop GoStopCLI GoStopTests tests/test_agent`, `sed -n '1,260p' GoStop/Models/Player.swift`, `sed -n '1,260p' GoStop/Core/GameManager.swift`, `sed -n '1,260p' GoStop/Views/RuleSettingsView.swift`, `sed -n '1,280p' GoStop/Core/ConfigManager.swift`, `sed -n '2271,2405p' GoStop/Core/GameManager.swift`, `sed -n '240,330p' GoStop/Core/TestControlSupport.swift`, `sed -n '2216,2255p' tests/test_agent/test_scenarios.py`, `sed -n '1,220p' configuration.yaml`로 현재 구조와 테스트 계약을 확인했다."
+- **Outcome**: "현재 저장소는 `Player.money`를 이미 직렬화/브리지 노출하고 있고 일부 종료 경로에서만 `finalScore * 100` 정산을 수행한다. 반면 새 판 시작 시 `setupGame()`이 플레이어를 새로 생성해 잔액이 라운드 간 유지되지 않으며, 누적값은 별도 `gostop_cumulative_win_scores.json`로 관리되고 UI에는 `승리누적`으로 표시된다. 따라서 구현 계획은 `round score`는 엔진 내부 점수로 유지하고, `승리누적` 저장/UI를 persistent cyber money로 교체하며, 초기 30만원/10만원 충전/설정 가능한 점수당 금액/모든 종료 갈래 공통 정산으로 정리하는 방향으로 수립했다."
+
 ### [2026-03-08 11:22:34 KST] User Request: code 최적화를 수행해줘
 - **Skills Planned**: ["swift_code_optimizer", "project_logger"]
 - **Skills Used**: ["swift_code_optimizer", "project_logger"]
@@ -1578,3 +1634,11 @@
 - **Files Touched**: ["project_progress.md"]
 - **Validation**: "`git status --short`, `git diff --stat`, `git diff -- GoStop/Core/TestControlSupport.swift GoStop/Core/SimulatorBridge.swift GoStopCLI/main.swift`, `git diff -- GoStop/Views/GameAreaViews.swift GoStop/Views/GameView.swift GoStop/Core/TableSlotManager.swift GoStop/Core/PlayerHandSlotManager.swift configuration.yaml agents.md`로 공통 제어 추출, 렌더/슬롯 최적화, 보조 설정 변경을 교차 확인했다."
 - **Outcome**: "현재 변경은 `TestControlSupport` 기반 CLI/socket 공통 제어 로직 추출이 가장 큰 축이고, 그 위에 캡처 그룹/슬롯 매니저 최적화와 skill 목록 갱신이 함께 얹혀 있다. 이를 반영한 커밋 메시지 초안을 제안했다."
+
+### [2026-03-08 15:11:33 KST] User Request: 추가 쌍피에 대해서 알고 있어 ?
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 고스톱 규칙 용어인 `추가 쌍피`를 물었고, 일반 설명이 아니라 현재 프로젝트 구현 기준으로 어떤 카드가 어떻게 2피 이상으로 계산되는지 정확히 확인할 필요가 있었음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`rg -n \"쌍피|double pi|conditional_double_pi|chrysanthemum_rule|selectedRole\" GoStop GoStopTests tests project_progress.md`, `sed -n '1,220p' GoStop/Models/Card.swift`, `sed -n '1,220p' GoStop/Core/ScoringSystem.swift`, `sed -n '1,220p' GoStop/Resources/rule.yaml`, `sed -n '1600,1665p' GoStop/Core/GameManager.swift`, `sed -n '280,340p' GoStopTests/GoStopTests.swift`로 카드 역할, 점수 계산, 룰 설정, 캡처 시 역할 선택, 테스트 기대값을 교차 확인."
+- **Outcome**: "현재 프로젝트에는 `추가 쌍피`에 해당하는 개념이 두 가지로 존재한다. 1) 9월 열끗(국진)은 기본 설정 `default_role: double_pi`로 잡혀 있어 캡처 시 쌍피 역할로 들어간다. 2) 청단이 완성되면 `conditional_double_pi` 규칙 때문에 9월 일반 피가 추가로 +1을 받아 2피로 계산된다. 따라서 구현상 `추가 쌍피`는 단순 카드 종류 하나가 아니라 `역할 선택`과 `조건부 보너스`로 구성된 확장 쌍피 규칙이다."

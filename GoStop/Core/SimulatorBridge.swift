@@ -465,44 +465,44 @@ class SimulatorBridge {
     }
 
     private func simulatedSpecialEventPopupTitle(from log: String) -> String? {
-        if log.contains("reached Triple Seolsa") {
-            return "삼뻑 종료"
+        if log.contains(gameText("log.marker.triple_seolsa")) {
+            return gameText("special_popup.title.triple_seolsa")
         }
-        if log.contains("declared SHAKE for month") {
-            return "흔들기"
+        if log.contains(gameText("log.marker.shake")) {
+            return gameText("special_popup.title.shake")
         }
-        if log.contains("triggered BOMB!") {
-            return "폭탄"
+        if log.contains(gameText("log.marker.bomb")) {
+            return gameText("special_popup.title.bomb")
         }
-        if log.contains("swept the table (싹쓸이)!") {
-            return "싹쓸이"
+        if log.contains(gameText("log.marker.sweep")) {
+            return gameText("special_popup.title.sweep")
         }
-        if log.contains("triggered 따닥(Ttadak)") {
-            return "따닥"
+        if log.contains(gameText("log.marker.ttadak")) {
+            return gameText("special_popup.title.ttadak")
         }
-        if log.contains("triggered 쪽(Jjok)") {
-            return "쪽"
+        if log.contains(gameText("log.marker.jjok")) {
+            return gameText("special_popup.title.jjok")
         }
-        if log.contains("triggered 청단(Cheongdan)") {
-            return "청단"
+        if log.contains(gameText("log.marker.cheongdan")) {
+            return gameText("special_popup.title.cheongdan")
         }
-        if log.contains("triggered 홍단(Hongdan)") {
-            return "홍단"
+        if log.contains(gameText("log.marker.hongdan")) {
+            return gameText("special_popup.title.hongdan")
         }
-        if log.contains("triggered 고도리(Godori)") {
-            return "고도리"
+        if log.contains(gameText("log.marker.godori")) {
+            return gameText("special_popup.title.godori")
         }
-        if log.contains("triggered 구사(Gusa)") {
-            return "구사"
+        if log.contains(gameText("log.marker.gusa")) {
+            return gameText("special_popup.title.gusa")
         }
-        if log.contains("triggered 뻑(Seolsa)") {
-            return "뻑(설사)"
+        if log.contains(gameText("log.marker.seolsa")) {
+            return gameText("special_popup.title.seolsa")
         }
-        if log.contains("triggered 뻑 먹기(Seolsa Eat)") {
-            return "뻑 먹기"
+        if log.contains(gameText("log.marker.seolsa_eat")) {
+            return gameText("special_popup.title.seolsa_eat")
         }
-        if log.contains("triggered 자뻑(Self Seolsa Eat)") {
-            return "자뻑"
+        if log.contains(gameText("log.marker.self_seolsa_eat")) {
+            return gameText("special_popup.title.self_seolsa_eat")
         }
         return nil
     }

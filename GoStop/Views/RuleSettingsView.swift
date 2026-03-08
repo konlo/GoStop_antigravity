@@ -12,7 +12,7 @@ struct RuleSettingsView: View {
             VStack(spacing: 0) {
                 // Header
                 HStack {
-                    Text("게임 규칙 설정 (configuration.yaml)")
+                    Text(gameText("rule_settings.title"))
                         .font(.headline)
                         .foregroundColor(.white)
                     Spacer()
@@ -28,22 +28,24 @@ struct RuleSettingsView: View {
                 if let config = configManager.ruleConfig {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 20) {
-                            settingsSection(title: "오디오 (Audio / configuration.yaml)", content: audioSettings())
-                            settingsSection(title: "점수 계산 (Scoring)", content: scoringSettings(config: config))
-                            settingsSection(title: "패널티 (Penalties)", content: penaltySettings(config: config))
-                            settingsSection(title: "특수 동작 (Special Moves)", content: specialMoveSettings(config: config))
-                            settingsSection(title: "게임 종료 (Endgame)", content: endgameSettings(config: config))
+                            settingsSection(title: gameText("rule_settings.section.general"), content: generalSettings())
+                            settingsSection(title: gameText("rule_settings.section.audio"), content: audioSettings())
+                            settingsSection(title: gameText("rule_settings.section.scoring"), content: scoringSettings(config: config))
+                            settingsSection(title: gameText("rule_settings.section.penalties"), content: penaltySettings(config: config))
+                            settingsSection(title: gameText("rule_settings.section.special_moves"), content: specialMoveSettings(config: config))
+                            settingsSection(title: gameText("rule_settings.section.endgame"), content: endgameSettings(config: config))
                         }
                         .padding()
                     }
                 } else {
-                    Text("설정을 불러올 수 없습니다.")
+                    Text(gameText("rule_settings.load_failed"))
                         .foregroundColor(.white)
                         .padding()
                 }
                 
                 // Save/Close Button
                 Button(action: { 
+                    _ = configManager.saveAppLanguage()
                     animationManager.saveConfig()
                     if let updatedRules = configManager.ruleConfig {
                         RuleLoader.shared.updateRules(updatedRules)
@@ -52,7 +54,7 @@ struct RuleSettingsView: View {
                     }
                     isPresented = false 
                 }) {
-                    Text("확인")
+                    Text(gameText("common.button.confirm"))
                         .font(.headline)
                         .foregroundColor(.white)
                         .padding()
@@ -71,6 +73,36 @@ struct RuleSettingsView: View {
             )
             .shadow(radius: 20)
             .padding(20)
+        }
+    }
+
+    @ViewBuilder
+    private func generalSettings() -> some View {
+        VStack(spacing: 12) {
+            HStack {
+                Text(gameText("rule_settings.label.language"))
+                    .foregroundColor(.white.opacity(0.8))
+                Spacer()
+            }
+
+            Picker(
+                gameText("rule_settings.label.language"),
+                selection: Binding(
+                    get: { configManager.appLanguage },
+                    set: { configManager.appLanguage = $0 }
+                )
+            ) {
+                Text(gameText("rule_settings.option.language_ko")).tag("ko")
+                Text(gameText("rule_settings.option.language_en")).tag("en")
+            }
+            .pickerStyle(.segmented)
+
+            HStack {
+                Text(gameText("rule_settings.label.configuration_default"))
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.6))
+                Spacer()
+            }
         }
     }
     
@@ -92,7 +124,7 @@ struct RuleSettingsView: View {
     private func audioSettings() -> some View {
         VStack(spacing: 12) {
             settingToggle(
-                label: "배경 음악 (BGM)",
+                label: gameText("rule_settings.label.background_music"),
                 isOn: Binding(
                     get: { animationManager.config.background_music_enabled },
                     set: { isEnabled in
@@ -113,7 +145,7 @@ struct RuleSettingsView: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    Text("상대방 행동 지연 (AI Hold)")
+                    Text(gameText("rule_settings.label.ai_hold"))
                         .foregroundColor(.white.opacity(0.8))
                     Spacer()
                     Stepper("", value: Binding(
@@ -125,18 +157,18 @@ struct RuleSettingsView: View {
                         }
                     ), in: 0.1...3.0, step: 0.1)
                     .labelsHidden()
-                    Text(String(format: "%.1f초", animationManager.config.opponent_action_delay))
+                    Text(gameText("rule_settings.label.seconds_value", ["value": String(format: "%.1f", animationManager.config.opponent_action_delay)]))
                         .foregroundColor(.white)
                         .font(.system(.body, design: .monospaced))
                         .frame(width: 50)
                 }
-                Text("상대방의 행동이 너무 빠를 때 이 시간을 늘려주세요.")
+                Text(gameText("rule_settings.label.ai_hold_help"))
                     .font(.caption2)
                     .foregroundColor(.white.opacity(0.5))
             }
 
             HStack {
-                Text("기본값은 configuration.yaml 설정 사용")
+                Text(gameText("rule_settings.label.configuration_default"))
                     .font(.caption)
                     .foregroundColor(.white.opacity(0.6))
                 Spacer()
@@ -147,30 +179,30 @@ struct RuleSettingsView: View {
     @ViewBuilder
     private func scoringSettings(config: RuleConfig) -> some View {
         VStack(spacing: 12) {
-            settingStepper(label: "삼광 점수", value: Binding(get: { configManager.ruleConfig?.scoring.kwang.samgwang ?? 0 }, set: { configManager.ruleConfig?.scoring.kwang.samgwang = $0 }))
-            settingStepper(label: "비삼광 점수", value: Binding(get: { configManager.ruleConfig?.scoring.kwang.bisamgwang ?? 0 }, set: { configManager.ruleConfig?.scoring.kwang.bisamgwang = $0 }))
-            settingStepper(label: "사광 점수", value: Binding(get: { configManager.ruleConfig?.scoring.kwang.sagwang ?? 0 }, set: { configManager.ruleConfig?.scoring.kwang.sagwang = $0 }))
-            settingStepper(label: "오광 점수", value: Binding(get: { configManager.ruleConfig?.scoring.kwang.ogwang ?? 0 }, set: { configManager.ruleConfig?.scoring.kwang.ogwang = $0 }))
+            settingStepper(label: gameText("rule_settings.label.samgwang_score"), value: Binding(get: { configManager.ruleConfig?.scoring.kwang.samgwang ?? 0 }, set: { configManager.ruleConfig?.scoring.kwang.samgwang = $0 }))
+            settingStepper(label: gameText("rule_settings.label.bisamgwang_score"), value: Binding(get: { configManager.ruleConfig?.scoring.kwang.bisamgwang ?? 0 }, set: { configManager.ruleConfig?.scoring.kwang.bisamgwang = $0 }))
+            settingStepper(label: gameText("rule_settings.label.sagwang_score"), value: Binding(get: { configManager.ruleConfig?.scoring.kwang.sagwang ?? 0 }, set: { configManager.ruleConfig?.scoring.kwang.sagwang = $0 }))
+            settingStepper(label: gameText("rule_settings.label.ogwang_score"), value: Binding(get: { configManager.ruleConfig?.scoring.kwang.ogwang ?? 0 }, set: { configManager.ruleConfig?.scoring.kwang.ogwang = $0 }))
             
             Divider().background(Color.white.opacity(0.1))
             
-            settingStepper(label: "피 최소 개수", value: Binding(get: { configManager.ruleConfig?.scoring.pi.min_count ?? 10 }, set: { configManager.ruleConfig?.scoring.pi.min_count = $0 }))
-            settingStepper(label: "피 1점당 추가 개수", value: Binding(get: { configManager.ruleConfig?.scoring.pi.additional_score ?? 1 }, set: { configManager.ruleConfig?.scoring.pi.additional_score = $0 }))
+            settingStepper(label: gameText("rule_settings.label.pi_min_count"), value: Binding(get: { configManager.ruleConfig?.scoring.pi.min_count ?? 10 }, set: { configManager.ruleConfig?.scoring.pi.min_count = $0 }))
+            settingStepper(label: gameText("rule_settings.label.pi_additional_score"), value: Binding(get: { configManager.ruleConfig?.scoring.pi.additional_score ?? 1 }, set: { configManager.ruleConfig?.scoring.pi.additional_score = $0 }))
         }
     }
     
     @ViewBuilder
     private func penaltySettings(config: RuleConfig) -> some View {
         VStack(spacing: 12) {
-            settingToggle(label: "자박 (Jabak) 활성화", isOn: Binding(get: { configManager.ruleConfig?.penalties.jabak.enabled ?? false }, set: { configManager.ruleConfig?.penalties.jabak.enabled = $0 }))
-            settingStepper(label: "자박 최소 점수", value: Binding(get: { configManager.ruleConfig?.penalties.jabak.min_score_threshold ?? 7 }, set: { configManager.ruleConfig?.penalties.jabak.min_score_threshold = $0 }))
+            settingToggle(label: gameText("rule_settings.label.jabak_enabled"), isOn: Binding(get: { configManager.ruleConfig?.penalties.jabak.enabled ?? false }, set: { configManager.ruleConfig?.penalties.jabak.enabled = $0 }))
+            settingStepper(label: gameText("rule_settings.label.jabak_min_score"), value: Binding(get: { configManager.ruleConfig?.penalties.jabak.min_score_threshold ?? 7 }, set: { configManager.ruleConfig?.penalties.jabak.min_score_threshold = $0 }))
             
             Divider().background(Color.white.opacity(0.1))
             
-            settingToggle(label: "피박 활성화", isOn: Binding(get: { configManager.ruleConfig?.penalties.pibak.enabled ?? false }, set: { configManager.ruleConfig?.penalties.pibak.enabled = $0 }))
-            settingStepper(label: "피박 기준 개수", value: Binding(get: { configManager.ruleConfig?.penalties.pibak.opponent_min_pi_safe ?? 8 }, set: { configManager.ruleConfig?.penalties.pibak.opponent_min_pi_safe = $0 }))
+            settingToggle(label: gameText("rule_settings.label.pibak_enabled"), isOn: Binding(get: { configManager.ruleConfig?.penalties.pibak.enabled ?? false }, set: { configManager.ruleConfig?.penalties.pibak.enabled = $0 }))
+            settingStepper(label: gameText("rule_settings.label.pibak_threshold"), value: Binding(get: { configManager.ruleConfig?.penalties.pibak.opponent_min_pi_safe ?? 8 }, set: { configManager.ruleConfig?.penalties.pibak.opponent_min_pi_safe = $0 }))
             
-            settingToggle(label: "광박 활성화", isOn: Binding(get: { configManager.ruleConfig?.penalties.gwangbak.enabled ?? false }, set: { configManager.ruleConfig?.penalties.gwangbak.enabled = $0 }))
+            settingToggle(label: gameText("rule_settings.label.gwangbak_enabled"), isOn: Binding(get: { configManager.ruleConfig?.penalties.gwangbak.enabled ?? false }, set: { configManager.ruleConfig?.penalties.gwangbak.enabled = $0 }))
         }
     }
     
@@ -178,32 +210,36 @@ struct RuleSettingsView: View {
     private func specialMoveSettings(config: RuleConfig) -> some View {
         VStack(spacing: 12) {
             HStack {
-                Text("배수 방식")
+                Text(gameText("rule_settings.label.multiplier_type"))
                     .foregroundColor(.white.opacity(0.8))
                 Spacer()
-                Text(config.special_moves.shake.score_multiplier_type == "multiplicative" ? "지수 (2, 4, 8...)" : "가산 (2, 3, 4...)")
+                Text(
+                    config.special_moves.shake.score_multiplier_type == "multiplicative"
+                        ? gameText("rule_settings.label.multiplier_type_exponential")
+                        : gameText("rule_settings.label.multiplier_type_additive")
+                )
                     .foregroundColor(.blue)
                     .font(.caption)
             }
             
-            settingToggle(label: "흔들기 활성화", isOn: Binding(get: { configManager.ruleConfig?.special_moves.shake.enabled ?? false }, set: { configManager.ruleConfig?.special_moves.shake.enabled = $0 }))
-            settingToggle(label: "폭탄 활성화", isOn: Binding(get: { configManager.ruleConfig?.special_moves.bomb.enabled ?? false }, set: { configManager.ruleConfig?.special_moves.bomb.enabled = $0 }))
-            settingToggle(label: "쓸기 활성화", isOn: Binding(get: { configManager.ruleConfig?.special_moves.sweep.enabled ?? false }, set: { configManager.ruleConfig?.special_moves.sweep.enabled = $0 }))
+            settingToggle(label: gameText("rule_settings.label.shake_enabled"), isOn: Binding(get: { configManager.ruleConfig?.special_moves.shake.enabled ?? false }, set: { configManager.ruleConfig?.special_moves.shake.enabled = $0 }))
+            settingToggle(label: gameText("rule_settings.label.bomb_enabled"), isOn: Binding(get: { configManager.ruleConfig?.special_moves.bomb.enabled ?? false }, set: { configManager.ruleConfig?.special_moves.bomb.enabled = $0 }))
+            settingToggle(label: gameText("rule_settings.label.sweep_enabled"), isOn: Binding(get: { configManager.ruleConfig?.special_moves.sweep.enabled ?? false }, set: { configManager.ruleConfig?.special_moves.sweep.enabled = $0 }))
 
             Divider().background(Color.white.opacity(0.1))
 
-            settingToggle(label: "총통 활성화", isOn: Binding(get: { configManager.ruleConfig?.special_moves.chongtong.enabled ?? false }, set: { configManager.ruleConfig?.special_moves.chongtong.enabled = $0 }))
+            settingToggle(label: gameText("rule_settings.label.chongtong_enabled"), isOn: Binding(get: { configManager.ruleConfig?.special_moves.chongtong.enabled ?? false }, set: { configManager.ruleConfig?.special_moves.chongtong.enabled = $0 }))
 
             if config.special_moves.chongtong.distinguish_timing {
                 settingStepper(
-                    label: "초기 총통 점수",
+                    label: gameText("rule_settings.label.chongtong_initial_score"),
                     value: Binding(
                         get: { configManager.ruleConfig?.special_moves.chongtong.initial_chongtong_score ?? 20 },
                         set: { configManager.ruleConfig?.special_moves.chongtong.initial_chongtong_score = max(0, $0) }
                     )
                 )
                 settingStepper(
-                    label: "중반 총통 점수",
+                    label: gameText("rule_settings.label.chongtong_midgame_score"),
                     value: Binding(
                         get: { configManager.ruleConfig?.special_moves.chongtong.midgame_chongtong_score ?? 10 },
                         set: { configManager.ruleConfig?.special_moves.chongtong.midgame_chongtong_score = max(0, $0) }
@@ -211,7 +247,7 @@ struct RuleSettingsView: View {
                 )
             } else {
                 settingStepper(
-                    label: "총통 점수",
+                    label: gameText("rule_settings.label.chongtong_score"),
                     value: Binding(
                         get: { configManager.ruleConfig?.special_moves.chongtong.initial_chongtong_score ?? 10 },
                         set: { newValue in
@@ -228,10 +264,10 @@ struct RuleSettingsView: View {
     @ViewBuilder
     private func endgameSettings(config: RuleConfig) -> some View {
         VStack(spacing: 12) {
-            settingStepper(label: "2인 최소 승리 점수", value: Binding(get: { configManager.ruleConfig?.go_stop.min_score_2_players ?? 7 }, set: { configManager.ruleConfig?.go_stop.min_score_2_players = $0 }))
-            settingStepper(label: "3인 최소 승리 점수", value: Binding(get: { configManager.ruleConfig?.go_stop.min_score_3_players ?? 3 }, set: { configManager.ruleConfig?.go_stop.min_score_3_players = $0 }))
-            settingStepper(label: "최대 고 횟수", value: Binding(get: { configManager.ruleConfig?.endgame.max_go_count ?? 5 }, set: { configManager.ruleConfig?.endgame.max_go_count = $0 }))
-            settingStepper(label: "라운드 최대 점수", value: Binding(get: { configManager.ruleConfig?.endgame.max_round_score ?? 50 }, set: { configManager.ruleConfig?.endgame.max_round_score = $0 }))
+            settingStepper(label: gameText("rule_settings.label.min_score_2_players"), value: Binding(get: { configManager.ruleConfig?.go_stop.min_score_2_players ?? 7 }, set: { configManager.ruleConfig?.go_stop.min_score_2_players = $0 }))
+            settingStepper(label: gameText("rule_settings.label.min_score_3_players"), value: Binding(get: { configManager.ruleConfig?.go_stop.min_score_3_players ?? 3 }, set: { configManager.ruleConfig?.go_stop.min_score_3_players = $0 }))
+            settingStepper(label: gameText("rule_settings.label.max_go_count"), value: Binding(get: { configManager.ruleConfig?.endgame.max_go_count ?? 5 }, set: { configManager.ruleConfig?.endgame.max_go_count = $0 }))
+            settingStepper(label: gameText("rule_settings.label.max_round_score"), value: Binding(get: { configManager.ruleConfig?.endgame.max_round_score ?? 50 }, set: { configManager.ruleConfig?.endgame.max_round_score = $0 }))
         }
     }
     

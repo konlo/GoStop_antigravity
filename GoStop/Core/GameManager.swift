@@ -230,6 +230,25 @@ class GameManager: ObservableObject {
         return players[currentTurnIndex]
     }
 
+    private func gameEndReasonText(_ reason: GameEndReason) -> String {
+        switch reason {
+        case .stop:
+            return gameText("penalty.reason.stop")
+        case .maxScore:
+            return gameText("penalty.reason.max_score")
+        case .nagari:
+            return gameText("penalty.reason.nagari")
+        case .chongtong:
+            return gameText("penalty.reason.chongtong")
+        case .threeSeolsa:
+            return gameText("penalty.reason.three_seolsa")
+        }
+    }
+
+    private func piTransferReasonSuffix(_ reason: String) -> String {
+        reason.isEmpty ? "" : " [\(reason)]"
+    }
+
     private func setMoveContext(
         source: String,
         target: String,
@@ -318,13 +337,13 @@ class GameManager: ObservableObject {
         for kind in orderedKinds where newlyAdded.contains(kind) {
             switch kind {
             case "cheongdan":
-                gLog("\(player.name) triggered 청단(Cheongdan)")
+                gLog(gameText("log.event.score_cheongdan", ["player": player.name]))
             case "hongdan":
-                gLog("\(player.name) triggered 홍단(Hongdan)")
+                gLog(gameText("log.event.score_hongdan", ["player": player.name]))
             case "godori":
-                gLog("\(player.name) triggered 고도리(Godori)")
+                gLog(gameText("log.event.score_godori", ["player": player.name]))
             case "gusa":
-                gLog("\(player.name) triggered 구사(Gusa)")
+                gLog(gameText("log.event.score_gusa", ["player": player.name]))
             default:
                 break
             }
@@ -385,8 +404,8 @@ class GameManager: ObservableObject {
     func setupGame(seed: Int? = nil) {
         automationDelayGeneration += 1
         externalControlMode = false
-        let player1 = Player(name: "Player 1", money: 10000)
-        let computer = Player(name: "Computer", money: 10000)
+        let player1 = Player(name: gameText("players.default.player_one"), money: 10000)
+        let computer = Player(name: gameText("players.default.computer"), money: 10000)
         computer.isComputer = true
         self.players = [player1, computer]
         bindPlayerChangeForwarding()
@@ -458,7 +477,7 @@ class GameManager: ObservableObject {
     
     func dealCards() {
         // Standard 2-player deal: 10 cards each, 8 on table
-        gLog("Dealing cards: 10 to each player, 8 to table")
+        gLog(gameText("log.event.deal_cards"))
         for player in players {
             player.hand = deck.draw(count: 10)
         }
@@ -472,7 +491,7 @@ class GameManager: ObservableObject {
         
         if let monthIdx = tableMonthCounts.first(where: { $0.value == 4 })?.key {
             let month = Month(rawValue: monthIdx) ?? .none
-            gLog("Initial Table Nagari (4 cards of month \(month)) detected!")
+            gLog(gameText("log.event.initial_table_nagari", ["month": String(describing: month)]))
             self.gameState = .ended
             self.gameEndReason = .nagari
             return
@@ -482,7 +501,7 @@ class GameManager: ObservableObject {
         if let rules = RuleLoader.shared.config, rules.special_moves.chongtong.enabled {
             for player in players {
                 if let month = getChongtongMonth(for: player) {
-                    gLog("Initial Chongtong detected for \(player.name) in month \(month)!")
+                    gLog(gameText("log.event.initial_chongtong", ["player": player.name, "month": month]))
                     resolveChongtong(player: player, month: month, timing: "initial")
                     return
                 }
@@ -496,7 +515,7 @@ class GameManager: ObservableObject {
     
     func startGame(initialTurnIndex: Int? = nil) {
         if gameState == .ended {
-            gLog("Game already ended (e.g. initial Chongtong). Skipping startGame playing state.")
+            gLog(gameText("log.event.skip_start_game_already_ended"))
             return
         }
         // 이전 게임의 이동 애니메이션이 stuck 상태로 남아있을 수 있음.
@@ -518,8 +537,10 @@ class GameManager: ObservableObject {
         } else {
             startingTurnIndex = 0
         }
-        let starterName = players.indices.contains(startingTurnIndex) ? players[startingTurnIndex].name : "Player 1"
-        gLog("Game started. \(starterName) turn.")
+        let starterName = players.indices.contains(startingTurnIndex)
+            ? players[startingTurnIndex].name
+            : gameText("players.default.player_one")
+        gLog(gameText("log.event.game_started", ["starter": starterName]))
         self.uxEventLogs.removeAll() // Ensure HUD is correctly reset for test agent loops
         currentTurnIndex = startingTurnIndex
         gameState = .playing
@@ -592,14 +613,24 @@ class GameManager: ObservableObject {
                 dayEndHour: dayEndHour,
                 referenceDate: referenceDate
             ) {
-                let modeLabel = isDaytime ? "낮장" : "밤일"
-                gLog("First-launch starter decided by \(modeLabel): P1=\(playerOneMonth), P2=\(playerTwoMonth), winner=\(winnerIndex)")
+                let modeLabel = isDaytime ? gameText("starter.mode.day") : gameText("starter.mode.night")
+                gLog(
+                    gameText(
+                        "log.event.first_launch_starter_decided",
+                        [
+                            "mode": modeLabel,
+                            "playerOneMonth": playerOneMonth,
+                            "playerTwoMonth": playerTwoMonth,
+                            "winnerIndex": winnerIndex
+                        ]
+                    )
+                )
                 return winnerIndex
             }
             drawIndex += 2
         }
 
-        gLog("Night/day starter draw tie fallback. Defaulting to Player 1.")
+        gLog(gameText("log.event.starter_tie_fallback"))
         return 0
     }
     
@@ -644,12 +675,12 @@ class GameManager: ObservableObject {
             isMungbak: false,
             isJabak: false,
             isYeokbak: false,
-            scoreFormula: "Chongtong Rule (\(timing)) = \(score)"
+            scoreFormula: gameText("penalty.formula.chongtong_rule", ["timing": timing, "score": score])
         )
         recordWinScore(points: score, for: player)
         
         self.gameState = .ended
-        gLog("Game ended via CHONGTONG! Winner: \(player.name), Score: \(score)")
+        gLog(gameText("log.event.game_ended_chongtong", ["player": player.name, "score": score]))
     }
     
     func respondToShake(month: Int, didShake: Bool) {
@@ -658,7 +689,7 @@ class GameManager: ObservableObject {
         if didShake {
             player.shakeCount += 1
             player.shakenMonths.append(month)
-            gLog("\(player.name) declared SHAKE for month \(month)!")
+            gLog(gameText("log.event.shake_declared", ["player": player.name, "month": month]))
         } else {
             if !player.shakenMonths.contains(month) {
                 player.shakenMonths.append(month)
@@ -669,7 +700,7 @@ class GameManager: ObservableObject {
         
         if pendingShakeMonths.isEmpty {
             gameState = .playing
-            gLog("Shake phase resolved. Resuming turn.")
+            gLog(gameText("log.event.shake_resolved"))
             if let card = pendingShakeCard {
                 pendingShakeCard = nil
                 pendingShakeMonth = nil
@@ -678,7 +709,7 @@ class GameManager: ObservableObject {
                 maybeScheduleInternalComputerAction()
             }
         } else {
-            gLog("More shakes pending: \(pendingShakeMonths)")
+            gLog(gameText("log.event.shake_more_pending", ["months": String(describing: pendingShakeMonths)]))
             maybeScheduleInternalComputerAction()
         }
     }
@@ -688,14 +719,14 @@ class GameManager: ObservableObject {
               let player = currentPlayer,
               let card = pendingChrysanthemumCard else { return }
         
-        gLog("\(player.name) chose role \(role.rawValue) for Chrysanthemum card.")
+        gLog(gameText("log.event.chrysanthemum_role_chosen", ["player": player.name, "role": role.rawValue]))
         
         player.objectWillChange.send()
         var updatedCard = card
         updatedCard.selectedRole = role
         
         player.capture(cards: [updatedCard])
-        gLog("Successfully captured Chrysanthemum with role \(role.rawValue).")
+        gLog(gameText("log.event.chrysanthemum_capture_success", ["role": role.rawValue]))
         
         pendingChrysanthemumCard = nil
         gameState = .playing
@@ -727,28 +758,43 @@ class GameManager: ObservableObject {
         isSelfSeolsaEatFlag = false
         
         if turnIsBomb {
-            gLog("\(player.name) triggered 폭탄(Bomb)")
-            stealPi(from: opponent, to: player, count: rules.special_moves.bomb.steal_pi_count, reason: "폭탄(Bomb)")
+            gLog(gameText("log.event.bomb_triggered", ["player": player.name]))
+            stealPi(
+                from: opponent,
+                to: player,
+                count: rules.special_moves.bomb.steal_pi_count,
+                reason: gameText("log.reason.bomb")
+            )
         }
         if turnIsTtadak && rules.special_moves.ttadak.enabled {
             player.ttadakCount += 1
-            gLog("\(player.name) triggered 따닥(Ttadak)")
-            stealPi(from: opponent, to: player, count: rules.special_moves.ttadak.steal_pi_count, reason: "따닥(Ttadak)")
+            gLog(gameText("log.event.ttadak_triggered", ["player": player.name]))
+            stealPi(
+                from: opponent,
+                to: player,
+                count: rules.special_moves.ttadak.steal_pi_count,
+                reason: gameText("log.reason.ttadak")
+            )
             maybeAwardOpeningTurnBonus(
                 to: player,
                 alreadyAwarded: player.awardedFirstTurnTtadakBonus,
                 setAwarded: { player.awardedFirstTurnTtadakBonus = true },
                 points: rules.special_moves.ttadak.first_turn_bonus_score ?? 0,
-                label: "첫 따닥"
+                label: gameText("log.label.opening_ttadak")
             )
         }
         if turnIsJjok && !isValidJjok {
-            gLog("\(player.name) produced Jjok on the last hand card. Ignoring per rule.")
+            gLog(gameText("log.event.jjok_last_hand_ignored", ["player": player.name]))
         }
         if isValidJjok && rules.special_moves.jjok.enabled {
             player.jjokCount += 1
-            gLog("\(player.name) triggered 쪽(Jjok)")
-            stealPi(from: opponent, to: player, count: rules.special_moves.jjok.steal_pi_count, reason: "쪽(Jjok)")
+            gLog(gameText("log.event.jjok_triggered", ["player": player.name]))
+            stealPi(
+                from: opponent,
+                to: player,
+                count: rules.special_moves.jjok.steal_pi_count,
+                reason: gameText("log.reason.jjok")
+            )
         }
         if turnIsSeolsa && rules.special_moves.seolsa.enabled && turnPlayPhaseCaptured.isEmpty {
             let month = turnPlayedCard?.month.rawValue ?? 0
@@ -759,10 +805,15 @@ class GameManager: ObservableObject {
                 invalidLastHandSeolsaMonths.insert(month)
             } else {
                 player.seolsaCount += 1
-                gLog("\(player.name) triggered 뻑(Seolsa) for month \(month)")
+                gLog(gameText("log.event.seolsa_triggered", ["player": player.name, "month": month]))
                 let seolsaPenaltyPi = rules.special_moves.seolsa.penalty_pi_count
                 if seolsaPenaltyPi > 0 {
-                    stealPi(from: player, to: opponent, count: seolsaPenaltyPi, reason: "뻑(Seolsa) 패널티")
+                    stealPi(
+                        from: player,
+                        to: opponent,
+                        count: seolsaPenaltyPi,
+                        reason: gameText("log.reason.seolsa_penalty")
+                    )
                 }
                 seolsaMonths[month] = player
                 maybeAwardOpeningTurnBonus(
@@ -770,19 +821,29 @@ class GameManager: ObservableObject {
                     alreadyAwarded: player.awardedFirstTurnSeolsaBonus,
                     setAwarded: { player.awardedFirstTurnSeolsaBonus = true },
                     points: rules.special_moves.seolsa.first_turn_bonus_score ?? 0,
-                    label: "첫 뻑"
+                    label: gameText("log.label.opening_seolsa")
                 )
             }
         }
         if didSeolsaEat && rules.special_moves.seolsaEat.enabled {
             player.seolsaEatCount += 1
-            gLog("\(player.name) triggered 뻑 먹기(Seolsa Eat)")
-            stealPi(from: opponent, to: player, count: rules.special_moves.seolsaEat.steal_pi_count, reason: "뻑 먹기(Seolsa Eat)")
+            gLog(gameText("log.event.seolsa_eat_triggered", ["player": player.name]))
+            stealPi(
+                from: opponent,
+                to: player,
+                count: rules.special_moves.seolsaEat.steal_pi_count,
+                reason: gameText("log.reason.seolsa_eat")
+            )
         }
         if didSelfSeolsaEat && rules.special_moves.seolsaEat.enabled {
             player.seolsaEatCount += 1
-            gLog("\(player.name) triggered 자뻑(Self Seolsa Eat)")
-            stealPi(from: opponent, to: player, count: rules.special_moves.seolsaEat.self_eat_steal_pi_count, reason: "자뻑(Self Seolsa Eat)")
+            gLog(gameText("log.event.self_seolsa_eat_triggered", ["player": player.name]))
+            stealPi(
+                from: opponent,
+                to: player,
+                count: rules.special_moves.seolsaEat.self_eat_steal_pi_count,
+                reason: gameText("log.reason.self_seolsa_eat")
+            )
         }
         
         let allowEmptyStartJjokSweep =
@@ -793,9 +854,14 @@ class GameManager: ObservableObject {
            (turnTableWasNotEmpty || allowEmptyStartJjokSweep),
            tableCards.isEmpty,
            !player.hand.isEmpty {
-            gLog("\(player.name) swept the table (싹쓸이)!")
+            gLog(gameText("log.event.sweep_triggered", ["player": player.name]))
             player.sweepCount += 1
-            stealPi(from: opponent, to: player, count: rules.special_moves.sweep.steal_pi_count, reason: "싹쓸이(Sweep)")
+            stealPi(
+                from: opponent,
+                to: player,
+                count: rules.special_moves.sweep.steal_pi_count,
+                reason: gameText("log.reason.sweep")
+            )
         }
         
         if checkEndgameConditions(player: player, opponent: opponent, rules: rules, isAfterGo: false) {
@@ -806,11 +872,14 @@ class GameManager: ObservableObject {
         if player.score >= minScore && player.score > player.lastGoScore {
             if isScoreClaimBlocked(winner: player, loser: opponent, rules: rules) {
                 gLog(
-                    "\(player.name) reached \(player.score) points, but \(opponent.name) has not captured any cards this round. Score claim is blocked."
+                    gameText(
+                        "log.event.score_claim_blocked",
+                        ["player": player.name, "score": player.score, "opponent": opponent.name]
+                    )
                 )
                 endTurn()
             } else if player.hand.count == 0 {
-                gLog("\(player.name) reached \(player.score) points, but has no cards left. Forced STOP.")
+                gLog(gameText("log.event.forced_stop_no_cards", ["player": player.name, "score": player.score]))
                 executeStop(player: player, rules: rules)
             } else {
                 gameState = .askingGoStop
@@ -831,7 +900,7 @@ class GameManager: ObservableObject {
         let isOpeningTurnContext = turnWasOpeningTurn || completedTurnCount == 0
         guard isOpeningTurnContext, !alreadyAwarded, points > 0 else { return }
         setAwarded()
-        gLog("\(player.name) received \(label) bonus (+\(points) points)")
+        gLog(gameText("log.event.opening_bonus", ["player": player.name, "label": label, "points": points]))
         updateScoreAndEmitScoreEvents(for: player)
     }
 
@@ -840,11 +909,20 @@ class GameManager: ObservableObject {
         let playedCard = pendingCapturePlayedCard
         let drawnCard = pendingCaptureDrawnCard
         
-        gLog("\(player.name) chose \(selectedCard.type) for month \(selectedCard.month) capture")
+        gLog(
+            gameText(
+                "log.event.capture_choice",
+                [
+                    "player": player.name,
+                    "type": selectedCard.type.rawValue,
+                    "month": String(describing: selectedCard.month)
+                ]
+            )
+        )
 
         let triggerCard = playedCard ?? drawnCard
         guard let trigger = triggerCard else {
-            gLog("ERROR: respondToCapture called but no trigger card found.")
+            gLog(gameText("log.error.respond_capture_missing_trigger"))
             return
         }
 
@@ -868,7 +946,7 @@ class GameManager: ObservableObject {
             pendingCaptureOptions = []
             gameState = .playing
 
-            gLog("\(player.name) locked play capture choice (\(captured.count) cards). Waiting for draw reveal.")
+            gLog(gameText("log.event.capture_locked", ["player": player.name, "count": captured.count]))
 
             let matchPause = AnimationManager.shared.config.match_pause_duration
             if matchPause > 0 {
@@ -890,7 +968,7 @@ class GameManager: ObservableObject {
         if let idx = resultingTable.firstIndex(where: { $0.id == selectedCard.id }) {
             resultingTable.remove(at: idx)
         } else {
-            gLog("ERROR: Draw-choice selected card not found in draw base table.")
+            gLog(gameText("log.error.draw_choice_card_missing"))
         }
         turnDrawPhaseBaseTable = nil
 
@@ -901,7 +979,7 @@ class GameManager: ObservableObject {
         pendingCaptureOptions = []
         gameState = .playing
 
-        gLog("\(player.name) finalized draw capture choice (\(captured.count) cards).")
+        gLog(gameText("log.event.capture_finalized", ["player": player.name, "count": captured.count]))
 
         let commit: () -> Void = {
             self.commitResolvedCapturesAndFinalize(
@@ -1065,13 +1143,32 @@ class GameManager: ObservableObject {
     }
 
     func playTurn(card: Card) {
-        guard let rules = RuleLoader.shared.config else { gLog("playTurn BLOCKED: rules nil"); return }
-        guard gameState == .playing else { gLog("playTurn BLOCKED: gameState=\(gameState) (not .playing)"); return }
-        guard !isAutomationBusy else {
-            gLog("playTurn BLOCKED: isAutomationBusy=true (pendingDelays=\(pendingAutomationDelays), movingCards=\(currentMovingCards.count), hiddenSrc=\(hiddenInSourceCardIds.count), hiddenTgt=\(hiddenInTargetCardIds.count))")
+        guard let rules = RuleLoader.shared.config else {
+            gLog(gameText("log.event.playturn_blocked_rules_nil"))
             return
         }
-        guard let player = currentPlayer else { gLog("playTurn BLOCKED: currentPlayer=nil"); return }
+        guard gameState == .playing else {
+            gLog(gameText("log.event.playturn_blocked_game_state", ["state": gameState.rawValue]))
+            return
+        }
+        guard !isAutomationBusy else {
+            gLog(
+                gameText(
+                    "log.event.playturn_blocked_busy",
+                    [
+                        "pendingDelays": pendingAutomationDelays,
+                        "movingCards": currentMovingCards.count,
+                        "hiddenSrc": hiddenInSourceCardIds.count,
+                        "hiddenTgt": hiddenInTargetCardIds.count
+                    ]
+                )
+            )
+            return
+        }
+        guard let player = currentPlayer else {
+            gLog(gameText("log.event.playturn_blocked_no_player"))
+            return
+        }
 
 
         self.uxEventLogs.removeAll() // Clear stale logs from previous turn
@@ -1088,7 +1185,7 @@ class GameManager: ObservableObject {
                 pendingShakeMonth = card.month.rawValue
                 pendingShakeMonths = [card.month.rawValue]
                 gameState = .askingShake
-                gLog("\(player.name) can SHAKE for month \(card.month)! Asking...")
+                gLog(gameText("log.event.can_shake", ["player": player.name, "month": String(describing: card.month)]))
                 maybeScheduleInternalComputerAction()
                 return
             }
@@ -1111,7 +1208,7 @@ class GameManager: ObservableObject {
         
         // Phase 1: Hand Play
         if card.type == .dummy {
-            gLog("\(player.name) played a DUMMY card.")
+            gLog(gameText("log.event.played_dummy", ["player": player.name]))
             player.dummyCardCount -= 1
             if let idx = player.hand.firstIndex(where: { $0.id == card.id }) {
                 player.hand.remove(at: idx)
@@ -1235,9 +1332,9 @@ class GameManager: ObservableObject {
 
     private func handleBombPlay(player: Player, month: Month, handMatches: [Card], tableMatches: [Card], rules: RuleConfig) {
         turnIsBomb = true
-        gLog("\(player.name) triggered BOMB!")
+        gLog(gameText("log.event.bomb_triggered_upper", ["player": player.name]))
         guard let tableTarget = tableMatches.first else {
-            gLog("ERROR: Bomb triggered without a matching table target.")
+            gLog(gameText("log.error.bomb_missing_target"))
             proceedToDrawPhase(player: player, rules: rules)
             return
         }
@@ -1380,7 +1477,15 @@ class GameManager: ObservableObject {
                 return
             }
 
-            gLog("Drawn: \(drawnCard.month) (\(drawnCard.type))")
+            gLog(
+                gameText(
+                    "log.event.drawn_card",
+                    [
+                        "month": String(describing: drawnCard.month),
+                        "type": drawnCard.type.rawValue
+                    ]
+                )
+            )
 
             self.tableCards.append(drawnCard)
             self.deck.pushCardsOnTop([drawnCard])
@@ -1407,9 +1512,14 @@ class GameManager: ObservableObject {
                         self.showTargetCue(for: [drawnCard], tableImpactMatched: false)
                         self.turnIsSeolsa = true
                         if invalidOnLastHand && player.hand.isEmpty {
-                            gLog("\(player.name) produced Seolsa on the last hand card for month \(drawnCard.month.rawValue). Ignoring per rule.")
+                            gLog(
+                                gameText(
+                                    "log.event.seolsa_last_hand_ignored",
+                                    ["player": player.name, "month": drawnCard.month.rawValue]
+                                )
+                            )
                         } else {
-                            gLog("SEOLSA!")
+                            gLog(gameText("log.event.seolsa_marker"))
                         }
                         self.turnPlayPhaseCaptured = []
                         self.turnDrawPhaseCaptured = []
@@ -1550,7 +1660,7 @@ class GameManager: ObservableObject {
         if isGo {
             player.goCount += 1
             player.lastGoScore = player.score
-            gLog("\(player.name) calls GO! (Count: \(player.goCount))")
+            gLog(gameText("log.event.go_called", ["player": player.name, "count": player.goCount]))
             let opponentIndex = (currentTurnIndex + 1) % players.count
             let opponent = players[opponentIndex]
             gameState = .playing
@@ -1561,7 +1671,10 @@ class GameManager: ObservableObject {
             let opponent = players[opponentIndex]
             if isScoreClaimBlocked(winner: player, loser: opponent, rules: rules) {
                 gLog(
-                    "\(player.name) tried to STOP at \(player.score) points, but \(opponent.name) has not captured any cards this round. Continuing play."
+                    gameText(
+                        "log.event.stop_blocked",
+                        ["player": player.name, "score": player.score, "opponent": opponent.name]
+                    )
                 )
                 gameState = .playing
                 endTurn()
@@ -1578,7 +1691,16 @@ class GameManager: ObservableObject {
         updateScoreAndEmitScoreEvents(for: player)
         updateScoreAndEmitScoreEvents(for: opponent)
         let result = PenaltySystem.calculatePenalties(winner: player, loser: opponent, rules: rules)
-        gLog("\(player.name) calls STOP (\(reason)) and wins! Final Score: \(result.finalScore)")
+        gLog(
+            gameText(
+                "log.event.stop_called",
+                [
+                    "player": player.name,
+                    "reason": gameEndReasonText(reason),
+                    "score": result.finalScore
+                ]
+            )
+        )
         opponent.money -= result.finalScore * 100
         player.money += result.finalScore * 100
         recordWinScore(points: result.finalScore, for: player)
@@ -1608,7 +1730,10 @@ class GameManager: ObservableObject {
             isMungbak: false,
             isJabak: false,
             isYeokbak: false,
-            scoreFormula: "Three Seolsa Rule (\(requiredCount) Seolsa) = \(winScore)"
+            scoreFormula: gameText(
+                "penalty.formula.three_seolsa_rule",
+                ["count": requiredCount, "score": winScore]
+            )
         )
         self.gameWinner = player
         self.gameLoser = opponent
@@ -1636,20 +1761,20 @@ class GameManager: ObservableObject {
             self.gameEndReason = .nagari
             self.lastPenaltyResult = PenaltySystem.PenaltyResult(
                 finalScore: 0, isGwangbak: false, isPibak: false, isGobak: false,
-                isMungbak: false, isJabak: false, isYeokbak: false, scoreFormula: "Nagari"
+                isMungbak: false, isJabak: false, isYeokbak: false, scoreFormula: gameText("penalty.formula.nagari")
             )
             self.gameWinner = nil
             self.gameLoser = nil
             settleResidualCardsIfHandsEmpty()
             gameState = .ended
-            gLog("Game Ended in Nagari!")
+            gLog(gameText("log.event.nagari_ended"))
             return
         }
         currentTurnIndex = (currentTurnIndex + 1) % players.count
         if gameState == .playing {
             var skips = 0
             while let player = currentPlayer, player.hand.isEmpty, skips < players.count {
-                gLog("Skipping \(player.name) turn: no cards in hand.")
+                gLog(gameText("log.event.skip_empty_hand_turn", ["player": player.name]))
                 currentTurnIndex = (currentTurnIndex + 1) % players.count
                 skips += 1
             }
@@ -1657,13 +1782,13 @@ class GameManager: ObservableObject {
                 self.gameEndReason = .nagari
                 self.lastPenaltyResult = PenaltySystem.PenaltyResult(
                     finalScore: 0, isGwangbak: false, isPibak: false, isGobak: false,
-                    isMungbak: false, isJabak: false, isYeokbak: false, scoreFormula: "Nagari"
+                    isMungbak: false, isJabak: false, isYeokbak: false, scoreFormula: gameText("penalty.formula.nagari")
                 )
                 self.gameWinner = nil
                 self.gameLoser = nil
                 settleResidualCardsIfHandsEmpty()
                 gameState = .ended
-                gLog("Game Ended in Nagari (Hand Empty)!")
+                gLog(gameText("log.event.nagari_hand_empty"))
                 return
             }
         }
@@ -1680,7 +1805,16 @@ class GameManager: ObservableObject {
         let seolsaInstantWinCount = seolsaRule.instant_win_count ?? 0
         if seolsaRule.enabled, seolsaInstantWinCount > 0, player.seolsaCount >= seolsaInstantWinCount {
             let seolsaInstantWinScore = seolsaRule.instant_win_score ?? 10
-            gLog("\(player.name) reached Triple Seolsa (\(player.seolsaCount)) and wins immediately with \(seolsaInstantWinScore) points.")
+            gLog(
+                gameText(
+                    "log.event.triple_seolsa",
+                    [
+                        "player": player.name,
+                        "count": player.seolsaCount,
+                        "score": seolsaInstantWinScore
+                    ]
+                )
+            )
             resolveThreeSeolsaWin(
                 player: player,
                 opponent: opponent,
@@ -1696,10 +1830,10 @@ class GameManager: ObservableObject {
            (instantEnd.gwangbak && bak.isGwangbak) || 
            (instantEnd.mungbak && bak.isMungbak) {
             if scoreClaimBlocked {
-                gLog("Instant End via Bak is blocked because \(opponent.name) has not captured any cards this round.")
+                gLog(gameText("log.event.instant_bak_blocked", ["opponent": opponent.name]))
                 return false
             }
-            gLog("Instant End Condition met via Bak!")
+            gLog(gameText("log.event.instant_bak_met"))
             executeStop(player: player, rules: rules)
             return true
         }
@@ -1708,10 +1842,15 @@ class GameManager: ObservableObject {
         let scoreForThreshold = (endgame.score_check_timing == "post_multiplier") ? bak.finalScore : player.score
         if scoreForThreshold >= endgame.max_round_score {
             if scoreClaimBlocked {
-                gLog("\(player.name) reached Max Score, but score claim is blocked because \(opponent.name) has not captured any cards this round.")
+                gLog(gameText("log.event.max_score_blocked", ["player": player.name, "opponent": opponent.name]))
                 return false
             }
-            gLog("\(player.name) reached Max Score (\(endgame.max_round_score))! score=\(scoreForThreshold)")
+            gLog(
+                gameText(
+                    "log.event.max_score_reached",
+                    ["player": player.name, "maxScore": endgame.max_round_score, "score": scoreForThreshold]
+                )
+            )
             executeStop(player: player, rules: rules, reason: .maxScore)
             return true
         }
@@ -1719,10 +1858,10 @@ class GameManager: ObservableObject {
         // 3. Max Go Count
         if player.goCount >= endgame.max_go_count {
             if scoreClaimBlocked {
-                gLog("\(player.name) reached Max Go Count, but score claim is blocked because \(opponent.name) has not captured any cards this round.")
+                gLog(gameText("log.event.max_go_blocked", ["player": player.name, "opponent": opponent.name]))
                 return false
             }
-            gLog("\(player.name) reached Max Go Count (\(endgame.max_go_count))!")
+            gLog(gameText("log.event.max_go_reached", ["player": player.name, "maxGoCount": endgame.max_go_count]))
             executeStop(player: player, rules: rules, reason: .maxScore)
             return true
         }
@@ -1750,7 +1889,7 @@ class GameManager: ObservableObject {
             if winnerKwangs >= 3 && loserKwangs <= rules.penalties.gwangbak.opponent_max_kwang {
                 if rules.penalties.gwangbak.resolution_type == "pi_transfer" || rules.penalties.gwangbak.resolution_type == "both" {
                     let count = rules.penalties.gwangbak.pi_to_transfer
-                    stealPi(from: loser, to: winner, count: count, reason: "광박(Gwangbak) 피 이동")
+                    stealPi(from: loser, to: winner, count: count, reason: gameText("log.reason.gwangbak_transfer"))
                 }
             }
         }
@@ -1762,7 +1901,7 @@ class GameManager: ObservableObject {
             if winnerPi >= 10 && loserPi > 0 && loserPi < rules.penalties.pibak.opponent_min_pi_safe {
                 if rules.penalties.pibak.resolution_type == "pi_transfer" || rules.penalties.pibak.resolution_type == "both" {
                     let count = rules.penalties.pibak.pi_to_transfer
-                    stealPi(from: loser, to: winner, count: count, reason: "피박(Pibak) 피 이동")
+                    stealPi(from: loser, to: winner, count: count, reason: gameText("log.reason.pibak_transfer"))
                 }
             }
         }
@@ -1773,7 +1912,7 @@ class GameManager: ObservableObject {
             if winnerAnimals >= rules.penalties.mungbak.winner_min_animal {
                 if rules.penalties.mungbak.resolution_type == "pi_transfer" || rules.penalties.mungbak.resolution_type == "both" {
                     let count = rules.penalties.mungbak.pi_to_transfer
-                    stealPi(from: loser, to: winner, count: count, reason: "멍박(Mungbak) 피 이동")
+                    stealPi(from: loser, to: winner, count: count, reason: gameText("log.reason.mungbak_transfer"))
                 }
             }
         }
@@ -1813,7 +1952,7 @@ class GameManager: ObservableObject {
         self.opponentPreplayRevealCardId = nil
         self.internalComputerActionScheduled = false
         self.uxEventLogs.removeAll()
-        gLog("Emergency Busy State Reset triggered via SimulatorBridge.")
+        gLog(gameText("log.event.emergency_busy_reset"))
     }
 
     private var moveCueDuration: Double {
@@ -1957,30 +2096,45 @@ class GameManager: ObservableObject {
         switch gameState {
         case .playing:
             guard let card = chooseComputerPlayCard(from: player.hand) else { return }
-            gLog("Internal computer automation: \(player.name) plays \(card.month.rawValue) \(card.type.rawValue)")
+            gLog(
+                gameText(
+                    "log.event.automation_play",
+                    ["player": player.name, "month": card.month.rawValue, "type": card.type.rawValue]
+                )
+            )
             playTurn(card: card)
             
         case .askingShake:
             if let month = pendingShakeMonths.first ?? pendingShakeMonth {
-                gLog("Internal computer automation: auto-decline shake for month \(month)")
+                gLog(gameText("log.event.automation_decline_shake", ["month": month]))
                 respondToShake(month: month, didShake: false)
             }
             
         case .askingGoStop:
             let shouldGo = player.goCount == 0 && player.hand.count > 1
-            gLog("Internal computer automation: \(shouldGo ? "GO" : "STOP")")
+            gLog(
+                gameText(
+                    "log.event.automation_go_stop",
+                    ["decision": shouldGo ? gameText("common.button.go") : gameText("common.button.stop")]
+                )
+            )
             respondToGoStop(isGo: shouldGo)
             
         case .choosingCapture:
             if let selected = chooseComputerCaptureOption(from: pendingCaptureOptions) {
-                gLog("Internal computer automation: selecting capture \(selected.month.rawValue) \(selected.type.rawValue)")
+                gLog(
+                    gameText(
+                        "log.event.automation_select_capture",
+                        ["month": selected.month.rawValue, "type": selected.type.rawValue]
+                    )
+                )
                 respondToCapture(selectedCard: selected)
             }
             
         case .choosingChrysanthemumRole:
             let defaultRole = RuleLoader.shared.config
                 .flatMap { CardRole(rawValue: $0.cards.chrysanthemum_rule.default_role) } ?? .animal
-            gLog("Internal computer automation: Chrysanthemum role \(defaultRole.rawValue)")
+            gLog(gameText("log.event.automation_chrysanthemum_role", ["role": defaultRole.rawValue]))
             respondToChrysanthemumChoice(role: defaultRole)
             
         case .ready, .ended:
@@ -2237,14 +2391,31 @@ class GameManager: ObservableObject {
             updateScoreAndEmitScoreEvents(for: from)
             updateScoreAndEmitScoreEvents(for: to)
             let stolenCardsText = selectedCards.map { card in
-                let typeText = card.type == .doubleJunk ? "쌍피" : "피"
+                let typeText = card.type == .doubleJunk ? gameText("card.type.short.double_junk") : gameText("card.type.short.junk")
                 return "\(card.month.rawValue)월 \(typeText)"
             }.joined(separator: ", ")
-            let reasonStr = reason.isEmpty ? "" : " [\(reason)]"
-            gLog("피 이동\(reasonStr): \(from.name) → \(to.name) | \(stolenCardsText) (\(selectedCards.count)장)")
+            gLog(
+                gameText(
+                    "log.event.pi_transfer",
+                    [
+                        "reasonSuffix": piTransferReasonSuffix(reason),
+                        "from": from.name,
+                        "to": to.name,
+                        "cards": stolenCardsText,
+                        "count": selectedCards.count
+                    ]
+                )
+            )
         } else {
-            let reasonStr = reason.isEmpty ? "" : " [\(reason)]"
-            gLog("피 이동 실패\(reasonStr): \(from.name) 에게 피가 없음")
+            gLog(
+                gameText(
+                    "log.event.pi_transfer_failed",
+                    [
+                        "reasonSuffix": piTransferReasonSuffix(reason),
+                        "from": from.name
+                    ]
+                )
+            )
         }
     }
 
@@ -2358,7 +2529,7 @@ extension GameManager {
                     "isMungbak": AnyCodable(false),
                     "isJabak": AnyCodable(false),
                     "isYeokbak": AnyCodable(false),
-                    "scoreFormula": AnyCodable("Nagari (Draw)")
+                    "scoreFormula": AnyCodable(gameText("penalty.formula.nagari_draw"))
                 ])
             } else if let rules = RuleLoader.shared.config {
                 // Keep socket/state serialization behavior aligned with CLI dumpState fallback.

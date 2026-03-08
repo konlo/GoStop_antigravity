@@ -13,7 +13,7 @@ struct DebugEndgameSummaryView: View {
             Color.black.opacity(0.85).ignoresSafeArea()
             
             VStack {
-                Text("Endgame Debug Summary")
+                Text(gameText("summary.title"))
                     .font(.largeTitle)
                     .fontWeight(.bold)
                     .foregroundColor(.white)
@@ -26,15 +26,23 @@ struct DebugEndgameSummaryView: View {
                 
                 ScrollView {
                     VStack(spacing: 20) {
-                        playerSection(title: "Winner: \(winner.name) (Score: \(result.finalScore))", player: winner, isWinner: true)
-                        playerSection(title: "Loser: \(loser.name)", player: loser, isWinner: false)
+                        playerSection(
+                            title: gameText("summary.winner_title", ["name": winner.name, "score": result.finalScore]),
+                            player: winner,
+                            isWinner: true
+                        )
+                        playerSection(
+                            title: gameText("summary.loser_title", ["name": loser.name]),
+                            player: loser,
+                            isWinner: false
+                        )
                         penaltySection()
                     }
                     .padding()
                 }
                 
                 Button(action: onRestart) {
-                    Text("Close & Restart")
+                    Text(gameText("common.button.close_restart"))
                         .font(.title2)
                         .bold()
                         .frame(maxWidth: .infinity)
@@ -50,11 +58,11 @@ struct DebugEndgameSummaryView: View {
     
     var terminationText: String {
         switch reason {
-        case .stop: return "Game Ended By STOP call"
-        case .maxScore: return "Game Ended Due to Max Round Score Reached"
-        case .nagari: return "Game Ended in Nagari (Deck Empty)"
-        case .chongtong: return "Game Ended by Chongtong (4 of a Month)"
-        case .threeSeolsa: return "Game Ended by Triple Seolsa (3 Bbeuk)"
+        case .stop: return gameText("summary.termination.stop")
+        case .maxScore: return gameText("summary.termination.max_score")
+        case .nagari: return gameText("summary.termination.nagari")
+        case .chongtong: return gameText("summary.termination.chongtong")
+        case .threeSeolsa: return gameText("summary.termination.three_seolsa")
         }
     }
     
@@ -67,24 +75,24 @@ struct DebugEndgameSummaryView: View {
                 .foregroundColor(isWinner ? .green : .red)
             
             Group {
-                Text("Cards in Hand: \(player.hand.count)")
-                Text("Pi Count: \(player.piCount)")
-                Text("Go Count: \(player.goCount)")
-                Text("Shakes: \(player.shakeCount)")
-                Text("Bombs (폭탄): \(player.bombCount)")
-                Text("Sweeps (싹쓸이): \(player.sweepCount)")
-                Text("Ttadak (따닥): \(player.ttadakCount)")
-                Text("Jjok (쪽): \(player.jjokCount)")
-                Text("Seolsa/Bbeuk (뻑/설사): \(player.seolsaCount)")
-                Text("Mung-dda (멍따): \(player.mungddaCount)")
-                Text("Bomb Mung-dda (폭탄 멍따): \(player.bombMungddaCount)")
+                Text(gameText("summary.stat.cards_in_hand", ["count": player.hand.count]))
+                Text(gameText("summary.stat.pi_count", ["count": player.piCount]))
+                Text(gameText("summary.stat.go_count", ["count": player.goCount]))
+                Text(gameText("summary.stat.shakes", ["count": player.shakeCount]))
+                Text(gameText("summary.stat.bombs", ["count": player.bombCount]))
+                Text(gameText("summary.stat.sweeps", ["count": player.sweepCount]))
+                Text(gameText("summary.stat.ttadak", ["count": player.ttadakCount]))
+                Text(gameText("summary.stat.jjok", ["count": player.jjokCount]))
+                Text(gameText("summary.stat.seolsa", ["count": player.seolsaCount]))
+                Text(gameText("summary.stat.mungdda", ["count": player.mungddaCount]))
+                Text(gameText("summary.stat.bomb_mungdda", ["count": player.bombMungddaCount]))
             }
             .font(.subheadline)
             .foregroundColor(.white.opacity(0.8))
             
             if isWinner, RuleLoader.shared.config != nil {
                 VStack(alignment: .leading, spacing: 5) {
-                    Text("Score Formula:")
+                    Text(gameText("summary.score_formula_title"))
                         .font(.headline)
                         .foregroundColor(.yellow)
                         .padding(.top, 5)
@@ -100,7 +108,7 @@ struct DebugEndgameSummaryView: View {
                 let details = ScoringSystem.calculateScoreDetail(for: player)
                 if !details.isEmpty {
                     VStack(alignment: .leading, spacing: 5) {
-                        Text("Base Score Breakdown:")
+                        Text(gameText("summary.base_score_breakdown_title"))
                             .font(.headline)
                             .foregroundColor(.white)
                             .padding(.top, 5)
@@ -108,7 +116,7 @@ struct DebugEndgameSummaryView: View {
                             HStack {
                                 Text(item.name)
                                 Spacer()
-                                Text("\(item.points) pts")
+                                Text(gameText("common.label.score_points", ["points": item.points]))
                             }
                             .font(.caption)
                             .foregroundColor(.white.opacity(0.7))
@@ -126,18 +134,18 @@ struct DebugEndgameSummaryView: View {
     @ViewBuilder
     func penaltySection() -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Penalties Applied")
+            Text(gameText("summary.penalties_applied_title"))
                 .font(.title2)
                 .bold()
                 .foregroundColor(.orange)
             
             Group {
-                Text("Gwangbak: \(result.isGwangbak ? "Yes" : "No")")
-                Text("Pibak: \(result.isPibak ? "Yes" : "No")")
-                Text("Gobak: \(result.isGobak ? "Yes" : "No")")
-                Text("Mungbak: \(result.isMungbak ? "Yes" : "No")")
-                Text("Jabak: \(result.isJabak ? "Yes" : "No")")
-                Text("Yeokbak: \(result.isYeokbak ? "Yes" : "No")")
+                Text(gameText("summary.penalty_flag.gwangbak", ["value": result.isGwangbak ? gameText("common.value.yes") : gameText("common.value.no")]))
+                Text(gameText("summary.penalty_flag.pibak", ["value": result.isPibak ? gameText("common.value.yes") : gameText("common.value.no")]))
+                Text(gameText("summary.penalty_flag.gobak", ["value": result.isGobak ? gameText("common.value.yes") : gameText("common.value.no")]))
+                Text(gameText("summary.penalty_flag.mungbak", ["value": result.isMungbak ? gameText("common.value.yes") : gameText("common.value.no")]))
+                Text(gameText("summary.penalty_flag.jabak", ["value": result.isJabak ? gameText("common.value.yes") : gameText("common.value.no")]))
+                Text(gameText("summary.penalty_flag.yeokbak", ["value": result.isYeokbak ? gameText("common.value.yes") : gameText("common.value.no")]))
             }
             .font(.subheadline)
             .foregroundColor(.white.opacity(0.8))

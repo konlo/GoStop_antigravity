@@ -71,6 +71,21 @@ enum CapturedCardCenterKey {
     }
 }
 
+func localizedCapturedGroupLabel(_ type: String, fallback: String) -> String {
+    switch type {
+    case "gwang":
+        return gameText("captured_group.gwang")
+    case "animal":
+        return gameText("captured_group.animal")
+    case "ribbon":
+        return gameText("captured_group.ribbon")
+    case "pi":
+        return gameText("captured_group.pi")
+    default:
+        return fallback
+    }
+}
+
 // MARK: - Setting Area V2
 struct SettingAreaV2: View {
     let ctx: LayoutContext
@@ -125,19 +140,19 @@ struct SettingAreaV2: View {
                         // Settings Menu
                         Menu {
                             Button(action: { print("화투 소개 tapped") }) {
-                                Label("1. 화투 소개", systemImage: "book")
+                                Label(gameText("menu.hwatu_intro"), systemImage: "book")
                             }
                             Button(action: onSettingsTapped) {
-                                Label("2. 현재 설정 상태", systemImage: "gearshape")
+                                Label(gameText("menu.current_settings"), systemImage: "gearshape")
                             }
                             Button(action: { print("최고 기록 tapped") }) {
-                                Label("3. 최고 기록", systemImage: "trophy")
+                                Label(gameText("menu.best_record"), systemImage: "trophy")
                             }
                             Button(action: onLogTapped) {
-                                Label("4. 화투 Log", systemImage: "list.bullet.rectangle")
+                                Label(gameText("menu.hwatu_log"), systemImage: "list.bullet.rectangle")
                             }
                             Button(action: onDeveloperInfoTapped) {
-                                Label("5. 개발자 정보", systemImage: "person.info")
+                                Label(gameText("menu.developer_info"), systemImage: "person.info")
                             }
                         } label: {
                             Image(systemName: "gearshape.fill")
@@ -367,7 +382,7 @@ struct ScoreViewV2: View {
     }
     
     var body: some View {
-        let prefix = config.textPrefix ?? "점수: "
+        let prefix = config.textPrefix ?? gameText("common.label.score_prefix")
         let scoreFontSize = (config.typography?.fontSizePt ?? 20) * ctx.globalScale
         VStack(alignment: .leading, spacing: 3 * ctx.globalScale) {
             if let playerName {
@@ -377,7 +392,7 @@ struct ScoreViewV2: View {
                         .foregroundColor(.black.opacity(0.85))
                         .lineLimit(1)
                     if let cumulativeWinScore {
-                        Text("승리누적 \(cumulativeWinScore)")
+                        Text(gameText("common.label.cumulative_win", ["score": cumulativeWinScore]))
                             .font(.system(size: max(10, scoreFontSize * 0.6), weight: .bold))
                             .foregroundColor(.red.opacity(0.95))
                             .lineLimit(1)
@@ -876,7 +891,7 @@ struct CapturedGroupSlotView: View {
             }
             
             // Label
-            Text(groupConfig.label)
+            Text(localizedCapturedGroupLabel(groupConfig.type, fallback: groupConfig.label))
                 .font(.system(size: 9 * ctx.globalScale, weight: .bold))
                 .foregroundColor(.black.opacity(0.6))
                 .padding(2)

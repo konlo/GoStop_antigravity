@@ -115,12 +115,12 @@ struct CardView: View {
     
     @ViewBuilder
     var frontView: some View {
-        if card.month == .none {
+            if card.month == .none {
             // Dummy (도탄) card – no image asset exists for month .none
             ZStack {
                 Color.gray.opacity(0.25)
                 VStack(spacing: 2) {
-                    Text("도탄")
+                    Text(gameText("card.dummy_face"))
                         .font(.caption2)
                         .fontWeight(.bold)
                         .foregroundStyle(.gray)
@@ -149,7 +149,7 @@ struct CardView: View {
                 )
             
             if card.type == .dummy {
-                Text("D")
+                Text(gameText("card.dummy_back"))
                     .font(.system(size: size.width * 0.4, weight: .bold, design: .rounded))
                     .foregroundColor(.white.opacity(0.7))
             }

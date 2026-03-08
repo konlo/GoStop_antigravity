@@ -24,7 +24,7 @@ struct PenaltySystem {
                 isMungbak: false,
                 isJabak: false,
                 isYeokbak: false,
-                scoreFormula: "Blocked: opponent captured nothing this round"
+                scoreFormula: gameText("penalty.formula.blocked")
             )
         }
 
@@ -206,18 +206,25 @@ struct PenaltySystem {
         // Construct detailed formula string
         var formula = "(\(winner.score)"
         if goAddition > 0 {
-            formula += " + \(goAddition) Go bonus"
+            formula += " + " + gameText("penalty.formula.go_bonus", ["value": goAddition])
         }
         formula += ")"
         
         if multiplier > 1 {
             var multParts: [String] = []
-            if isGwangbak { multParts.append("Gwangbak(x\(rules.penalties.gwangbak.multiplier))") }
-            if isPibak { multParts.append("Pibak(x\(rules.penalties.pibak.multiplier))") }
-            if isMungbak { multParts.append("Mungbak(x\(rules.penalties.mungbak.multiplier))") }
-            if isGobak { multParts.append("Gobak(x\(rules.penalties.gobak.multiplier))") }
+            if isGwangbak { multParts.append(gameText("penalty.formula.gwangbak", ["multiplier": rules.penalties.gwangbak.multiplier])) }
+            if isPibak { multParts.append(gameText("penalty.formula.pibak", ["multiplier": rules.penalties.pibak.multiplier])) }
+            if isMungbak { multParts.append(gameText("penalty.formula.mungbak", ["multiplier": rules.penalties.mungbak.multiplier])) }
+            if isGobak { multParts.append(gameText("penalty.formula.gobak", ["multiplier": rules.penalties.gobak.multiplier])) }
             let shakeCount = winner.shakeCount
-            if shakeCount > 0 { multParts.append("Shake(x\(Int(pow(2.0, Double(shakeCount)))))") }
+            if shakeCount > 0 {
+                multParts.append(
+                    gameText(
+                        "penalty.formula.shake",
+                        ["multiplier": Int(pow(2.0, Double(shakeCount)))]
+                    )
+                )
+            }
             // Bomb multiplier removed as per rule: bomb does not affect score multiplier.
             // Sweep multiplier removed as per user request
             if winner.mungddaCount > 0 { multParts.append("Mungdda - REMOVED") }
@@ -229,7 +236,7 @@ struct PenaltySystem {
         }
         
         if goMultiplier > 1 {
-            formula += " x Multi-Go(x\(goMultiplier))"
+            formula += " x " + gameText("penalty.formula.multi_go", ["multiplier": goMultiplier])
         }
         
         formula += " = \(finalScore)"

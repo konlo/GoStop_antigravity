@@ -106,145 +106,145 @@ private struct SpecialEventPopupLogDefinition {
 enum SpecialEventPopupMapper {
     private static let definitions: [SpecialEventPopupLogDefinition] = [
         SpecialEventPopupLogDefinition(
-            logMarker: "reached Triple Seolsa",
-            actorMarker: " reached",
+            logMarker: gameText("log.marker.triple_seolsa"),
+            actorMarker: gameText("log.actor_marker.triple_seolsa"),
             buildPopup: { actor in
                 SpecialEventPopup(
                     kind: .tripleSeolsaEnd,
-                    title: "삼뻑 종료",
-                    detail: "\(actor)이(가) 3뻑으로 라운드를 종료했습니다."
+                    title: gameText("special_popup.title.triple_seolsa"),
+                    detail: gameText("special_popup.detail.triple_seolsa", ["player": actor])
                 )
             }
         ),
         SpecialEventPopupLogDefinition(
-            logMarker: "declared SHAKE for month",
-            actorMarker: " declared",
+            logMarker: gameText("log.marker.shake"),
+            actorMarker: gameText("log.actor_marker.shake"),
             buildPopup: { actor in
                 SpecialEventPopup(
                     kind: .shake,
-                    title: "흔들기",
-                    detail: "\(actor)이(가) 흔들기를 선언했습니다."
+                    title: gameText("special_popup.title.shake"),
+                    detail: gameText("special_popup.detail.shake", ["player": actor])
                 )
             }
         ),
         SpecialEventPopupLogDefinition(
-            logMarker: "triggered BOMB!",
-            actorMarker: " triggered",
+            logMarker: gameText("log.marker.bomb"),
+            actorMarker: gameText("log.actor_marker.bomb"),
             buildPopup: { actor in
                 SpecialEventPopup(
                     kind: .bomb,
-                    title: "폭탄",
-                    detail: "\(actor)이(가) 폭탄을 사용했습니다."
+                    title: gameText("special_popup.title.bomb"),
+                    detail: gameText("special_popup.detail.bomb", ["player": actor])
                 )
             }
         ),
         SpecialEventPopupLogDefinition(
-            logMarker: "swept the table (싹쓸이)!",
-            actorMarker: " swept",
+            logMarker: gameText("log.marker.sweep"),
+            actorMarker: gameText("log.actor_marker.sweep"),
             buildPopup: { actor in
                 SpecialEventPopup(
                     kind: .sweep,
-                    title: "싹쓸이",
-                    detail: "\(actor)이(가) 테이블을 싹쓸이했습니다."
+                    title: gameText("special_popup.title.sweep"),
+                    detail: gameText("special_popup.detail.sweep", ["player": actor])
                 )
             }
         ),
         SpecialEventPopupLogDefinition(
-            logMarker: "triggered 따닥(Ttadak)",
-            actorMarker: " triggered",
+            logMarker: gameText("log.marker.ttadak"),
+            actorMarker: gameText("log.actor_marker.ttadak"),
             buildPopup: { actor in
                 SpecialEventPopup(
                     kind: .ttadak,
-                    title: "따닥",
-                    detail: "\(actor)이(가) 따닥을 달성했습니다."
+                    title: gameText("special_popup.title.ttadak"),
+                    detail: gameText("special_popup.detail.ttadak", ["player": actor])
                 )
             }
         ),
         SpecialEventPopupLogDefinition(
-            logMarker: "triggered 쪽(Jjok)",
-            actorMarker: " triggered",
+            logMarker: gameText("log.marker.jjok"),
+            actorMarker: gameText("log.actor_marker.jjok"),
             buildPopup: { actor in
                 SpecialEventPopup(
                     kind: .jjok,
-                    title: "쪽",
-                    detail: "\(actor)이(가) 쪽을 달성했습니다."
+                    title: gameText("special_popup.title.jjok"),
+                    detail: gameText("special_popup.detail.jjok", ["player": actor])
                 )
             }
         ),
         SpecialEventPopupLogDefinition(
-            logMarker: "triggered 청단(Cheongdan)",
-            actorMarker: " triggered",
+            logMarker: gameText("log.marker.cheongdan"),
+            actorMarker: gameText("log.actor_marker.cheongdan"),
             buildPopup: { actor in
                 SpecialEventPopup(
                     kind: .cheongdan,
-                    title: "청단",
-                    detail: "\(actor)이(가) 청단을 달성했습니다."
+                    title: gameText("special_popup.title.cheongdan"),
+                    detail: gameText("special_popup.detail.cheongdan", ["player": actor])
                 )
             }
         ),
         SpecialEventPopupLogDefinition(
-            logMarker: "triggered 홍단(Hongdan)",
-            actorMarker: " triggered",
+            logMarker: gameText("log.marker.hongdan"),
+            actorMarker: gameText("log.actor_marker.hongdan"),
             buildPopup: { actor in
                 SpecialEventPopup(
                     kind: .hongdan,
-                    title: "홍단",
-                    detail: "\(actor)이(가) 홍단을 달성했습니다."
+                    title: gameText("special_popup.title.hongdan"),
+                    detail: gameText("special_popup.detail.hongdan", ["player": actor])
                 )
             }
         ),
         SpecialEventPopupLogDefinition(
-            logMarker: "triggered 고도리(Godori)",
-            actorMarker: " triggered",
+            logMarker: gameText("log.marker.godori"),
+            actorMarker: gameText("log.actor_marker.godori"),
             buildPopup: { actor in
                 SpecialEventPopup(
                     kind: .godori,
-                    title: "고도리",
-                    detail: "\(actor)이(가) 고도리를 달성했습니다."
+                    title: gameText("special_popup.title.godori"),
+                    detail: gameText("special_popup.detail.godori", ["player": actor])
                 )
             }
         ),
         SpecialEventPopupLogDefinition(
-            logMarker: "triggered 구사(Gusa)",
-            actorMarker: " triggered",
+            logMarker: gameText("log.marker.gusa"),
+            actorMarker: gameText("log.actor_marker.gusa"),
             buildPopup: { actor in
                 SpecialEventPopup(
                     kind: .gusa,
-                    title: "구사",
-                    detail: "\(actor)이(가) 구사를 달성했습니다."
+                    title: gameText("special_popup.title.gusa"),
+                    detail: gameText("special_popup.detail.gusa", ["player": actor])
                 )
             }
         ),
         SpecialEventPopupLogDefinition(
-            logMarker: "triggered 뻑(Seolsa)",
-            actorMarker: " triggered",
+            logMarker: gameText("log.marker.seolsa"),
+            actorMarker: gameText("log.actor_marker.seolsa"),
             buildPopup: { actor in
                 SpecialEventPopup(
                     kind: .seolsa,
-                    title: "뻑(설사)",
-                    detail: "\(actor)의 뻑(설사) 이벤트가 발생했습니다."
+                    title: gameText("special_popup.title.seolsa"),
+                    detail: gameText("special_popup.detail.seolsa", ["player": actor])
                 )
             }
         ),
         SpecialEventPopupLogDefinition(
-            logMarker: "triggered 뻑 먹기(Seolsa Eat)",
-            actorMarker: " triggered",
+            logMarker: gameText("log.marker.seolsa_eat"),
+            actorMarker: gameText("log.actor_marker.seolsa_eat"),
             buildPopup: { actor in
                 SpecialEventPopup(
                     kind: .seolsaEat,
-                    title: "뻑 먹기",
-                    detail: "\(actor)이(가) 뻑 먹기를 성공했습니다."
+                    title: gameText("special_popup.title.seolsa_eat"),
+                    detail: gameText("special_popup.detail.seolsa_eat", ["player": actor])
                 )
             }
         ),
         SpecialEventPopupLogDefinition(
-            logMarker: "triggered 자뻑(Self Seolsa Eat)",
-            actorMarker: " triggered",
+            logMarker: gameText("log.marker.self_seolsa_eat"),
+            actorMarker: gameText("log.actor_marker.self_seolsa_eat"),
             buildPopup: { actor in
                 SpecialEventPopup(
                     kind: .selfSeolsaEat,
-                    title: "자뻑",
-                    detail: "\(actor)의 자뻑 먹기 이벤트가 발생했습니다."
+                    title: gameText("special_popup.title.self_seolsa_eat"),
+                    detail: gameText("special_popup.detail.self_seolsa_eat", ["player": actor])
                 )
             }
         ),
@@ -252,7 +252,7 @@ enum SpecialEventPopupMapper {
 
     static func popup(from log: String) -> SpecialEventPopup? {
         for definition in definitions where log.contains(definition.logMarker) {
-            let actor = actorName(in: log, marker: definition.actorMarker) ?? "플레이어"
+            let actor = actorName(in: log, marker: definition.actorMarker) ?? gameText("players.default.anonymous")
             return definition.buildPopup(actor)
         }
         return nil

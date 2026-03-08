@@ -3,6 +3,39 @@ import Yams
 
 struct AppRuntimeConfiguration: Codable {
     var first_launch_starter_applied: Bool = false
+    var language: String = "ko"
+
+    init(
+        first_launch_starter_applied: Bool = false,
+        language: String = "ko"
+    ) {
+        self.first_launch_starter_applied = first_launch_starter_applied
+        self.language = Self.normalizedLanguageCode(language)
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case first_launch_starter_applied
+        case language
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        first_launch_starter_applied = try container.decodeIfPresent(Bool.self, forKey: .first_launch_starter_applied) ?? false
+        language = Self.normalizedLanguageCode(
+            try container.decodeIfPresent(String.self, forKey: .language) ?? "ko"
+        )
+    }
+
+    static func normalizedLanguageCode(_ raw: String) -> String {
+        let normalized = raw
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "-", with: "_")
+            .lowercased()
+        if normalized.hasPrefix("en") {
+            return "en"
+        }
+        return "ko"
+    }
 }
 
 struct AppConfiguration: Codable {
@@ -57,9 +90,19 @@ final class ConfigurationStore {
         cachedConfiguration.app.first_launch_starter_applied
     }
 
+    func appLanguage() -> String {
+        cachedConfiguration.app.language
+    }
+
     @discardableResult
     func setFirstLaunchStarterApplied(_ isApplied: Bool) -> Bool {
         cachedConfiguration.app.first_launch_starter_applied = isApplied
+        return persistToDisk()
+    }
+
+    @discardableResult
+    func setAppLanguage(_ language: String) -> Bool {
+        cachedConfiguration.app.language = AppRuntimeConfiguration.normalizedLanguageCode(language)
         return persistToDisk()
     }
 
@@ -138,6 +181,7 @@ class ConfigManager: ObservableObject {
     
     // Rules System
     @Published var ruleConfig: RuleConfig?
+    @Published var appLanguage: String
     
     // Helper to calculate constant card size based on current layout and game size
     func cardSize(scale: CGFloat = 1.0) -> CGSize {
@@ -187,6 +231,7 @@ class ConfigManager: ObservableObject {
     }
 
     private init() {
+        self.appLanguage = ConfigurationStore.shared.appLanguage()
         // Load V2
         self.layoutV2 = ConfigManager.loadLayoutV2()
         
@@ -198,6 +243,13 @@ class ConfigManager: ObservableObject {
         
         // Load Rules
         self.ruleConfig = RuleLoader.shared.config
+    }
+
+    @discardableResult
+    func saveAppLanguage() -> Bool {
+        let normalized = AppRuntimeConfiguration.normalizedLanguageCode(appLanguage)
+        appLanguage = normalized
+        return ConfigurationStore.shared.setAppLanguage(normalized)
     }
     
     static func loadLayoutV2() -> LayoutConfigV2? {

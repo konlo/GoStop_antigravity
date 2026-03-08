@@ -217,3 +217,4 @@ animation:
   opponent_action_delay: 0e+0
 app:
   first_launch_starter_applied: false
+  language: ko

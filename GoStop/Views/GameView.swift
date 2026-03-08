@@ -80,11 +80,11 @@ struct GameView: View {
                             .foregroundColor(.white.opacity(0.78))
 
                         HStack(alignment: .firstTextBaseline, spacing: 8) {
-                            Text("\(model.selectedLabel) 확대 보기")
+                            Text(gameText("common.label.preview_expand", ["label": model.selectedLabel]))
                                 .font(.system(size: max(22, 24 * ctx.globalScale), weight: .black, design: .rounded))
                                 .foregroundColor(.white)
                             Spacer(minLength: 8)
-                            Text("\(model.cards.count)장")
+                            Text(gameText("common.label.card_count", ["count": model.cards.count]))
                                 .font(.system(size: max(13, 14 * ctx.globalScale), weight: .bold, design: .rounded))
                                 .foregroundColor(.white.opacity(0.72))
                         }
@@ -117,7 +117,7 @@ struct GameView: View {
                         }
                         .frame(maxHeight: maxScrollHeight)
 
-                        Text("길게 눌러 열고, 확대 패널을 탭하면 닫습니다")
+                        Text(gameText("common.instruction.preview_dismiss"))
                             .font(.system(size: max(11, 12 * ctx.globalScale), weight: .medium, design: .rounded))
                             .foregroundColor(.white.opacity(0.66))
                     }
@@ -172,20 +172,20 @@ struct GameView: View {
             let typeLabel: String = {
                 switch card.type {
                 case .bright:
-                    return "광"
+                    return gameText("card.type.short.bright")
                 case .animal:
-                    return "끗"
+                    return gameText("card.type.short.animal")
                 case .ribbon:
-                    return "띠"
+                    return gameText("card.type.short.ribbon")
                 case .doubleJunk:
-                    return "쌍피"
+                    return gameText("card.type.short.double_junk")
                 case .junk:
-                    return "피"
+                    return gameText("card.type.short.junk")
                 case .dummy:
-                    return "도탄"
+                    return gameText("card.type.short.dummy")
                 }
             }()
-            return isSelected ? "낼 카드 · \(typeLabel)" : typeLabel
+            return isSelected ? gameText("card.type.selected_prefix", ["type": typeLabel]) : typeLabel
         }
 
         private var captionColor: Color {
@@ -216,7 +216,7 @@ struct GameView: View {
 
         var body: some View {
             VStack(spacing: 14) {
-                Text("현재 들고 있는 패")
+                Text(gameText("common.label.current_hand"))
                     .font(.headline)
                     .foregroundStyle(.white.opacity(0.85))
 
@@ -242,7 +242,7 @@ struct GameView: View {
                                     compact: true
                                 )
 
-                                Text(card.id == selectedShakeCardId ? "낼 카드" : shortTypeLabel(for: card.type))
+                                Text(card.id == selectedShakeCardId ? gameText("card.type.selected_card") : shortTypeLabel(for: card.type))
                                     .font(.headline.weight(.semibold))
                                     .foregroundStyle(card.id == selectedShakeCardId ? Color.orange : Color.white.opacity(0.9))
 
@@ -267,17 +267,17 @@ struct GameView: View {
         private func shortTypeLabel(for type: CardType) -> String {
             switch type {
             case .bright:
-                return "광"
+                return gameText("card.type.short.bright")
             case .animal:
-                return "끗"
+                return gameText("card.type.short.animal")
             case .ribbon:
-                return "띠"
+                return gameText("card.type.short.ribbon")
             case .doubleJunk:
-                return "쌍피"
+                return gameText("card.type.short.double_junk")
             case .junk:
-                return "피"
+                return gameText("card.type.short.junk")
             case .dummy:
-                return "도탄"
+                return gameText("card.type.short.dummy")
             }
         }
     }
@@ -403,7 +403,7 @@ struct GameView: View {
                         .zIndex(100)
                 }
             } else {
-                ProgressView("Loading Layout V2...")
+                ProgressView(gameText("meta.loading_layout"))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color.black.opacity(0.5))
             }
@@ -442,13 +442,13 @@ struct GameView: View {
             }
         }
         .coordinateSpace(name: "GameSpace")
-        .alert("재시작 확인", isPresented: $showingRestartAlert) {
-            Button("취소", role: .cancel) {}
-            Button("확인", role: .destructive) {
+        .alert(gameText("common.alert.restart_title"), isPresented: $showingRestartAlert) {
+            Button(gameText("common.button.cancel"), role: .cancel) {}
+            Button(gameText("common.button.confirm"), role: .destructive) {
                 restartManualGame()
             }
         } message: {
-            Text("게임을 다시 시작하시겠습니까?")
+            Text(gameText("common.alert.restart_message"))
         }
     }
 
@@ -1002,7 +1002,7 @@ struct GameView: View {
                 if let starterSelectionState {
                     starterSelectionOverlay(state: starterSelectionState)
                 } else {
-                    colorBackgroundOverlay(text: "Start Game", action: {
+                    colorBackgroundOverlay(text: gameText("common.overlay.start_game"), action: {
                         // Initial reload to ensure config is fresh
                         config.reloadConfig()
                         startManualGame()
@@ -1018,13 +1018,13 @@ struct GameView: View {
                     ZStack {
                         Color.black.opacity(0.6).ignoresSafeArea()
                         VStack(spacing: 20) {
-                            Text("총통! (Chongtong)")
+                            Text(gameText("overlay_end.chongtong_title"))
                                 .font(.system(size: 60, weight: .black, design: .rounded))
                                 .foregroundColor(.yellow)
                                 .shadow(color: .orange, radius: 10, x: 0, y: 5)
                             
                             if let month = gameManager.chongtongMonth {
-                                Text("\(month)월 총통으로 즉시 승리!")
+                                Text(gameText("overlay_end.chongtong_message", ["month": month]))
                                     .font(.title)
                                     .foregroundColor(.white)
                             }
@@ -1032,7 +1032,7 @@ struct GameView: View {
                             Button(action: {
                                 restartManualGame()
                             }) {
-                                Text("Restart Game")
+                                Text(gameText("common.button.restart_game"))
                                     .font(.headline)
                                     .padding()
                                     .background(Color.yellow)
@@ -1045,19 +1045,19 @@ struct GameView: View {
                     ZStack {
                         Color.black.opacity(0.6).ignoresSafeArea()
                         VStack(spacing: 20) {
-                            Text("나가리! (Nagari)")
+                            Text(gameText("overlay_end.nagari_title"))
                                 .font(.system(size: 60, weight: .black, design: .rounded))
                                 .foregroundColor(.yellow)
                                 .shadow(color: .orange, radius: 10, x: 0, y: 5)
 
-                            Text("무승부로 종료되었습니다.")
+                            Text(gameText("overlay_end.nagari_message"))
                                 .font(.title)
                                 .foregroundColor(.white)
 
                             Button(action: {
                                 restartManualGame()
                             }) {
-                                Text("Restart Game")
+                                Text(gameText("common.button.restart_game"))
                                     .font(.headline)
                                     .padding()
                                     .background(Color.yellow)
@@ -1083,7 +1083,7 @@ struct GameView: View {
                         gameManager: gameManager
                     )
                 } else {
-                    colorBackgroundOverlay(text: "Game Over\nTap to Restart", action: {
+                    colorBackgroundOverlay(text: gameText("common.overlay.game_over_tap_restart"), action: {
                         restartManualGame()
                     })
                 }
@@ -1244,7 +1244,7 @@ struct GameView: View {
         let summaries = groups.map { group in
             CapturedPreviewGroupSummary(
                 type: group.type,
-                label: group.label,
+                label: localizedCapturedGroupLabel(group.type, fallback: group.label),
                 accentColor: group.background.colorSwiftUI,
                 count: groupedCards[group.type, default: []].count
             )
@@ -1255,12 +1255,12 @@ struct GameView: View {
 
         let playerOwnerId = gameManager.players.first?.id.uuidString
         let ownerTitle = preview.ownerPlayerId == playerOwnerId
-            ? "내 획득패"
-            : "\(owner.name) 획득패"
+            ? gameText("captured_preview.owner_mine")
+            : gameText("captured_preview.owner_other", ["player": owner.name])
 
         return CapturedPreviewModel(
             ownerTitle: ownerTitle,
-            selectedLabel: selectedGroup.label,
+            selectedLabel: localizedCapturedGroupLabel(selectedGroup.type, fallback: selectedGroup.label),
             selectedType: selectedGroup.type,
             cards: selectedCards,
             groups: summaries
@@ -1326,7 +1326,7 @@ struct GameView: View {
             revealedCardIds: [],
             playerCardId: nil,
             opponentCardId: nil,
-            statusText: "\(starterModeLabel(for: rule)) 규칙: 테이블 카드에서 한 장을 선택하세요."
+            statusText: gameText("starter.selection.pick_status", ["mode": starterModeLabel(for: rule)])
         )
     }
 
@@ -1361,7 +1361,7 @@ struct GameView: View {
             dayStartHour: rule.day_start_hour,
             dayEndHour: rule.day_end_hour
         )
-        return isDaytime ? "낮장" : "밤일"
+        return isDaytime ? gameText("starter.mode.day") : gameText("starter.mode.night")
     }
 
     private func handleStarterTableCardTapped(_ card: Card) {
@@ -1407,8 +1407,16 @@ struct GameView: View {
             state.revealedCardIds = Set(gameManager.tableCards.map { $0.id })
             let winnerName = gameManager.players.indices.contains(winnerIndex)
                 ? gameManager.players[winnerIndex].name
-                : "Player \(winnerIndex + 1)"
-            state.statusText = "\(modeLabel) 결과: \(winnerName) 선 (\(playerMonth)월 vs \(opponentMonth)월)"
+                : gameText("players.default.fallback", ["index": winnerIndex + 1])
+            state.statusText = gameText(
+                "starter.selection.result_status",
+                [
+                    "mode": modeLabel,
+                    "winner": winnerName,
+                    "playerMonth": playerMonth,
+                    "opponentMonth": opponentMonth
+                ]
+            )
             starterSelectionState = state
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
@@ -1420,7 +1428,7 @@ struct GameView: View {
 
         let usedIds = Set([card.id, opponentCardId])
         state.remainingCardIds.removeAll { usedIds.contains($0) }
-        state.statusText = "\(modeLabel) 동월 무승부 (\(playerMonth)월). 다시 선택합니다."
+        state.statusText = gameText("starter.selection.tie_status", ["mode": modeLabel, "month": playerMonth])
         starterSelectionState = state
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
@@ -1437,7 +1445,10 @@ struct GameView: View {
             nextState.revealedCardIds = []
             nextState.playerCardId = nil
             nextState.opponentCardId = nil
-            nextState.statusText = "\(starterModeLabel(for: nextState.rule)) 규칙: 테이블 카드에서 한 장을 선택하세요."
+            nextState.statusText = gameText(
+                "starter.selection.pick_status",
+                ["mode": starterModeLabel(for: nextState.rule)]
+            )
             starterSelectionState = nextState
         }
     }
@@ -1446,7 +1457,7 @@ struct GameView: View {
     private func starterSelectionOverlay(state: StarterSelectionState) -> some View {
         VStack {
             VStack(alignment: .leading, spacing: 6) {
-                Text("선 정하기: \(starterModeLabel(for: state.rule))")
+                Text(gameText("starter.selection.title", ["mode": starterModeLabel(for: state.rule)]))
                     .font(.headline)
                     .foregroundStyle(.yellow)
                 Text(state.statusText)
@@ -1454,7 +1465,12 @@ struct GameView: View {
                     .foregroundStyle(.white)
                 if let playerMonth = monthForTableCard(id: state.playerCardId),
                    let opponentMonth = monthForTableCard(id: state.opponentCardId) {
-                    Text("내 카드 \(playerMonth)월 / 상대 카드 \(opponentMonth)월")
+                    Text(
+                        gameText(
+                            "starter.selection.cards",
+                            ["playerMonth": playerMonth, "opponentMonth": opponentMonth]
+                        )
+                    )
                         .font(.caption)
                         .foregroundStyle(.white.opacity(0.9))
                 }
@@ -1479,7 +1495,7 @@ struct GameView: View {
         ZStack {
             Color.black.opacity(0.65).ignoresSafeArea()
             VStack(spacing: 24) {
-                Text("어느 카드를 먹을까요?")
+                Text(gameText("capture.title"))
                     .font(.title2)
                     .fontWeight(.bold)
                     .foregroundStyle(.white)
@@ -1516,7 +1532,7 @@ struct GameView: View {
                     }
                 }
                 
-                Text("탭하여 선택하세요")
+                Text(gameText("common.label.tap_to_select"))
                     .font(.footnote)
                     .foregroundStyle(.white.opacity(0.6))
             }
@@ -1528,7 +1544,7 @@ struct GameView: View {
         ZStack {
             Color.black.opacity(0.65).ignoresSafeArea()
             VStack(spacing: 30) {
-                Text("국진(9월 열끗)의 역할을 선택하세요")
+                Text(gameText("chrysanthemum.title"))
                     .font(.title2)
                     .fontWeight(.bold)
                     .foregroundStyle(.white)
@@ -1546,7 +1562,7 @@ struct GameView: View {
                                             .stroke(Color.cyan, lineWidth: 4)
                                     )
                                 
-                                Text("끗 (Animal)")
+                                Text(gameText("chrysanthemum.role.animal"))
                                     .font(.headline)
                                     .foregroundColor(.white)
                                     .padding(.horizontal, 16)
@@ -1566,7 +1582,7 @@ struct GameView: View {
                                             .stroke(Color.yellow, lineWidth: 4)
                                     )
                                 
-                                Text("쌍피 (Double Pi)")
+                                Text(gameText("chrysanthemum.role.double_pi"))
                                     .font(.headline)
                                     .foregroundColor(.white)
                                     .padding(.horizontal, 16)
@@ -1577,7 +1593,7 @@ struct GameView: View {
                     }
                 }
                 
-                Text("역할에 따라 점수 계산이 달라집니다")
+                Text(gameText("chrysanthemum.role_affects_scoring"))
                     .font(.footnote)
                     .foregroundStyle(.white.opacity(0.6))
             }
@@ -1633,12 +1649,12 @@ struct GameView: View {
             ZStack {
                 Color.black.opacity(0.6).ignoresSafeArea()
                 VStack(spacing: 24) {
-                    Text("\(month)월 흔들기")
+                    Text(gameText("shake.title", ["month": month]))
                         .font(.system(size: 34, weight: .bold, design: .rounded))
                         .fontWeight(.bold)
                         .foregroundStyle(.white)
                     
-                    Text("손패에서 같은 월 카드 \(previewCards.count)장을 확인했습니다.")
+                    Text(gameText("shake.found_cards", ["count": previewCards.count]))
                         .font(.title3)
                         .foregroundStyle(.white.opacity(0.8))
 
@@ -1649,7 +1665,7 @@ struct GameView: View {
                         )
                     }
 
-                    Text("흔들면 점수 배수가 x\(projectedShakeMultiplier)로 올라갑니다.")
+                    Text(gameText("shake.multiplier", ["multiplier": projectedShakeMultiplier]))
                         .font(.headline)
                         .foregroundStyle(.white.opacity(0.82))
                     
@@ -1657,7 +1673,7 @@ struct GameView: View {
                         Button(action: {
                             gameManager.respondToShake(month: month, didShake: true)
                         }) {
-                            Text("흔들기")
+                            Text(gameText("common.button.shake"))
                                 .font(.title)
                                 .bold()
                                 .frame(width: 150, height: 70)
@@ -1670,7 +1686,7 @@ struct GameView: View {
                         Button(action: {
                             gameManager.respondToShake(month: month, didShake: false)
                         }) {
-                            Text("그냥 하기")
+                            Text(gameText("common.button.play_normal"))
                                 .font(.title)
                                 .bold()
                                 .frame(width: 150, height: 70)
@@ -1687,8 +1703,8 @@ struct GameView: View {
     @ViewBuilder
     func goStopOverlay() -> some View {
         let currentGoCount = (gameManager.currentPlayer?.goCount ?? 0) + 1
-        let goCountText = "\(currentGoCount)고"
-        let playerName = gameManager.currentPlayer?.name ?? "플레이어"
+        let goCountText = gameText("go_stop.count_label", ["count": currentGoCount])
+        let playerName = gameManager.currentPlayer?.name ?? gameText("players.default.anonymous")
         let isHuman = !(gameManager.currentPlayer?.isComputer ?? false)
         
         ZStack {
@@ -1702,7 +1718,7 @@ struct GameView: View {
                 HStack(spacing: 8) {
                     Image(systemName: isHuman ? "person.fill" : "desktopcomputer")
                         .foregroundStyle(isHuman ? .green : .orange)
-                    Text("\(playerName)이(가) 고 중입니다")
+                    Text(gameText("go_stop.status", ["player": playerName]))
                         .fontWeight(.semibold)
                         .foregroundStyle(isHuman ? .green : .orange)
                 }
@@ -1712,7 +1728,7 @@ struct GameView: View {
                 .background(.white.opacity(0.15))
                 .cornerRadius(20)
                 
-                Text("점수가 났습니다! 고 또는 스탑을 선택하세요.")
+                Text(gameText("go_stop.prompt"))
                     .font(.title2)
                     .fontWeight(.semibold)
                     .foregroundStyle(.white.opacity(0.9))
@@ -1724,7 +1740,7 @@ struct GameView: View {
                         gameManager.respondToGoStop(isGo: true)
                     }) {
                         VStack(spacing: 4) {
-                            Text("GO")
+                            Text(gameText("common.button.go"))
                                 .font(.title)
                                 .bold()
                             Text(goCountText)
@@ -1740,7 +1756,7 @@ struct GameView: View {
                     Button(action: {
                         gameManager.respondToGoStop(isGo: false)
                     }) {
-                        Text("STOP")
+                        Text(gameText("common.button.stop"))
                             .font(.title)
                             .bold()
                             .frame(width: 130, height: 70)
@@ -1756,11 +1772,11 @@ struct GameView: View {
     
     private func cardTypeLabel(for card: Card) -> String {
         switch card.type {
-        case .bright:     return "🌟 광 (3pt+)"
-        case .animal:     return "🐦 끗 (+1)"
-        case .ribbon:     return "🎀 띠 (+1)"
-        case .doubleJunk: return "⭐️ 쌍피 (+2)"
-        case .junk:       return "피 (+1)"
+        case .bright:     return gameText("card.type.capture_choice.bright")
+        case .animal:     return gameText("card.type.capture_choice.animal")
+        case .ribbon:     return gameText("card.type.capture_choice.ribbon")
+        case .doubleJunk: return gameText("card.type.capture_choice.double_junk")
+        case .junk:       return gameText("card.type.capture_choice.junk")
         default:          return card.type.rawValue
         }
     }
@@ -1808,7 +1824,7 @@ struct EventLogView: View {
             VStack(spacing: 0) {
                 // Header
                 HStack {
-                    Text("최근 이벤트 (화투 Log)")
+                    Text(gameText("event_log.title"))
                         .font(.headline)
                         .foregroundColor(.white)
                     Spacer()
@@ -1825,7 +1841,7 @@ struct EventLogView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 10) {
                         if eventLogs.isEmpty {
-                            Text("로그가 없습니다.")
+                            Text(gameText("event_log.empty"))
                                 .foregroundColor(.white.opacity(0.5))
                                 .padding()
                         } else {
@@ -1840,13 +1856,13 @@ struct EventLogView: View {
                                         Button(action: {
                                             UIPasteboard.general.string = eventLogs.reversed().joined(separator: "\n")
                                         }) {
-                                            Label("전체 Text 복사", systemImage: "doc.on.doc")
+                                            Label(gameText("common.label.entire_text_copy"), systemImage: "doc.on.doc")
                                         }
                                         
                                         Button(action: {
                                             UIPasteboard.general.string = log
                                         }) {
-                                            Label("이 라인 복사", systemImage: "doc.on.clipboard")
+                                            Label(gameText("common.label.single_line_copy"), systemImage: "doc.on.clipboard")
                                         }
                                     }
                                 Divider()
@@ -1886,7 +1902,7 @@ struct DeveloperInfoView: View {
 
             VStack(spacing: 0) {
                 HStack {
-                    Text("개발자 정보")
+                    Text(gameText("developer_info.title"))
                         .font(.headline)
                         .foregroundColor(.white)
                     Spacer()
@@ -1900,12 +1916,12 @@ struct DeveloperInfoView: View {
                 .background(Color.blue.opacity(0.8))
 
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Antigravity GoStop")
+                    Text(gameText("meta.app_name"))
                         .font(.title3.bold())
                         .foregroundColor(.white)
 
                     HStack(spacing: 8) {
-                        Text("앱 버전")
+                        Text(gameText("common.label.app_version"))
                             .foregroundColor(.white.opacity(0.75))
                         Text(appVersionText)
                             .foregroundColor(.white)
