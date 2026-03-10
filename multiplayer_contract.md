@@ -1,0 +1,1216 @@
+# Multiplayer Contract
+
+## Meta
+- **Owner**: Agent 1
+- **Primary Consumers**: Agent 2, Agent 3, Agent 4
+- **Status**: Draft
+- **Last Updated**: 2026-03-08
+- **Related Docs**:
+  - `room_protocol.md`
+  - `multiplayer_ui_flow.md`
+  - `multiplayer_test_scenarios.md`
+  - `agent_sync_board.md`
+
+## Goal
+- 온라인 맞고 멀티플레이에서 authoritative engine이 보장해야 하는 state, command, event 계약을 고정한다.
+- 룰 판정은 이 문서를 기준으로 단일 구현을 유지한다.
+
+## Scope
+- match/game state schema
+- command validation rules
+- event schema
+- choice payload contract
+- reject reason/error code
+- stateVersion / event ordering
+- snapshot / replay contract
+
+## Non-Goals
+- room/lobby/session lifecycle 상세
+- iOS 화면 레이아웃
+- test runner 구현 상세
+
+## Key Decisions
+
+| Topic | Current Decision | Owner | Status | Notes |
+| --- | --- | --- | --- | --- |
+| authoritative source | Server-side engine | Agent 1 | Locked | Client is render-only for rule decisions |
+| `stateVersion` increment unit | accepted command transaction that mutates game state | Agent 1 | Locked | one accepted mutation = one version bump |
+| `eventId` ordering | monotonic per `gameId`, unique per emitted event | Agent 1 | Locked | ordering is `eventId`, grouping is via `causedByActionId` |
+| duplicate `actionId` policy | exact duplicate replays prior result, conflicting reuse rejects | Agent 1 | Locked | avoids double-apply on retry |
+| choice command shape | server issues `choiceId` + `optionCode`; client echoes them back | Agent 1 | Locked | client must not recompute rule options |
+| choice visibility | `pendingChoice` options are viewer-scoped and must not leak hidden hand info to non-actor clients | Agent 1 | Locked | `askingShake` is `actorOnly` and redacted for non-actor viewers |
+| sync transport | full player-scoped snapshot + RFC 6902 JSON Patch delta | Agent 1 | Locked | snapshot on start/resume/resync, patch during live play |
+| replay baseline | authority-scope snapshot + ordered authoritative event stream | Agent 1 | Locked | player-scoped payload is not sufficient for replay |
+| hidden information policy | player-scoped projection | Agent 1 | Locked | opponent hand / deck hidden from normal clients |
+| presence/ready ownership | `isConnected` / `isReady` truth belongs to room/session layer, not hardcoded engine defaults | Agent 1 | Locked | engine snapshot accepts optional room-truth merge and otherwise returns `null` + `presenceSource=unknown` |
+| starter/dealer payload | bootstrap/snapshot starter-related fields must reflect actual starter selection result | Agent 1 | Locked | `starterPlayerId` is explicit and `dealerPlayerId` follows the same starter result in current engine |
+
+## Swift Type Mapping
+
+| Contract Concept | Swift Type |
+| --- | --- |
+| command envelope | `MultiplayerCommandEnvelope` |
+| command body | `MultiplayerCommand` |
+| event envelope | `MultiplayerEventEnvelope<Payload>` |
+| game-started payload | `MultiplayerGameStartedPayload` |
+| reject reason | `MultiplayerRejectReason` |
+| choice payload | `MultiplayerChoice` |
+| choice kind | `MultiplayerContractChoiceKind` |
+| choice visibility | `MultiplayerChoiceVisibility` |
+| quit reason | `MultiplayerQuitReason` |
+| patch payload | `MultiplayerPatch` |
+| snapshot payload | `MultiplayerSnapshot` |
+| projection context | `MultiplayerProjectionContext` |
+| participant presence merge | `MultiplayerParticipantPresence` |
+| presence source | `MultiplayerPresenceSource` |
+| match snapshot | `MultiplayerMatchSnapshot` |
+| player projection | `MultiplayerPlayerProjection` |
+| card summary | `MultiplayerCardSummary` |
+| round-ended payload | `MultiplayerRoundEndedPayload` |
+| round summary | `MultiplayerRoundSummary` |
+| match-ended payload | `MultiplayerMatchEndedPayload` |
+| match end reason | `MultiplayerMatchEndReason` |
+| settlement summary | `MultiplayerSettlementSummary` |
+
+## Engine Invariants
+- 룰 판정은 엔진에서만 수행한다.
+- 같은 authority snapshot + 같은 accepted command sequence는 항상 같은 결과를 낸다.
+- 현재 턴이 아닌 플레이어 액션은 reject 한다.
+- 허용되지 않은 choice code는 reject 한다.
+- 동일 `actionId`는 절대 두 번 mutate 되지 않는다.
+- player-scoped projection은 hidden information 규칙을 절대 깨지 않는다.
+
+## Shared IDs
+- `traceId`
+- `roomId`
+- `gameId`
+- `turnId`
+- `actionId`
+- `playerId`
+- `choiceId`
+- `eventId`
+- `snapshotId`
+
+## Ordering And Idempotency
+
+### `stateVersion`
+- `stateVersion`은 authoritative game state의 client-visible mutation version이다.
+- accepted command 중 실제 game state를 바꾸는 경우에만 정확히 1 증가한다.
+- 한 command가 여러 event를 발생시켜도 그 event들은 동일한 `stateVersion`을 공유한다.
+- `actionRejected`, duplicate replay, resume sync 자체는 `stateVersion`을 증가시키지 않는다.
+- 최초 deal이 완료되어 client가 게임을 볼 수 있게 되는 시점의 snapshot을 `stateVersion = 1`로 본다.
+
+### `eventId`
+- `eventId`는 `gameId` 내부에서 단조 증가하는 서버 발급 ID다.
+- emitted game event마다 새 `eventId`가 발급된다.
+- ordering 비교는 `(gameId, eventId)`로 충분해야 한다.
+- 같은 `eventId`를 다시 받으면 consumer는 중복 delivery로 간주하고 무시해야 한다.
+
+### Duplicate `actionId`
+- 같은 `actionId` + 같은 `playerId` + 같은 command body가 재전송되면, 서버는 기존 terminal result를 replay 한다.
+- replay 시 기존에 발급된 `eventId`들을 그대로 재전송할 수 있다. consumer는 `eventId` idempotency로 중복 적용을 막아야 한다.
+- 같은 `actionId`를 다른 command body로 재사용하면 `actionIdConflict` reject를 반환한다.
+
+## Match State Model
+
+### Top-Level State
+```json
+{
+  "traceId": "trace_001",
+  "roomId": "room_001",
+  "gameId": "game_001",
+  "engineVersion": "gostop-core@2026.03.08",
+  "ruleConfigVersion": "rules_2026_03_08",
+  "stateVersion": 12,
+  "lastEventId": "evt_000124",
+  "phase": "inTurn",
+  "turnId": "turn_0007",
+  "currentPlayerId": "player_a",
+  "dealerPlayerId": "player_b",
+  "starterPlayerId": "player_b",
+  "players": [],
+  "table": {
+    "cards": [],
+    "monthBuckets": {}
+  },
+  "deck": {
+    "remainingCount": 18
+  },
+  "pendingChoice": null,
+  "scoreboard": {
+    "roundIndex": 1,
+    "playerScores": [],
+    "winnerPlayerId": null
+  },
+  "timers": {
+    "turnDeadlineAt": "2026-03-08T15:30:16+09:00",
+    "choiceDeadlineAt": null
+  },
+  "resume": {
+    "isResumable": true,
+    "graceDeadlineAt": "2026-03-08T15:35:16+09:00"
+  }
+}
+```
+
+### Player Projection
+```json
+{
+  "playerId": "player_a",
+  "seatIndex": 0,
+  "name": "Player 1",
+  "hand": [
+    {
+      "cardId": "card_03_ribbon_red_poem",
+      "month": 3,
+      "kind": "ribbon",
+      "imageIndex": 0,
+      "selectedRole": null
+    }
+  ],
+  "handCount": 7,
+  "captured": {
+    "bright": [],
+    "animal": [],
+    "ribbon": [],
+    "junk": []
+  },
+  "score": 6,
+  "money": 10600,
+  "goCount": 1,
+  "shakeCount": 0,
+  "isConnected": true,
+  "isReady": true,
+  "presenceSource": "roomSnapshot",
+  "isViewer": true
+}
+```
+
+### Hidden Information Rules
+- 플레이어 본인 `hand`만 full payload로 전달한다.
+- 상대 hand는 `handCount`만 전달하고 card identity는 숨긴다.
+- `askingShake`는 non-actor viewer에게 raw hand card metadata를 절대 보내지 않는다.
+- deck ordering과 next draw identity는 normal client에 절대 노출하지 않는다.
+- replay / debug artifact는 `authority` scope에서만 full state를 허용한다.
+
+### Presence Merge Rules
+- `isConnected` / `isReady`는 engine이 authoritative truth를 갖지 않는다.
+- room/session layer가 truth source이며, engine projection은 optional merge slot만 제공한다.
+- room truth가 merge되지 않은 projection에서는 `isConnected = null`, `isReady = null`, `presenceSource = "unknown"`을 사용한다.
+- room truth를 merge한 projection에서는 `presenceSource = "roomSnapshot"`을 사용한다.
+
+## Lifecycle Phases
+- `waiting`
+- `dealing`
+- `inTurn`
+- `choicePending`
+- `roundEnded`
+- `matchEnded`
+- `paused`
+
+## Command Contract
+
+### Envelope
+```json
+{
+  "type": "command",
+  "traceId": "trace_001",
+  "requestId": "req_000041",
+  "roomId": "room_001",
+  "gameId": "game_001",
+  "playerId": "player_a",
+  "actionId": "act_000041",
+  "expectedStateVersion": 12,
+  "sentAt": "2026-03-08T15:30:01+09:00",
+  "command": {
+    "name": "playCard",
+    "payload": {}
+  }
+}
+```
+
+### Command Rules
+- `expectedStateVersion`은 client가 알고 있는 latest state를 보낸다. 서버는 reject payload에 latest version을 포함해 drift를 드러낸다.
+- `playCard`만 card identity를 직접 보낸다.
+- `selectCapture`, `selectShake`, `chooseGoStop`, `chooseChrysanthemumRole`는 반드시 server-issued `choiceId`와 `optionCode`를 보낸다.
+- `resume`은 sync command이며, game state를 mutate하지 않아도 된다.
+- command success는 direct response보다 event stream이 source of truth다. transport layer ack shape는 Agent 2가 감싼다.
+
+### Commands
+| Command | Actor | Preconditions | Success Output | Common Rejects |
+| --- | --- | --- | --- | --- |
+| `playCard` | current player | `phase=inTurn`, actor is turn owner, `cardId` in actor hand | `actionAccepted` + `statePatched` or `stateSnapshot` + follow-up semantic events | `outOfTurn`, `invalidPhase`, `invalidCard`, `staleStateVersion`, `actionIdConflict` |
+| `selectCapture` | choice owner | `phase=choicePending`, `choiceKind=capture` | accepted choice + patch + turn/score follow-up | `invalidChoice`, `choiceExpired`, `choiceOwnerMismatch`, `staleStateVersion`, `actionIdConflict` |
+| `selectShake` | choice owner | `phase=choicePending`, `choiceKind=shake` | accepted choice + patch + turn/score follow-up | `invalidChoice`, `choiceExpired`, `choiceOwnerMismatch`, `staleStateVersion`, `actionIdConflict` |
+| `chooseGoStop` | choice owner | `phase=choicePending`, `choiceKind=goStop` | accepted choice + patch + round/match follow-up | `invalidChoice`, `choiceExpired`, `choiceOwnerMismatch`, `staleStateVersion`, `actionIdConflict` |
+| `chooseChrysanthemumRole` | choice owner | `phase=choicePending`, `choiceKind=chrysanthemumRole` | accepted choice + patch + capture/score follow-up | `invalidChoice`, `choiceExpired`, `choiceOwnerMismatch`, `staleStateVersion`, `actionIdConflict` |
+| `resume` | disconnected player | resumable game exists, valid resume context | `stateSnapshot` with current projection and sync metadata | `resumeExpired`, `gameNotResumable`, `notParticipant` |
+| `quit` | room member or active participant | room/game permits leave | `matchEnded` or room-level leave handoff | `invalidState`, `notParticipant`, `actionIdConflict` |
+
+### `quit.reason`
+- `voluntaryExit`
+- `disconnectTimeout`
+- `adminForfeit`
+- reconnect grace expiry는 별도 admin-forfeit command를 만들지 않고 room layer가 `quit(reason=disconnectTimeout)`를 authoritative engine command로 전달한다.
+
+### Command Sample Payloads
+
+#### `playCard`
+```json
+{
+  "type": "command",
+  "traceId": "trace_001",
+  "requestId": "req_000041",
+  "roomId": "room_001",
+  "gameId": "game_001",
+  "playerId": "player_a",
+  "actionId": "act_000041",
+  "expectedStateVersion": 12,
+  "command": {
+    "name": "playCard",
+    "payload": {
+      "cardId": "card_03_ribbon_red_poem",
+      "source": "hand"
+    }
+  }
+}
+```
+
+#### `selectCapture`
+```json
+{
+  "type": "command",
+  "traceId": "trace_001",
+  "requestId": "req_000042",
+  "roomId": "room_001",
+  "gameId": "game_001",
+  "playerId": "player_a",
+  "actionId": "act_000042",
+  "expectedStateVersion": 13,
+  "command": {
+    "name": "selectCapture",
+    "payload": {
+      "choiceId": "choice_0007",
+      "optionCode": "capture_pair_left"
+    }
+  }
+}
+```
+
+#### `selectShake`
+```json
+{
+  "type": "command",
+  "traceId": "trace_001",
+  "requestId": "req_000043",
+  "roomId": "room_001",
+  "gameId": "game_001",
+  "playerId": "player_a",
+  "actionId": "act_000043",
+  "expectedStateVersion": 18,
+  "command": {
+    "name": "selectShake",
+    "payload": {
+      "choiceId": "choice_0010",
+      "optionCode": "shake_yes"
+    }
+  }
+}
+```
+
+#### `chooseGoStop`
+```json
+{
+  "type": "command",
+  "traceId": "trace_001",
+  "requestId": "req_000044",
+  "roomId": "room_001",
+  "gameId": "game_001",
+  "playerId": "player_a",
+  "actionId": "act_000044",
+  "expectedStateVersion": 23,
+  "command": {
+    "name": "chooseGoStop",
+    "payload": {
+      "choiceId": "choice_0014",
+      "optionCode": "go"
+    }
+  }
+}
+```
+
+#### `resume`
+```json
+{
+  "type": "command",
+  "traceId": "trace_001",
+  "requestId": "req_000045",
+  "roomId": "room_001",
+  "gameId": "game_001",
+  "playerId": "player_a",
+  "actionId": "act_resume_0001",
+  "expectedStateVersion": 23,
+  "command": {
+    "name": "resume",
+    "payload": {
+      "resumeToken": "resume_tok_abc123",
+      "lastKnownEventId": "evt_000210",
+      "lastKnownStateVersion": 23
+    }
+  }
+}
+```
+
+#### `quit`
+```json
+{
+  "type": "command",
+  "traceId": "trace_001",
+  "requestId": "req_000046",
+  "roomId": "room_001",
+  "gameId": "game_001",
+  "playerId": "player_a",
+  "actionId": "act_000046",
+  "expectedStateVersion": 23,
+  "command": {
+    "name": "quit",
+    "payload": {
+      "reason": "voluntaryExit"
+    }
+  }
+}
+```
+
+## Reject Reason Contract
+
+### Shape
+```json
+{
+  "rejectReason": {
+    "code": "invalidChoice",
+    "retryable": false,
+    "messageKey": "match.reject.invalid_choice",
+    "details": {
+      "phase": "choicePending",
+      "choiceId": "choice_0007",
+      "receivedOptionCode": "capture_pair_right",
+      "latestStateVersion": 13
+    }
+  }
+}
+```
+
+### Codes
+| Code | Meaning | Retryable | Notes |
+| --- | --- | --- | --- |
+| `outOfTurn` | 현재 턴 플레이어가 아님 | No | includes current owner in details |
+| `invalidPhase` | 현재 phase에서 허용되지 않음 | No | stale UI or wrong command route |
+| `staleStateVersion` | client expected version이 최신 상태와 다름 | Yes | client should request or wait for sync |
+| `invalidCard` | actor hand 기준 유효하지 않은 카드 | No | likely state drift or malformed request |
+| `invalidChoice` | `choiceId` 또는 `optionCode`가 현재 pending choice와 맞지 않음 | No | client must not compute choices locally |
+| `choiceExpired` | pending choice가 이미 해소되었거나 만료됨 | No | newer state already applied |
+| `choiceOwnerMismatch` | choice owner가 아닌 플레이어가 응답함 | No | input lock bug or malicious request |
+| `actionIdConflict` | 이미 사용한 `actionId`를 다른 body로 재사용함 | No | protocol violation |
+| `notParticipant` | 현재 room/game participant가 아님 | No | stale session |
+| `resumeExpired` | reconnect grace period 초과 | No | forfeit policy is room-layer concern |
+| `gameNotResumable` | resume 가능한 active game이 아님 | No | game ended or room closed |
+| `invalidState` | quit/resume 등 lifecycle command가 현재 상태와 맞지 않음 | No | room/game lifecycle mismatch |
+
+### Typed Reject / Resync Details
+- `staleStateVersion` reject details baseline type은 `MultiplayerStaleStateVersionRejectDetails`다.
+- required fields:
+  - `expectedStateVersion`
+  - `authoritativeStateVersion`
+  - `authoritativeEventId`
+  - `resync.trigger`
+  - `resync.snapshotReason`
+  - `resync.shouldLockInput`
+- `resync.snapshotReason`은 command stale reject path에서는 `resync`로 고정한다.
+- `gapDetected`는 client가 patch base mismatch 또는 missing game event를 감지한 transport/local recovery path에만 사용한다. command stale reject의 recovery reason으로는 쓰지 않는다.
+- MP-008 P0 deterministic hook은 transport drop이 아니라 stale `expectedStateVersion` override를 사용한다.
+- MP-008 artifact minimum fields는 `injectedMismatchMode`, `clientStateVersion`, `expectedStateVersion`, `authoritativeStateVersion`, `authoritativeEventId`, `recoverySnapshotReason`, `recoverySnapshotId`다.
+
+## Event Contract
+
+### Envelope
+```json
+{
+  "type": "event",
+  "traceId": "trace_001",
+  "roomId": "room_001",
+  "gameId": "game_001",
+  "eventId": "evt_000124",
+  "stateVersion": 13,
+  "causedByActionId": "act_000041",
+  "serverTime": "2026-03-08T15:30:01+09:00",
+  "eventName": "statePatched",
+  "payload": {}
+}
+```
+
+### Event Ordering
+- accepted mutation command의 canonical emission order:
+  1. `actionAccepted`
+  2. `statePatched` 또는 `stateSnapshot`
+  3. semantic follow-up event 0개 이상 (`choiceRequested`, `turnChanged`, `roundEnded`, `matchEnded`)
+- reject command는 `actionRejected`만 emit 하며 `stateVersion`은 유지된다.
+- `resume` success는 `stateSnapshot`을 최소 1개 emit 한다.
+- fresh start canonical bootstrap emission order:
+  1. `gameStarted`
+  2. paired `stateSnapshot(reason=gameStarted)`
+  3. optional semantic follow-up (`turnChanged`, `choiceRequested`)
+
+### Core Events
+| Event | Trigger | Required Fields | Consumers |
+| --- | --- | --- | --- |
+| `gameStarted` | initial deal complete | dealer/starter, first player, `snapshotId`, `snapshotStateVersion` | Agent 2, 3, 4 |
+| `actionAccepted` | valid command applied | `actionId`, `playerId`, `commandName`, result summary | Agent 2, 3, 4 |
+| `actionRejected` | invalid command | `requestId`, `actionId`, `commandName`, `rejectReason` | Agent 2, 3, 4 |
+| `turnChanged` | turn owner changed | `turnId`, `currentPlayerId`, `turnDeadlineAt` | Agent 3, 4 |
+| `choiceRequested` | branch decision required | `choiceId`, `choiceKind`, `actorPlayerId`, options, deadline | Agent 3, 4 |
+| `statePatched` | delta delivery | `patchFormat`, `baseStateVersion`, `targetStateVersion`, patch body | Agent 2, 3, 4 |
+| `stateSnapshot` | full state delivery | `snapshotId`, reason, scope, full state | Agent 2, 3, 4 |
+| `roundEnded` | scoring locked | winner, score delta, round summary | Agent 2, 3, 4 |
+| `matchEnded` | room match complete | final result, settlement summary | Agent 2, 3, 4 |
+
+### Bootstrap Rules
+- fresh start bootstrap source of truth는 `stateSnapshot(reason=gameStarted)`다.
+- `gameStarted`는 semantic marker이며, client는 visible state를 `gameStarted` payload만으로 구성하지 않는다.
+- `gameStarted` payload는 paired snapshot을 가리키는 correlation metadata만 담는다.
+- Agent 2 room layer는 fresh start에서 `gameEvent(gameStarted)`와 `gameEvent(stateSnapshot reason=gameStarted)`를 둘 다 전달해야 한다.
+- Agent 3/4 consumer는 bootstrap state를 snapshot에서 읽고, `gameStarted`는 timeline/analytics/UX trigger 용도로만 사용한다.
+- local debug/in-process bootstrap minimum set은 `MultiplayerGameStartedBootstrapPayload`이며, shape는 `{ gameStarted: MultiplayerGameStartedPayload, stateSnapshot: MultiplayerSnapshot }`다.
+- Agent 3 `showLive` handoff minimum type은 `MultiplayerLiveBootstrapPayload`이며, shape는 `{ activeGameId, gameStarted, stateSnapshot }`다.
+- `MultiplayerLiveBootstrapPayload`는 UI-facing convenience wrapper이고, underlying authority source는 그대로 `MultiplayerGameStartedBootstrapPayload`다.
+- live shell state는 `stateSnapshot`에서 만들고, `gameStarted`는 correlation/banner trigger로만 소비한다.
+
+### Terminal Summary Rules
+- 현재 engine projection baseline은 single-round match다. 따라서 `roundEnded.summary`와 `matchEnded`는 같은 terminal result fields를 공유하고 `roundIndex`는 현재 `1`로 고정된다.
+- normal scoring end(`stop`, `maxScore`, `nagari`, `chongtong`, `threeSeolsa`)에서는 `settlementSummary`를 포함한다.
+- forfeit end(`voluntaryQuit`, `disconnectTimeout`, `adminForfeit`)에서는 `settlementSummary = null`을 기본값으로 하고, room layer는 `forfeitingPlayerId`를 반드시 채운다.
+- `endReasonMessageKey`는 `match.end.*` namespace를 사용한다.
+- Agent 2 terminal forwarder와 Agent 3 result route가 의존해야 하는 required fields는 `roundIndex`, `winnerPlayerId`, `loserPlayerId`, `finalScores[]`, `settlementSummary`, `endReason`, `endReasonMessageKey`, `forfeitingPlayerId`, `isDraw`다.
+- `matchEnded`는 `roundIndex`를 포함해야 하며, consumer는 `roundEnded`가 늦거나 생략되더라도 `matchEnded` 단독으로 result shell을 구성할 수 있어야 한다.
+- `get_multiplayer_terminal_summary` response baseline type은 `MultiplayerTerminalSummaryPayload`이며, top-level metadata는 `roomId`, `gameId`, `summaryStateVersion`, `lastEventId`, `roundEnded`, `matchEnded`다.
+
+### Event Sample Payloads
+
+#### `gameStarted`
+```json
+{
+  "type": "event",
+  "traceId": "trace_001",
+  "roomId": "room_001",
+  "gameId": "game_001",
+  "eventId": "evt_000001",
+  "stateVersion": 1,
+  "causedByActionId": "act_start_0001",
+  "serverTime": "2026-03-08T15:29:59+09:00",
+  "eventName": "gameStarted",
+  "payload": {
+    "roundIndex": 1,
+    "dealerPlayerId": "player_b",
+    "starterPlayerId": "player_b",
+    "firstPlayerId": "player_b",
+    "snapshotId": "snap_000001_player_a",
+    "snapshotStateVersion": 1
+  }
+}
+```
+
+#### `actionAccepted`
+```json
+{
+  "type": "event",
+  "traceId": "trace_001",
+  "roomId": "room_001",
+  "gameId": "game_001",
+  "eventId": "evt_000211",
+  "stateVersion": 13,
+  "causedByActionId": "act_000041",
+  "serverTime": "2026-03-08T15:30:01+09:00",
+  "eventName": "actionAccepted",
+  "payload": {
+    "requestId": "req_000041",
+    "actionId": "act_000041",
+    "playerId": "player_a",
+    "commandName": "playCard",
+    "result": {
+      "playedCardId": "card_03_ribbon_red_poem",
+      "pendingChoiceCreated": true,
+      "turnContinues": true
+    }
+  }
+}
+```
+
+#### `actionRejected`
+```json
+{
+  "type": "event",
+  "traceId": "trace_001",
+  "roomId": "room_001",
+  "gameId": "game_001",
+  "eventId": "evt_000212",
+  "stateVersion": 13,
+  "causedByActionId": "act_000099",
+  "serverTime": "2026-03-08T15:30:02+09:00",
+  "eventName": "actionRejected",
+  "payload": {
+    "requestId": "req_000099",
+    "actionId": "act_000099",
+    "playerId": "player_b",
+    "commandName": "playCard",
+    "rejectReason": {
+      "code": "outOfTurn",
+      "retryable": false,
+      "messageKey": "match.reject.out_of_turn",
+      "details": {
+        "currentPlayerId": "player_a",
+        "phase": "inTurn",
+        "turnId": "turn_0007",
+        "latestStateVersion": 13
+      }
+    }
+  }
+}
+```
+
+#### `actionRejected` (`staleStateVersion`)
+```json
+{
+  "type": "event",
+  "traceId": "trace_001",
+  "roomId": "room_001",
+  "gameId": "game_001",
+  "eventId": "evt_000301",
+  "stateVersion": 15,
+  "causedByActionId": "act_000121",
+  "serverTime": "2026-03-08T15:32:08+09:00",
+  "eventName": "actionRejected",
+  "payload": {
+    "requestId": "req_000121",
+    "actionId": "act_000121",
+    "playerId": "player_a",
+    "commandName": "playCard",
+    "rejectReason": {
+      "code": "staleStateVersion",
+      "retryable": true,
+      "messageKey": "match.reject.stale_state_version",
+      "details": {
+        "expectedStateVersion": 14,
+        "authoritativeStateVersion": 15,
+        "authoritativeEventId": "evt_000300",
+        "resync": {
+          "trigger": "staleStateVersionReject",
+          "snapshotReason": "resync",
+          "clientStateVersion": 14,
+          "expectedStateVersion": 14,
+          "authoritativeStateVersion": 15,
+          "clientEventId": "evt_000298",
+          "authoritativeEventId": "evt_000300",
+          "shouldLockInput": true
+        }
+      }
+    }
+  }
+}
+```
+
+#### `choiceRequested`
+```json
+{
+  "type": "event",
+  "traceId": "trace_001",
+  "roomId": "room_001",
+  "gameId": "game_001",
+  "eventId": "evt_000213",
+  "stateVersion": 13,
+  "causedByActionId": "act_000041",
+  "serverTime": "2026-03-08T15:30:01+09:00",
+  "eventName": "choiceRequested",
+  "payload": {
+    "choiceId": "choice_0007",
+    "choiceKind": "capture",
+    "actorPlayerId": "player_a",
+    "promptKey": "match.choice.capture",
+    "requestedAt": "2026-03-08T15:30:01+09:00",
+    "deadlineAt": "2026-03-08T15:30:16+09:00",
+    "expiresAtStateVersion": 13,
+    "options": [
+      {
+        "optionCode": "capture_pair_left",
+        "labelKey": "match.choice.capture.take_pair",
+        "cards": [
+          {
+            "cardId": "card_03_ribbon_red_poem",
+            "zone": "played"
+          },
+          {
+            "cardId": "card_03_junk_a",
+            "zone": "table"
+          }
+        ],
+        "effectTags": ["capture"],
+        "scoreDeltaPreview": {
+          "self": 0,
+          "opponent": 0
+        }
+      },
+      {
+        "optionCode": "capture_pair_right",
+        "labelKey": "match.choice.capture.take_pair",
+        "cards": [
+          {
+            "cardId": "card_03_ribbon_red_poem",
+            "zone": "played"
+          },
+          {
+            "cardId": "card_03_junk_b",
+            "zone": "table"
+          }
+        ],
+        "effectTags": ["capture"],
+        "scoreDeltaPreview": {
+          "self": 0,
+          "opponent": 0
+        }
+      }
+    ]
+  }
+}
+```
+
+#### `statePatched`
+```json
+{
+  "type": "event",
+  "traceId": "trace_001",
+  "roomId": "room_001",
+  "gameId": "game_001",
+  "eventId": "evt_000214",
+  "stateVersion": 13,
+  "causedByActionId": "act_000041",
+  "serverTime": "2026-03-08T15:30:01+09:00",
+  "eventName": "statePatched",
+  "payload": {
+    "patchFormat": "json-patch",
+    "baseStateVersion": 12,
+    "targetStateVersion": 13,
+    "ops": [
+      {
+        "op": "remove",
+        "path": "/players/0/hand/3"
+      },
+      {
+        "op": "add",
+        "path": "/table/cards/5",
+        "value": {
+          "cardId": "card_03_ribbon_red_poem",
+          "month": 3,
+          "kind": "ribbon"
+        }
+      },
+      {
+        "op": "replace",
+        "path": "/pendingChoice",
+        "value": {
+          "choiceId": "choice_0007",
+          "choiceKind": "capture"
+        }
+      }
+    ]
+  }
+}
+```
+
+#### `stateSnapshot`
+```json
+{
+  "type": "event",
+  "traceId": "trace_001",
+  "roomId": "room_001",
+  "gameId": "game_001",
+  "eventId": "evt_000215",
+  "stateVersion": 13,
+  "causedByActionId": "act_resume_0001",
+  "serverTime": "2026-03-08T15:31:20+09:00",
+  "eventName": "stateSnapshot",
+  "payload": {
+    "snapshotId": "snap_000013_player_a",
+    "reason": "resume",
+    "scope": "player",
+    "snapshotStateVersion": 13,
+    "lastIncludedEventId": "evt_000214",
+    "state": {
+      "gameId": "game_001",
+      "stateVersion": 13,
+      "phase": "choicePending",
+      "currentPlayerId": "player_a",
+      "pendingChoice": {
+        "choiceId": "choice_0007",
+        "choiceKind": "capture"
+      }
+    }
+  }
+}
+```
+
+#### `stateSnapshot` (`resync`)
+```json
+{
+  "type": "event",
+  "traceId": "trace_001",
+  "roomId": "room_001",
+  "gameId": "game_001",
+  "eventId": "evt_000302",
+  "stateVersion": 15,
+  "causedByActionId": null,
+  "serverTime": "2026-03-08T15:32:08+09:00",
+  "eventName": "stateSnapshot",
+  "payload": {
+    "snapshotId": "snap_000015_player_a",
+    "reason": "resync",
+    "scope": "player",
+    "snapshotStateVersion": 15,
+    "lastIncludedEventId": "evt_000300",
+    "state": {
+      "gameId": "game_001",
+      "stateVersion": 15,
+      "phase": "inTurn",
+      "currentPlayerId": "player_b",
+      "turnId": "turn_0008"
+    }
+  }
+}
+```
+
+#### `roundEnded`
+```json
+{
+  "type": "event",
+  "traceId": "trace_001",
+  "roomId": "room_001",
+  "gameId": "game_001",
+  "eventId": "evt_000216",
+  "stateVersion": 24,
+  "causedByActionId": "act_000044",
+  "serverTime": "2026-03-08T15:31:21+09:00",
+  "eventName": "roundEnded",
+  "payload": {
+    "roundIndex": 1,
+    "summary": {
+      "roundIndex": 1,
+      "winnerPlayerId": "player_a",
+      "loserPlayerId": "player_b",
+      "finalScores": [
+        {
+          "playerId": "player_a",
+          "score": 7,
+          "goCount": 1,
+          "money": 11200
+        },
+        {
+          "playerId": "player_b",
+          "score": 4,
+          "goCount": 0,
+          "money": 8800
+        }
+      ],
+      "settlementSummary": {
+        "finalScore": 12,
+        "scoreFormula": "(7 + go bonus 1) x gobak 2",
+        "isDraw": false,
+        "isGwangbak": false,
+        "isPibak": false,
+        "isGobak": true,
+        "isMungbak": false,
+        "isJabak": false,
+        "isYeokbak": false
+      },
+      "endReason": "stop",
+      "endReasonMessageKey": "match.end.stop",
+      "forfeitingPlayerId": null,
+      "isDraw": false
+    }
+  }
+}
+```
+
+#### `matchEnded`
+```json
+{
+  "type": "event",
+  "traceId": "trace_001",
+  "roomId": "room_001",
+  "gameId": "game_001",
+  "eventId": "evt_000217",
+  "stateVersion": 24,
+  "causedByActionId": "act_000046",
+  "serverTime": "2026-03-08T15:31:22+09:00",
+  "eventName": "matchEnded",
+  "payload": {
+    "roundIndex": 1,
+    "winnerPlayerId": "player_a",
+    "loserPlayerId": "player_b",
+    "finalScores": [
+      {
+        "playerId": "player_a",
+        "score": 5,
+        "goCount": 0,
+        "money": 10000
+      },
+      {
+        "playerId": "player_b",
+        "score": 2,
+        "goCount": 0,
+        "money": 10000
+      }
+    ],
+    "settlementSummary": null,
+    "endReason": "disconnectTimeout",
+    "endReasonMessageKey": "match.end.disconnect_timeout",
+    "forfeitingPlayerId": "player_b",
+    "isDraw": false
+  }
+}
+```
+
+#### `get_multiplayer_terminal_summary`
+```json
+{
+  "status": "ok",
+  "action": "get_multiplayer_terminal_summary",
+  "roomId": "room_001",
+  "gameId": "game_001",
+  "summaryStateVersion": 24,
+  "lastEventId": "evt_000217",
+  "roundEnded": {
+    "roundIndex": 1,
+    "summary": {
+      "roundIndex": 1,
+      "winnerPlayerId": "player_a",
+      "loserPlayerId": "player_b",
+      "finalScores": [
+        {
+          "playerId": "player_a",
+          "score": 7,
+          "goCount": 1,
+          "money": 11200
+        },
+        {
+          "playerId": "player_b",
+          "score": 4,
+          "goCount": 0,
+          "money": 8800
+        }
+      ],
+      "settlementSummary": {
+        "finalScore": 12,
+        "scoreFormula": "(7 + go bonus 1) x gobak 2",
+        "isDraw": false,
+        "isGwangbak": false,
+        "isPibak": false,
+        "isGobak": true,
+        "isMungbak": false,
+        "isJabak": false,
+        "isYeokbak": false
+      },
+      "endReason": "stop",
+      "endReasonMessageKey": "match.end.stop",
+      "forfeitingPlayerId": null,
+      "isDraw": false
+    }
+  },
+  "matchEnded": {
+    "roundIndex": 1,
+    "winnerPlayerId": "player_a",
+    "loserPlayerId": "player_b",
+    "finalScores": [
+      {
+        "playerId": "player_a",
+        "score": 7,
+        "goCount": 1,
+        "money": 11200
+      },
+      {
+        "playerId": "player_b",
+        "score": 4,
+        "goCount": 0,
+        "money": 8800
+      }
+    ],
+    "settlementSummary": {
+      "finalScore": 12,
+      "scoreFormula": "(7 + go bonus 1) x gobak 2",
+      "isDraw": false,
+      "isGwangbak": false,
+      "isPibak": false,
+      "isGobak": true,
+      "isMungbak": false,
+      "isJabak": false,
+      "isYeokbak": false
+    },
+    "endReason": "stop",
+    "endReasonMessageKey": "match.end.stop",
+    "forfeitingPlayerId": null,
+    "isDraw": false
+  }
+}
+```
+
+## Choice Contract
+
+### Shape
+```json
+{
+  "choiceId": "choice_0007",
+  "choiceKind": "capture|shake|goStop|chrysanthemumRole",
+  "visibility": "allParticipants|actorOnly",
+  "actorPlayerId": "player_a",
+  "promptKey": "match.choice.capture",
+  "requestedAt": "2026-03-08T15:30:01+09:00",
+  "deadlineAt": "2026-03-08T15:30:16+09:00",
+  "expiresAtStateVersion": 13,
+  "options": [
+    {
+      "optionCode": "capture_pair_left",
+      "labelKey": "match.choice.capture.take_pair",
+      "cards": [],
+      "effectTags": [],
+      "scoreDeltaPreview": {
+        "self": 0,
+        "opponent": 0
+      },
+      "metadata": {}
+    }
+  ]
+}
+```
+
+### Choice Rules
+- UI는 `labelKey`/`promptKey`를 기준으로 문구를 localize 한다. 서버가 raw localized text를 보내는 것은 계약상 필수 아니다.
+- `cards[]`는 rule-critical preview를 위해 stable `cardId`를 포함한다.
+- `scoreDeltaPreview`는 best-effort hint이며 authoritative score settlement는 아니다.
+- choice command는 반드시 해당 `choiceId`와 `optionCode`를 echo 해야 한다.
+- current engine에는 `chrysanthemumRole` special choice가 있으므로 core enum은 `MultiplayerContractChoiceKind`를 사용한다. Agent 3 shell type과 이름이 다를 수 있다.
+- `askingShake`는 `visibility = actorOnly`다. actor 또는 `authority` scope만 raw `cards[]`와 shake metadata를 받고, non-actor participant는 같은 `choiceId`/`optionCode`를 보더라도 `cards=[]`, `metadata=null`인 redacted payload를 받는다.
+
+## State Sync Policy
+
+### Snapshot
+- snapshot은 full player-scoped state 전달이다.
+- 사용 시점:
+  - `gameStarted`
+  - `resume`
+  - stateVersion gap recovery
+  - patch apply failure recovery
+- snapshot reason enum:
+  - `gameStarted`
+  - `resume`
+  - `resync`
+  - `gapDetected`
+
+### Patch
+- 정상 실시간 플레이 중 기본 전송 방식은 JSON Patch다.
+- `statePatched.payload.baseStateVersion`은 client local version과 같아야 한다.
+- patch apply 후 local `stateVersion`은 `targetStateVersion`과 같아야 한다.
+- gap 또는 apply failure가 나면 client는 patch 적용을 중단하고 snapshot을 기다리거나 요청해야 한다.
+
+### Snapshot/Patch Compatibility Rules
+- resume의 minimum contract는 `stateSnapshot` 1회로 충분하다.
+- missed event catch-up after snapshot은 optimization이며 engine contract의 필수는 아니다.
+- live client는 snapshot-only recovery path를 반드시 지원해야 한다.
+- `stateVersion`이 같고 `eventId`만 앞서는 event를 받는 경우 semantic event만 처리하고 state patch 중복 적용은 피한다.
+- command stale reject path에서는 `actionRejected(code=staleStateVersion)` 뒤에 `stateSnapshot(reason=resync)`가 recovery baseline이다.
+- patch base mismatch 또는 dropped game event를 client가 감지한 path에서는 input을 잠그고 `stateSnapshot(reason=gapDetected)`를 기다리는 것이 baseline이다.
+- MP-008 P0 deterministic validation은 stale `expectedStateVersion` override만 사용한다. dropped game event hook은 future extension으로 남긴다.
+
+### Relay-Ready Engine Envelope Samples
+- room websocket은 `gameEvent.payload.engineEvent` 안에 Agent 1 engine envelope를 nested해서 relay 한다.
+- stale-version reject relay sample:
+```json
+{
+  "type": "gameEvent",
+  "roomId": "room_001",
+  "roomSequence": 44,
+  "payload": {
+    "engineEvent": {
+      "type": "event",
+      "eventName": "actionRejected",
+      "eventId": "evt_000301",
+      "stateVersion": 15,
+      "payload": {
+        "actionId": "act_000121",
+        "commandName": "playCard",
+        "rejectReason": {
+          "code": "staleStateVersion",
+          "details": {
+            "expectedStateVersion": 14,
+            "authoritativeStateVersion": 15,
+            "authoritativeEventId": "evt_000300",
+            "resync": {
+              "trigger": "staleStateVersionReject",
+              "snapshotReason": "resync",
+              "shouldLockInput": true
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+- `stateSnapshot(reason=resync)` relay sample:
+```json
+{
+  "type": "gameEvent",
+  "roomId": "room_001",
+  "roomSequence": 45,
+  "payload": {
+    "engineEvent": {
+      "type": "event",
+      "eventName": "stateSnapshot",
+      "eventId": "evt_000302",
+      "stateVersion": 15,
+      "payload": {
+        "snapshotId": "snap_000015_player_a",
+        "reason": "resync",
+        "snapshotStateVersion": 15,
+        "lastIncludedEventId": "evt_000300"
+      }
+    }
+  }
+}
+```
+- `stateSnapshot(reason=gapDetected)` relay sample:
+```json
+{
+  "type": "gameEvent",
+  "roomId": "room_001",
+  "roomSequence": 46,
+  "payload": {
+    "engineEvent": {
+      "type": "event",
+      "eventName": "stateSnapshot",
+      "eventId": "evt_000401",
+      "stateVersion": 18,
+      "payload": {
+        "snapshotId": "snap_000018_player_a",
+        "reason": "gapDetected",
+        "snapshotStateVersion": 18,
+        "lastIncludedEventId": "evt_000399"
+      }
+    }
+  }
+}
+```
+
+## Local Projection Entry Point
+- existing single-agent `get_state`는 유지한다.
+- game-start bootstrap preview 진입점은 `GameManager.multiplayerGameStartedBootstrapPayload(viewerPlayerId:context:)`다.
+- UI-facing live bootstrap preview 진입점은 `GameManager.multiplayerLiveBootstrapPayload(viewerPlayerId:context:)`다.
+- multiplayer preview 진입점은 `GameManager.multiplayerSnapshot(viewerPlayerId:context:)`다.
+- terminal result preview 진입점은 `GameManager.multiplayerRoundEndedPayload(...)` / `GameManager.multiplayerMatchEndedPayload(...)`다.
+- bridge/CLI helper는 `TestControlSupport.serializedMultiplayerProjectionPayload(from:requestData:)`를 사용한다.
+- local bridge action 이름은 `get_multiplayer_projection`이며, `snapshot` payload에 player-scoped projection을 담아 반환한다.
+- local preview request는 `participantPresenceByPlayerId[playerId] = { isConnected, isReady, source }` shape로 room truth를 merge할 수 있다.
+- in-process typed helper는 `TestControlSupport.multiplayerGameStartedBootstrapPayload(from:requestData:)`를 사용한다.
+- Agent 3 local debug helper는 `TestControlSupport.multiplayerLiveBootstrapPayload(from:requestData:)`를 사용한다.
+- game-start bootstrap preview JSON helper는 `TestControlSupport.serializedMultiplayerGameStartedBootstrapPayload(from:requestData:)`를 사용한다.
+- local bridge action `get_multiplayer_game_started_bootstrap`는 `MultiplayerGameStartedBootstrapPayload`를 JSON으로 직렬화한 `gameStarted` + paired `stateSnapshot(reason=gameStarted)`를 반환한다.
+- terminal preview helper는 `TestControlSupport.serializedMultiplayerTerminalSummaryPayload(from:requestData:)`를 사용한다.
+- local bridge action `get_multiplayer_terminal_summary`는 `MultiplayerTerminalSummaryPayload` metadata(`roomId`, `gameId`, `summaryStateVersion`, `lastEventId`)와 함께 `roundEnded` / `matchEnded`를 반환한다.
+- in-process terminal helper는 `TestControlSupport.multiplayerTerminalSummaryPayload(from:requestData:)`를 사용한다.
+- `get_multiplayer_terminal_summary`에서 `quitReason` override를 쓰는 경우 `forfeitingPlayerId`도 함께 보내야 한다.
+
+## Replay Contract
+
+### Purpose
+- deterministic restore
+- failure reproduction
+- authoritative audit
+
+### Required Replay Artifacts
+- authority-scope baseline snapshot
+- ordered authoritative event stream
+- engine version
+- rule config version
+- final state hash or summary
+- retention policy
+
+### Retention Policy
+- authority replay artifact retention policy는 `privilegedDebugOnly`로 고정한다.
+- required retention cases:
+  - fixture / CLI smoke / socket smoke / manual debug run
+  - failing run or anomaly capture
+  - explicit privileged debug export 요청
+- default no-retention cases:
+  - 일반 production transport session
+  - privileged flag 없는 정상 사용자 매치
+- player-scoped transcript는 일반 artifact로 남길 수 있지만, authority replay baseline/full stream은 privileged debug surface에서만 저장/노출한다.
+
+### Authority Replay Manifest Sample
+```json
+{
+  "replayId": "replay_game_001",
+  "roomId": "room_001",
+  "gameId": "game_001",
+  "retentionPolicy": "privilegedDebugOnly",
+  "engineVersion": "gostop-core@2026.03.08",
+  "ruleConfigVersion": "rules_2026_03_08",
+  "baselineSnapshotId": "auth_snap_round1_start",
+  "baselineStateVersion": 1,
+  "firstEventId": "evt_000001",
+  "lastEventId": "evt_000214",
+  "finalStateVersion": 13,
+  "finalStateHash": "sha256:6f0f8f5c..."
+}
+```
+
+### Replay Rules
+- replay baseline은 player scope가 아니라 `authority` scope여야 한다.
+- event stream은 emitted order 그대로 보존해야 한다.
+- 같은 `engineVersion` + 같은 `ruleConfigVersion` + 같은 baseline + 같은 event stream이면 같은 final state hash가 나와야 한다.
+- replay artifact는 `privilegedDebugOnly` 정책을 따르며 production client에 직접 노출하지 않는다.
+- player-facing delivery payload와 authority replay payload는 visibility scope가 다를 수 있다.
+
+## Validation Checklist
+- [ ] state projection이 player visibility rules를 지킨다
+- [ ] out-of-turn / invalid choice / stale version / duplicate `actionId` policy가 정의돼 있다
+- [ ] `choiceRequested`에 UI와 test runner가 필요한 필드가 있다
+- [ ] reconnect / resync를 위해 snapshot policy가 명시돼 있다
+- [ ] fresh start bootstrap이 `gameStarted` + paired `stateSnapshot(reason=gameStarted)`로 명시돼 있다
+- [ ] `askingShake`가 non-actor에게 raw hand metadata를 노출하지 않는다
+- [ ] projection의 `isConnected/isReady`가 room/session merge contract와 모순되지 않는다
+- [ ] starter/dealer related payload가 실제 starter selection 결과를 따른다
+- [ ] replay 최소 데이터와 visibility scope가 정의돼 있다
+- [ ] `pendingChoice`가 non-actor에게 hidden hand metadata를 노출하지 않는다
+- [ ] projection의 `isConnected/isReady`가 room/session truth와 모순되지 않는다
+- [ ] starter/dealer related payload가 실제 starter selection 결과를 따른다
+
+## Open Questions By Consumer
+
+### Agent 2
+- [ ] room websocket이 engine event envelope를 그대로 forwarding 할지, room envelope 내부에 nested payload로 감쌀지 최종 결정 필요
+- [ ] `playerReconnected` room event와 `stateSnapshot(reason=resume)`의 순서를 transport level에서 어떻게 보장할지 결정 필요
+
+### Agent 3
+- [ ] `labelKey` / `promptKey` / `messageKey` 문자열 카탈로그 naming convention을 UI 쪽에서 그대로 사용할지 확인 필요
+- [ ] `choiceRequested.options[].cards[]`가 actor/non-actor visibility가 달라질 때도 choice tray 렌더가 충분한지 확인 필요
+- [ ] turn/choice deadline UX에 `deadlineAt` + `serverTime` 조합이면 충분한지, 추가 drift correction 필드가 필요한지 확인 필요
+- [ ] local debug `.starting -> showLive` handoff에서 `MultiplayerLiveBootstrapPayload.stateSnapshot`을 live source of truth로 쓰고, `gameStarted`는 auxiliary marker로만 유지하는 mapper 연결 필요
+
+### Agent 4
+- [ ] dropped game event 기반 event gap hook을 future extension으로 둘지, 별도 P1 시나리오로 분리할지 결정 필요
+- [ ] duplicate `actionId` 시나리오에서 transport resend와 malicious conflict reuse를 별도 케이스로 분리할지 결정 필요
+
+## Change Log
+- 2026-03-08: `stateVersion`, `eventId`, reject reason, choice payload, snapshot/patch, replay contract, sample command/event payload 초안 구체화
+- 2026-03-08: `MultiplayerContract.swift` 타입 매핑, `chrysanthemumRole` choice 확장, `get_multiplayer_projection` local preview entry point 반영
+- 2026-03-08: `MultiplayerRoundEndedPayload` / `MultiplayerMatchEndedPayload` / terminal summary helper 추가, reconnect grace expiry를 `quit(reason=disconnectTimeout)` 경로로 고정
+- 2026-03-08: fresh start bootstrap source를 paired `stateSnapshot(reason=gameStarted)`로 고정하고, `MultiplayerGameStartedPayload` / `get_multiplayer_game_started_bootstrap` preview helper를 추가
+- 2026-03-08: `askingShake`를 viewer-scoped redaction으로 고치고, presence merge contract 및 actual starter/dealer payload 규칙을 반영
+- 2026-03-09: local debug live bootstrap minimum set을 `MultiplayerGameStartedBootstrapPayload`로 고정하고, `GameManager` / `TestControlSupport` typed helper naming을 맞춤
+- 2026-03-09: `MultiplayerLiveBootstrapPayload` UI-facing helper와 MP-008 `staleStateVersion -> stateSnapshot(reason=resync)` typed resync contract를 추가
+- 2026-03-10: `MultiplayerTerminalSummaryPayload`, `matchEnded.roundIndex`, replay retention policy `privilegedDebugOnly`, relay-ready resync/reject envelope 예시를 추가

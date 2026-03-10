@@ -63,6 +63,142 @@
 
 ## Log Entries
 
+### [2026-03-08 21:18:56 KST] User Request: 현재 멀티플레이 작업 상태에서 중간 테스트 가능 여부 및 실행
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 지금 워크트리 기준으로 멀티플레이 작업을 중간 점검하고 싶어 했고, 실제 빌드와 fixture harness를 돌려 현재 상태를 빠르게 검증할 필요가 있었음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI -configuration Debug -derivedDataPath /tmp/gostop_cli_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n \"error:|warning:|BUILD SUCCEEDED|BUILD FAILED\"` => `BUILD SUCCEEDED`, `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n 'error:|warning:|BUILD SUCCEEDED|BUILD FAILED'` => `BUILD SUCCEEDED`, `PYTHONDONTWRITEBYTECODE=1 python3 tests/test_agent/multiplayer_runner.py --all-p0 --mode fixture` => `MP-001..MP-007 PASS`, `MP-008 BLOCKED`를 확인했다."
+- **Outcome**: "중간 테스트는 가능했고, 현재 기준으로 GoStopCLI와 iOS app 빌드는 모두 성공했다. multiplayer fixture harness도 `MP-001`부터 `MP-007`까지 PASS였고, `MP-008`만 deterministic staleStateVersion/event-gap 주입 방식이 아직 없어 의도된 BLOCKED 상태로 남았다."
+
+### [2026-03-08 20:27:16 KST] User Request: review findings를 agent1~4 관련 파일에 반영해 후속 작업 기준으로 업데이트 요청
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "리뷰에서 나온 이슈를 agent들이 다음 턴부터 즉시 참고하려면, 공용 보드/라운드 가이드/프롬프트/소유 문서에 owner별 follow-up을 반영해야 했음."
+- **Files Touched**: ["agent_sync_board.md", "agent_code_tasks_round1.md", "agent_prompts/agent1_core_prompt.md", "agent_prompts/agent2_backend_prompt.md", "agent_prompts/agent3_ios_prompt.md", "agent_prompts/agent4_test_prompt.md", "multiplayer_contract.md", "room_protocol.md", "multiplayer_ui_flow.md", "multiplayer_test_scenarios.md", "project_progress.md"]
+- **Validation**: "`sed -n '1,260p' agent_sync_board.md`, `sed -n '1,320p' agent_code_tasks_round1.md`, `sed -n '1,220p' agent_prompts/agent1_core_prompt.md`, `sed -n '1,220p' agent_prompts/agent2_backend_prompt.md`, `sed -n '1,220p' agent_prompts/agent3_ios_prompt.md`, `sed -n '1,220p' agent_prompts/agent4_test_prompt.md`, `sed -n '32,80p' multiplayer_contract.md`, `sed -n '883,910p' multiplayer_contract.md`, `sed -n '39,90p' room_protocol.md`, `sed -n '532,544p' room_protocol.md`, `sed -n '315,355p' multiplayer_ui_flow.md`, `sed -n '86,106p' multiplayer_test_scenarios.md`, `sed -n '522,540p' multiplayer_test_scenarios.md`, `date '+%Y-%m-%d %H:%M:%S %Z'`로 관련 파일 섹션과 최신 상태를 확인했다."
+- **Outcome**: "공용 보드에는 `F-001`~`F-005` review findings와 owner/action을 추가했고, Agent 1~4 섹션의 current task/blocker/validation도 최신화했다. Round 1 가이드와 각 agent 프롬프트에는 즉시 수정해야 할 포인트를 넣었고, agent별 소유 문서(`multiplayer_contract.md`, `room_protocol.md`, `multiplayer_ui_flow.md`, `multiplayer_test_scenarios.md`)에도 privacy, presence truth, heartbeat hardening, 추가 regression 시나리오 같은 follow-up 기준을 반영했다."
+
+### [2026-03-08 20:25:40 KST] User Request: Agent 3 다음 단계인 shell mapper와 app route mount 수행
+- **Skills Planned**: ["gostop-ui-playability", "project_logger"]
+- **Skills Used**: ["gostop-ui-playability", "project_logger"]
+- **Trigger Reason**: "사용자가 Agent 3의 다음 작업으로 제안된 UI-facing mapper 추가와 app route mount를 바로 구현해 달라고 요청했고, multiplayer shell을 실제 앱 내부 inspection 경로까지 연결한 결과를 프로젝트 로그에 남길 필요가 있었음."
+- **Files Touched**: ["GoStop/Views/MultiplayerShellViews.swift", "GoStop/Views/MultiplayerShellState.swift", "GoStop/ContentView.swift", "multiplayer_ui_flow.md", "agent_sync_board.md", "project_progress.md"]
+- **Validation**: "`xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n 'ContentView.swift|MultiplayerShell(State|Views)|error:|warning:|BUILD SUCCEEDED|BUILD FAILED'`를 실행해 `ContentView.swift`, `MultiplayerShellViews.swift`, `MultiplayerShellState.swift`가 포함된 iOS target 빌드 성공을 확인했다. 추가로 `rg -n 'app navigation mount from `ContentView`|fresh start에서 `gameStarted\\.initialProjection`만으로 충분한지|contract payload -> shell state mapping layer|MultiplayerResultPayloadBlockersView|resultBlockers|gameSnapshot\\(reason=gameStarted\\)' ...`로 stale 문구가 문서/코드에 남지 않았는지 점검했다."
+- **Outcome**: "`MultiplayerShellMapper`와 room/hello UI DTO를 추가해 contract payload -> shell state 매핑 골격을 만들었고, `MultiplayerMappedPayloadDemoView`와 `MultiplayerShellLabView`, `ContentView` debug launcher를 통해 앱 내부에서 multiplayer shell을 mock/mapped 두 경로로 확인할 수 있게 했다. 문서와 sync board도 그 상태에 맞춰 blocker를 transport/persistence/localization 중심으로 갱신했다."
+
+### [2026-03-08 20:23:48 KST] User Request: Agent 1~4 작업 진행 상태 리뷰 요청
+- **Skills Planned**: ["basic-code-review", "project_logger"]
+- **Skills Used**: ["basic-code-review", "project_logger"]
+- **Trigger Reason**: "사용자가 실제 병렬 작업 중인 Agent 1~4가 제대로 진행되고 있는지 확인하고 싶어 했고, 현재 워크트리 기준으로 빌드/문법/fixture 실행과 코드 위험 요소를 리뷰할 필요가 있었음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`git status --short`, `git diff --stat`, `sed -n '1,220p' /Users/najongseong/.codex/skills/basic-code-review/SKILL.md`, `xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI -configuration Debug -derivedDataPath /tmp/gostop_cli_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n \"error:|warning:|BUILD SUCCEEDED|BUILD FAILED\"` => `BUILD SUCCEEDED`, `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n 'error:|warning:|BUILD SUCCEEDED|BUILD FAILED'` => `BUILD SUCCEEDED`, `PYTHONDONTWRITEBYTECODE=1 python3 - <<'PY' ... ast.parse(...) ... PY` => `AST_OK`, `PYTHONDONTWRITEBYTECODE=1 python3 tests/test_agent/multiplayer_runner.py --all-p0 --mode fixture` => `MP-001..MP-007 PASS`, `MP-008 BLOCKED`를 확인했다. 추가로 `GoStop/Core/GameManager.swift`, `GoStopCLI/InMemoryRoomCoordinator.swift`, `tests/test_agent/multiplayer/*`를 읽어 코드 리스크를 검토했다."
+- **Outcome**: "전반적으로는 진행이 잘 되고 있다. Agent 1의 multiplayer contract/projection, Agent 2의 in-memory room coordinator, Agent 3의 UI shell, Agent 4의 multiplayer harness가 모두 코드 레벨로 존재하고 빌드도 통과한다. 다만 리뷰 기준으로는 1) shake choice가 상대에게 손패 정보를 노출하는 hidden-info leak, 2) engine projection이 `isConnected/isReady`를 항상 true로 만들어 room-layer truth와 어긋나는 문제, 3) room heartbeat가 replaced/expired session을 검증하지 않아 이전 연결이 새 연결을 덮어쓸 수 있는 문제가 있었다. 또한 Agent 4의 `MP-008`은 의도대로 BLOCKED 상태다."
+
+### [2026-03-08 20:15:03 KST] User Request: Agent 3 multiplayer mock shell 작업 계속 진행
+- **Skills Planned**: ["gostop-ui-playability", "project_logger"]
+- **Skills Used**: ["gostop-ui-playability", "project_logger"]
+- **Trigger Reason**: "사용자가 Agent 3 멀티플레이 mock shell 작업을 이어서 진행하길 요청했고, interactive route host와 result shell을 실제 SwiftUI 상태 전환까지 확장한 뒤 그 결과를 프로젝트 로그에 남길 필요가 있었음."
+- **Files Touched**: ["GoStop/Views/MultiplayerShellViews.swift", "GoStop/Views/MultiplayerShellState.swift", "multiplayer_ui_flow.md", "agent_sync_board.md", "project_progress.md"]
+- **Validation**: "`xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n 'MultiplayerShell(State|Views)|error:|warning:|BUILD SUCCEEDED|BUILD FAILED'`를 실행해 `MultiplayerShellViews.swift`와 `MultiplayerShellState.swift`가 포함된 iOS target 빌드 성공을 확인했다. 추가로 `rg -n 'Result Shell Blocked|result payload shape|result payload|payload blocker view|MultiplayerResultPayloadBlockersView|resultBlockers' ...`로 stale blocker 문구를 점검했다."
+- **Outcome**: "`MultiplayerShellStore` 기반 interactive mock route host를 완성했고, `MultiplayerResultView`를 추가해 Agent 1 terminal summary contract에 맞는 placeholder result shell을 렌더하게 했다. 문서와 sync board도 result payload blocker 제거, 남은 integration blocker 정리 기준으로 갱신했다."
+
+### [2026-03-08 20:14:10 KST] User Request: Agent 4 프롬프트를 test scenario 코드 추가까지 강하게 보강 요청
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "기존 Agent 4 프롬프트가 문서/정책 정리로도 해석될 수 있어, 실제 `tests/test_agent/` 코드와 시나리오 등록까지 강제하는 stronger prompt가 필요했음."
+- **Files Touched**: ["agent_prompts/agent4_test_prompt.md", "agent_code_tasks_round1.md", "project_progress.md"]
+- **Validation**: "`sed -n '1,220p' agent_prompts/agent4_test_prompt.md`, `rg -n \"Agent 4|multiplayer test harness|MP-001|tests/test_agent\" agent_code_tasks_round1.md`, `date '+%Y-%m-%d %H:%M:%S %Z'`로 기존 프롬프트와 Round 1 문서 내 Agent 4 섹션을 확인했다."
+- **Outcome**: "Agent 4 프롬프트와 Round 1 가이드를 강화해, 문서 수정만으로 끝내지 말고 `tests/test_agent/`에 runner/helper 파일을 실제로 추가하고 최소 4개 P0 multiplayer scenario skeleton을 코드 레벨에 등록하도록 명시했다."
+
+### [2026-03-08 20:12:24 KST] User Request: 코딩 프롬프트에 test scenario 추가 내용 포함 여부 확인
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 방금 전달한 코딩 프롬프트 안에 `test scenario 추가` 범위가 실제로 들어 있는지 확인하고 싶어 했음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`date '+%Y-%m-%d %H:%M:%S %Z'`로 로그 시각을 확인했다."
+- **Outcome**: "코딩 프롬프트에는 test scenario 추가가 Agent 4 범위로 명시돼 있고, Agent 1~3은 test scenario 작성 주체가 아니라 contract/UI/handoff 소비자라는 점을 설명하는 방향으로 정리했다."
+
+### [2026-03-08 18:24:32 KST] User Request: Agent 3 기준 multiplayer UI shell과 placeholder state 구현
+- **Skills Planned**: ["gostop-ui-playability", "project_logger"]
+- **Skills Used**: ["gostop-ui-playability", "project_logger"]
+- **Trigger Reason**: "사용자가 실제 네트워크 연결 없이도 멀티플레이 entry/room/reconnect UX를 확인할 수 있는 SwiftUI shell과 placeholder state를 원했고, 그 변경과 blocker를 프로젝트 로그에 남길 필요가 있었음."
+- **Files Touched**: ["GoStop/Views/MultiplayerShellViews.swift", "GoStop.xcodeproj/project.pbxproj", "multiplayer_ui_flow.md", "agent_sync_board.md", "project_progress.md"]
+- **Validation**: "`xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n 'error:|warning:|BUILD SUCCEEDED|BUILD FAILED'`를 실행했고, 현재 워크트리의 기존 Core 멀티플레이 타입 누락(`MultiplayerProjectionContext`, `MultiplayerSnapshotReason` 등) 때문에 전체 iOS 빌드는 실패했다. 추가로 `xcrun swiftc -typecheck ... GoStop/Views/MultiplayerShellViews.swift`를 시도했지만 preview macro plugin sandbox 제약으로 독립 타입체크는 완료하지 못했다."
+- **Outcome**: "`GoStop/Views/MultiplayerShellViews.swift`를 추가해 `MultiplayerEntryView`, `MultiplayerRoomView`, `MultiplayerLiveShellView`, `MultiplayerReconnectOverlay`, `MultiplayerResultPayloadBlockersView`, `MultiplayerShellShowcaseView`와 placeholder state 타입을 만들었다. shell은 preview/mock state로 렌더되며, result payload와 invite identifier, fresh start projection source, adapter/persistence wiring은 문서와 sync board에 blocker로 남겼다."
+
+### [2026-03-08 18:14:17 KST] User Request: Agent 1~4에 바로 붙여넣을 코딩 프롬프트 요청
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 문서가 아니라 실제 코딩 시작용 메시지를 바로 필요로 하므로, 각 agent 세션에 붙여넣을 코딩 프롬프트를 즉시 제공할 필요가 있었음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`date '+%Y-%m-%d %H:%M:%S %Z'`로 로그 시각을 확인했다."
+- **Outcome**: "Agent 1~4 각각에 대해 현재 Round 1 기준 실제 코드 구현 범위와 금지사항, 수정 파일 범위, 보고 형식을 포함한 복붙용 코딩 프롬프트를 제공하는 방향으로 정리했다."
+
+### [2026-03-08 18:05:21 KST] User Request: Agent 1이 정리한 계약 기준으로 Agent 2 문서 재검토 요청
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "Agent 1이 `multiplayer_contract.md`를 구체화한 뒤, Agent 2의 room/session 문서와 sync board에 이미 해소된 open question이나 wrapper 불일치가 남아 있지 않은지 재검토할 필요가 있었음."
+- **Files Touched**: ["room_protocol.md", "agent_sync_board.md", "project_progress.md"]
+- **Validation**: "`sed -n '1,260p' multiplayer_contract.md`, `sed -n '228,390p' room_protocol.md`, `sed -n '45,175p' agent_sync_board.md`, `rg -n 'gameSnapshot|stateSnapshot\\(reason=gameStarted\\)|gameEvent\\(stateSnapshot\\)' room_protocol.md agent_sync_board.md`, `date '+%Y-%m-%d %H:%M:%S %Z'`로 Agent 1 계약과 Agent 2 문서의 용어/복구 순서/open question 정합성을 교차 확인했다."
+- **Outcome**: "Agent 1 contract와 어긋나던 `gameSnapshot` 별도 transport 개념을 제거하고, resume/game sync를 `gameEvent(payload.engineEvent=stateSnapshot)` 기준으로 정리했다. 이미 Agent 1이 잠근 `gameStarted` snapshot 관련 질문은 board와 room protocol의 open question에서 내려 정합성을 맞췄다."
+
+### [2026-03-08 18:03:51 KST] User Request: Agent 1~4에게 실제 코드 작업을 어떻게 줄지 정리 요청
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "문서 초안만으로는 실제 병렬 개발이 시작되지 않으므로, 현재 저장소 구조를 기준으로 Agent 1~4의 첫 코딩 라운드 범위와 프롬프트를 현실적인 파일 단위로 끊을 필요가 있었음."
+- **Files Touched**: ["agent_code_tasks_round1.md", "project_progress.md"]
+- **Validation**: "`rg --files GoStop GoStopCLI tests/test_agent | rg 'Core/|Views/|ViewModels/|SimulatorBridge|GameManager|main.py|test_scenarios.py|ai_player.py'`, `sed -n '1,260p' GoStop/Core/SimulatorBridge.swift`, `sed -n '1,260p' GoStop/Core/GameManager.swift`, `sed -n '1,260p' tests/test_agent/main.py`, `sed -n '1,260p' GoStop/Views/GameView.swift`, `rg --files GoStopCLI`, `sed -n '1,260p' GoStopCLI/main.swift`, `sed -n '1,240p' tests/test_agent/test_scenarios.py`, `date '+%Y-%m-%d %H:%M:%S %Z'`로 현재 코드 구조와 진입 파일을 확인했다."
+- **Outcome**: "루트에 `agent_code_tasks_round1.md`를 추가했고, 현재 코드베이스 기준으로 Agent 1은 contract/projection helper, Agent 2는 room/session in-memory coordinator, Agent 3은 multiplayer UI shell, Agent 4는 multiplayer test harness/artifact skeleton을 맡는 첫 코딩 라운드 티켓과 복붙용 프롬프트를 정리했다."
+
+### [2026-03-08 15:36:51 KST] User Request: Agent 1~4 세션에 바로 붙여넣을 첫 입력 문장 작성 요청
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 multi-agent 운영을 실제로 시작하려고 하므로, 각 세션의 첫 메시지를 모호하지 않게 바로 복붙 가능한 문장으로 제공할 필요가 있었음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`date '+%Y-%m-%d %H:%M:%S %Z'`로 로그 시각을 확인했다."
+- **Outcome**: "Agent 1~4 각각에 대해 역할, 목표, 수정 범위, 금지사항, 이번 턴 산출물, 보고 형식을 포함한 첫 입력용 프롬프트 문장을 제공하는 방향으로 정리했다."
+
+### [2026-03-08 15:36:04 KST] User Request: Agent 1 세션에 어떤 첫 프롬프트를 입력해야 하는지 문의
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 Agent 1 프롬프트 파일을 열었지만, 실제 Codex 세션 첫 입력을 어느 수준으로 구체적으로 써야 하는지 바로 실행 가능한 형태가 필요했음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`date '+%Y-%m-%d %H:%M:%S %Z'`로 로그 시각을 확인했다."
+- **Outcome**: "단순히 `multiplayer_contract.md 참고해서 개발해줘`보다, 역할/수정 범위/목표 파일/완료 조건/금지사항/출력 형식을 함께 명시한 첫 프롬프트를 권장하는 방향으로 안내했다."
+
+### [2026-03-08 15:32:38 KST] User Request: 4개 agent를 실제 수행하려면 세션/프롬프트를 어떻게 열어야 하는지 문의
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "multi-agent 문서와 프롬프트 파일을 만든 뒤, 사용자가 실제 실행 방식과 세션 개수를 바로 알고 시작할 수 있어야 했음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`date '+%Y-%m-%d %H:%M:%S %Z'`로 로그 시각을 확인했다."
+- **Outcome**: "실행 가이드는 '예, 이상적으로는 agent별로 별도 Codex 세션 4개를 연다'를 기본으로 하되, worktree/branch 분리 후 Agent 1부터 먼저 시작하고 Agent 2·4를 병렬로 붙이며 Agent 3는 계약 확정 뒤 연결하는 절차로 안내했다."
+
+### [2026-03-08 15:29:25 KST] User Request: 4개 contract 문서 골격 생성
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "공용 운영 보드와 agent 프롬프트만으로는 실제 병렬 작업을 시작하기 어려워, Agent 1~4가 바로 채워 넣을 수 있는 contract/protocol/UI/test 문서 골격이 필요했음."
+- **Files Touched**: ["multiplayer_contract.md", "room_protocol.md", "multiplayer_ui_flow.md", "multiplayer_test_scenarios.md", "project_progress.md"]
+- **Validation**: "`rg --files | rg '^(multiplayer_contract\\.md|room_protocol\\.md|multiplayer_ui_flow\\.md|multiplayer_test_scenarios\\.md|agent_sync_board\\.md|matgo_multiplayer_multi_agent_plan\\.md|multi_agent_operating_guide\\.md)$'`, `sed -n '1,260p' agent_sync_board.md`, `date '+%Y-%m-%d %H:%M:%S %Z'`로 기존 운영 문서와 신규 대상 파일 부재를 확인했다."
+- **Outcome**: "루트에 `multiplayer_contract.md`, `room_protocol.md`, `multiplayer_ui_flow.md`, `multiplayer_test_scenarios.md`를 추가했다. 각 문서는 owner, scope, non-goals, key decisions, schema/flow/sample payload, validation checklist, open questions, change log까지 포함한 skeleton 형태로 작성해 Agent 1~4가 바로 세부 내용을 채워 넣을 수 있게 정리했다."
+
+### [2026-03-08 15:27:33 KST] User Request: 공용 운영 보드와 각 agent용 파일 생성
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "4-agent 병렬 운영을 실제로 시작하려면, 공용 상태판과 각 agent 세션에 바로 투입할 프롬프트 파일이 필요했음."
+- **Files Touched**: ["agent_sync_board.md", "agent_prompts/agent1_core_prompt.md", "agent_prompts/agent2_backend_prompt.md", "agent_prompts/agent3_ios_prompt.md", "agent_prompts/agent4_test_prompt.md", "project_progress.md"]
+- **Validation**: "`rg --files | rg '^(agent_sync_board\\.md|agent_prompts/|multi_agent_operating_guide\\.md|matgo_multiplayer_multi_agent_plan\\.md|project_progress\\.md)$'`, `sed -n '1,260p' multi_agent_operating_guide.md`, `date '+%Y-%m-%d %H:%M:%S %Z'`로 기존 운영 문서와 신규 파일 중복 여부를 확인했다."
+- **Outcome**: "루트에 `agent_sync_board.md`를 추가했고, `agent_prompts/` 아래에 Agent 1~4용 시작 프롬프트 파일을 각각 생성했다. 보드는 현재 Phase 0 기준으로 global status, open contract questions, agent별 scope/blocker/validation/handoff 섹션을 갖고 있고, 프롬프트 파일은 각 agent 세션 첫 입력으로 바로 붙여넣을 수 있는 형태로 정리했다."
+
+### [2026-03-08 15:24:49 KST] User Request: 4개 agent를 동시에 활용해 작업을 병렬 진행하는 운영 방법 문의
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "4-agent 역할 분리만으로는 실제 병렬 실행이 어렵기 때문에, 별도 worktree/branch, 세션 분리, 공통 계약 문서, merge 순서, sync cadence까지 포함한 운영 가이드가 필요했음."
+- **Files Touched**: ["multi_agent_operating_guide.md", "project_progress.md"]
+- **Validation**: "`sed -n '1,260p' matgo_multiplayer_multi_agent_plan.md`, `date '+%Y-%m-%d %H:%M:%S %Z'`로 기존 분업 문서와 로그 시점을 확인했다."
+- **Outcome**: "루트에 `multi_agent_operating_guide.md`를 추가했고, agent별 git worktree 분리, 세션별 역할 프롬프트, 공통 계약 문서, 단계별 병렬 작업 방식, 통합 branch와 merge 순서, sync board 운영 규칙, handoff/검증 기준까지 정리했다."
+
 ### [2026-03-08 15:21:00 KST] User Request: 멀티플레이 관련 작업을 4개 agent로 나눠 관리 가능한 형태로 분리
 - **Skills Planned**: ["gostop-game-builder", "project_logger"]
 - **Skills Used**: ["gostop-game-builder", "project_logger"]
@@ -1642,3 +1778,171 @@
 - **Files Touched**: ["project_progress.md"]
 - **Validation**: "`rg -n \"쌍피|double pi|conditional_double_pi|chrysanthemum_rule|selectedRole\" GoStop GoStopTests tests project_progress.md`, `sed -n '1,220p' GoStop/Models/Card.swift`, `sed -n '1,220p' GoStop/Core/ScoringSystem.swift`, `sed -n '1,220p' GoStop/Resources/rule.yaml`, `sed -n '1600,1665p' GoStop/Core/GameManager.swift`, `sed -n '280,340p' GoStopTests/GoStopTests.swift`로 카드 역할, 점수 계산, 룰 설정, 캡처 시 역할 선택, 테스트 기대값을 교차 확인."
 - **Outcome**: "현재 프로젝트에는 `추가 쌍피`에 해당하는 개념이 두 가지로 존재한다. 1) 9월 열끗(국진)은 기본 설정 `default_role: double_pi`로 잡혀 있어 캡처 시 쌍피 역할로 들어간다. 2) 청단이 완성되면 `conditional_double_pi` 규칙 때문에 9월 일반 피가 추가로 +1을 받아 2피로 계산된다. 따라서 구현상 `추가 쌍피`는 단순 카드 종류 하나가 아니라 `역할 선택`과 `조건부 보너스`로 구성된 확장 쌍피 규칙이다."
+
+### [2026-03-08 18:11:57 KST] User Request: agent 2~3 작업 완료 후 Phase 0 계약 정합성 재확인
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Agent 2의 room/reconnect 초안과 Agent 3의 UI flow 초안이 완료된 뒤, Agent 4 문서가 이미 잠긴 contract를 계속 open으로 남기고 있지 않은지 다시 맞춰야 했음."
+- **Files Touched**: ["multiplayer_test_scenarios.md", "agent_sync_board.md", "project_progress.md"]
+- **Validation**: "`sed -n '1,320p' room_protocol.md`, `sed -n '1,320p' multiplayer_ui_flow.md`, `sed -n '1,260p' agent_sync_board.md`, `sed -n '1,260p' multiplayer_test_scenarios.md`, `rg -n \"gameBootstrapStarted|startGame|roomSnapshot|playerReconnected|stateSnapshot|matchEnded|roundEnded\" room_protocol.md multiplayer_ui_flow.md multiplayer_test_scenarios.md agent_sync_board.md`로 Agent 2/3 최신 문서와 Agent 4 문서 사이의 stale 문구를 교차 확인했다."
+- **Outcome**: "Agent 2/3 문서 반영 후 Agent 4 쪽 시나리오와 보드를 재동기화했다. `multiplayer_test_scenarios.md`에서는 auto-start, nested room envelope, `helloAck -> roomSnapshot -> gameEvent(stateSnapshot)` reconnect ordering, 30초 grace를 확정 assert로 바꾸고 fresh-start bootstrap source와 terminal result summary를 남은 blocker로 축소했다. `agent_sync_board.md`에서도 Agent 4 open question과 blocker를 같은 기준으로 정리했다."
+
+### [2026-03-09 21:18:00 KST] User Request: Agent 3 MP Lab을 actual local debug coordinator 연결 테스트 화면으로 전환
+- **Skills Planned**: ["game_UI_iteration", "project_logger"]
+- **Skills Used**: ["game_UI_iteration", "project_logger"]
+- **Trigger Reason**: "DEBUG `MP Lab`이 pure mock route host에서 벗어나 실제 local room coordinator mutation을 누를 수 있어야 했고, 그 과정에서 shell/view가 room truth와 reconnect overlay 규칙을 어기지 않게 정리할 필요가 있었음."
+- **Files Touched**: ["GoStop/Views/MultiplayerShellState.swift", "GoStop/Views/MultiplayerShellViews.swift", "multiplayer_ui_flow.md", "agent_sync_board.md", "project_progress.md"]
+- **Validation**: "`xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n 'MultiplayerShell(State|Views)|error:|warning:|BUILD SUCCEEDED|BUILD FAILED'`를 두 번 실행해, `@MainActor` default-argument 경고를 정리한 뒤 `BUILD SUCCEEDED`를 확인했다."
+- **Outcome**: "`MultiplayerShellStore`를 pluggable source 구조로 유지하면서 DEBUG `MP Lab` 첫 탭을 `MultiplayerLocalDebugShellSource` 기반 coordinator lab으로 교체했다. `Create Room`, `Join Guest`, `Ready`, `Disconnect`, `Resume`, `Heartbeat`는 이제 `LocalRoomCoordinatorDebugService`를 직접 호출하고, room snapshot truth가 ready/presence/banner 및 reconnect overlay를 구동한다. live/result는 아직 mapped demo 또는 mock source inspection에 남아 있다는 점도 문서와 sync board에 반영했다."
+
+### [2026-03-08 20:03:14 KST] User Request: Agent 2 room/session/reconnect Swift 골격 작업 계속 진행
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "새로 추가한 room coordinator의 `leaveRoom`, `closeRoom`, `recordHeartbeat` 경로를 검증하고, 문서/보드의 API surface를 코드와 다시 맞춰야 했음."
+- **Files Touched**: ["GoStopCLI/RoomCoordinatorModels.swift", "GoStopCLI/InMemoryRoomCoordinator.swift", "room_protocol.md", "agent_sync_board.md", "project_progress.md"]
+- **Validation**: "`env CLANG_MODULE_CACHE_PATH=/tmp/codex_swift_module_cache SWIFT_MODULECACHE_PATH=/tmp/codex_swift_module_cache swiftc -typecheck GoStopCLI/RoomCoordinatorModels.swift GoStopCLI/InMemoryRoomCoordinator.swift` 통과. 추가로 `env CLANG_MODULE_CACHE_PATH=/tmp/codex_swift_module_cache SWIFT_MODULECACHE_PATH=/tmp/codex_swift_module_cache swiftc GoStopCLI/RoomCoordinatorModels.swift GoStopCLI/InMemoryRoomCoordinator.swift /tmp/room_coordinator_smoke.swift -o /tmp/room_coordinator_smoke && /tmp/room_coordinator_smoke`로 `create -> join -> heartbeat -> leave -> close` smoke를 재실행해 host `connectedConnectionId`가 heartbeat로 채워지고, guest leave 뒤 snapshot session 수가 `1`로 줄어드는 것을 확인했다. 기존 `create -> join -> ready -> disconnect -> resume` smoke 결과도 유지했다."
+- **Outcome**: "`RoomLifecycleCoordinating` surface에 `leaveRoom`, `closeRoom`, `recordHeartbeat`까지 반영된 Swift 골격이 typecheck/smoke 기준으로 정리됐다. `InMemoryRoomCoordinator`는 heartbeat 시 member connection binding을 함께 갱신하고, snapshot은 현재 room membership에 속한 session만 노출하도록 보정했다. `room_protocol.md`에는 coordinator API와 privileged `closeRoom`/heartbeat note를 동기화했고, `agent_sync_board.md`에서는 stale bootstrap open question을 제거하고 Agent 2 validation/latest update를 최신 상태로 갱신했다. 남은 blocker는 reconnect grace expiry의 Agent 1 handoff 방식과 `matchEnded` terminal summary sufficiency다."
+
+### [2026-03-08 20:19:51 KST] User Request: Agent 2 다음 구현 단계(GoStopCLI 타깃 편입 + room transport ingress 골격) 즉시 수행
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "직전 턴에서 정리한 Agent 2 우선순위 중, `GoStopCLI` 타깃 source inclusion과 room ingress adapter 골격을 바로 코드로 연결해야 했음."
+- **Files Touched**: ["GoStopCLI/main.swift", "GoStopCLI/RoomCoordinatorModels.swift", "GoStopCLI/InMemoryRoomCoordinator.swift", "GoStopCLI/RoomCoordinatorCLIAdapter.swift", "GoStop.xcodeproj/project.pbxproj", "room_protocol.md", "agent_sync_board.md", "project_progress.md"]
+- **Validation**: "1) `xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI -configuration Debug -derivedDataPath /tmp/gostop_cli_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n \"error:|warning:|BUILD SUCCEEDED|BUILD FAILED\"` => `BUILD SUCCEEDED`. 2) built binary `/tmp/gostop_cli_build/Build/Products/Debug/GoStopCLI`에 `room_create -> room_hello -> room_join -> room_hello -> room_set_ready -> room_disconnect -> room_hello(resume)` JSON line sequence를 주입해, fresh `room_hello`가 `resumeMode=fresh` + token rotation, reconnect `room_hello`가 `resumeMode=resume` + `playerReconnected` event, 두 번째 ready가 `requiresGameBootstrap=true`를 반환하는 것을 확인."
+- **Outcome**: "`GoStopCLI` target에 room coordinator source와 `RoomCoordinatorCLIAdapter`를 실제로 편입했다. coordinator에는 fresh socket attach용 `attachSession(_:)`를 추가했고, CLI ingress는 `room_create|join|set_ready|leave|close|disconnect|hello|pong|ack|record_game_started|record_match_ended|reap_expired|snapshot` command를 지원한다. 문서와 보드도 `attachSession`, `room_hello`, `room_pong|room_ack`, Xcode build/CLI smoke 결과에 맞춰 갱신했다. 남은 구현 blocker는 실제 websocket/server layer 연결과 Agent 1 terminal summary forwarding 적용이다."
+
+### [2026-03-08 21:45:19 KST] User Request: DEBUG 앱에서 room/session coordinator를 직접 쓰는 local debug service 추가
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Agent 2 다음 라운드 목표가 CLI 전용 coordinator를 DEBUG app 내부에서도 직접 호출할 수 있게 만드는 것이었고, 동시에 `recordHeartbeat` newest-wins hardening(`F-003`)을 닫아야 했음."
+- **Files Touched**: ["GoStopCLI/RoomCoordinatorModels.swift", "GoStopCLI/InMemoryRoomCoordinator.swift", "GoStopCLI/RoomCoordinatorCLIAdapter.swift", "GoStop/Core/LocalRoomCoordinatorDebugService.swift", "GoStop.xcodeproj/project.pbxproj", "room_protocol.md", "agent_sync_board.md", "project_progress.md"]
+- **Validation**: "1) `env CLANG_MODULE_CACHE_PATH=/tmp/codex_swift_module_cache SWIFT_MODULECACHE_PATH=/tmp/codex_swift_module_cache swiftc -typecheck GoStopCLI/RoomCoordinatorModels.swift GoStopCLI/InMemoryRoomCoordinator.swift GoStop/Core/LocalRoomCoordinatorDebugService.swift` 통과. 2) shim compile로 `swiftc GoStopCLI/RoomCoordinatorModels.swift GoStopCLI/InMemoryRoomCoordinator.swift GoStopCLI/RoomCoordinatorCLIAdapter.swift /tmp/room_cli_shim.swift /tmp/room_cli_adapter_smoke.swift -o /tmp/room_cli_adapter_smoke && /tmp/room_cli_adapter_smoke` 실행 시 `ok / ok / ok / staleConnectionId` 확인. 3) `xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI ... build`와 `xcodebuild -project GoStop.xcodeproj -scheme GoStop -sdk iphonesimulator ... build` 재실행은 둘 다 unrelated `GoStop/Core/GameManager.swift` `MultiplayerChoice(... visibility: ...)` 오류로 BLOCKED."
+- **Outcome**: "`RoomCoordinatorModels` / `InMemoryRoomCoordinator`는 app target과 CLI target이 함께 재사용하도록 target membership을 정리했고, DEBUG app entrypoint `MultiplayerDebugServices.roomCoordinator`를 추가했다. 새 `LocalRoomCoordinatorDebugService`는 `createRoom`, `joinRoom`, `hello`, `setReady`, `disconnect`, `resume`, `heartbeat`, `snapshot` API와 `snapshotsByRoomId`, `lastMutation`, `lastHelloResult` 상태를 제공한다. 또한 `recordHeartbeat(_:)`는 더 이상 connection binding을 만들지 않고 현재 bound `connectionId`만 받아 stale/replaced/expired heartbeat를 reject해 `F-003` newest-wins hardening을 닫았다."
+
+### [2026-03-08 21:22:10 KST] User Request: 서버 접속을 직접 시험할 수 있는지 확인
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 현재 멀티플레이 작업 상태에서 직접 서버 접속을 해보고 싶어 했고, 실제 네트워크 서버가 있는지와 로컬에서 시험 가능한 ingress가 무엇인지 코드 기준으로 구분해줄 필요가 있었음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`rg -n \"WebSocket|listen|server|InMemoryRoomCoordinator|SimulatorBridge|Multiplayer\" GoStop GoStopCLI tests/test_agent`, `sed -n '1,220p' GoStopCLI/main.swift`, `sed -n '1,260p' GoStopCLI/RoomCoordinatorCLIAdapter.swift`, `sed -n '1,260p' GoStopCLI/RoomCoordinatorModels.swift`, `sed -n '220,420p' tests/test_agent/main.py`, `sed -n '580,620p' GoStop/Views/GameView.swift`로 ingress 경로를 확인했다. 이어서 `xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI -configuration Debug -derivedDataPath /tmp/gostop_cli_connect build CODE_SIGNING_ALLOWED=NO`로 CLI를 빌드하고, `/tmp/gostop_cli_connect/Build/Products/Debug/GoStopCLI`에 `room_create -> room_join -> room_hello -> room_snapshot` JSON line sequence를 실제로 주입해 room/session snapshot 응답이 정상 반환되는 것을 확인했다."
+- **Outcome**: "현재 저장소에는 아직 실제 WebSocket 멀티플레이 서버는 없고, 대신 `GoStopCLI` stdin JSON ingress와 시뮬레이터 전용 `SimulatorBridge` TCP 8080이 있다. 로컬 접속 시험은 `GoStopCLI` 쪽이 바로 가능하며, `room_create`, `room_join`, `room_hello`, `room_snapshot`이 정상 동작하는 것을 직접 검증했다."
+
+### [2026-03-08 21:24:11 KST] User Request: host/guest 2명 접속 스모크를 바로 실행할 수 있게 만들어줘
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 수동 JSON 입력 대신 바로 실행 가능한 2인 접속 흐름을 원했고, `GoStopCLI` 기반 room/session ingress를 실제 smoke script로 고정해두는 편이 이후 agent 검증에도 재사용성이 높았음."
+- **Files Touched**: ["scripts/run_multiplayer_cli_two_player_smoke.py", "project_progress.md"]
+- **Validation**: "`chmod +x scripts/run_multiplayer_cli_two_player_smoke.py`, `python3 scripts/run_multiplayer_cli_two_player_smoke.py --binary /tmp/gostop_cli_connect/Build/Products/Debug/GoStopCLI`를 실행해 `room_create -> room_join -> host/guest room_hello -> host/guest room_set_ready -> room_snapshot` 전체 흐름이 성공하고, 최종 summary에 `roomState=starting`, `requiresGameBootstrap=True`, 양쪽 `connectedConnectionId`가 채워지는 것을 확인했다."
+- **Outcome**: "`scripts/run_multiplayer_cli_two_player_smoke.py`를 추가했다. 이 스크립트는 필요 시 `GoStopCLI`를 빌드하고, 2인 접속/준비 완료/스냅샷까지 자동으로 검증한 뒤 roomId, sessionId, hello mode, bootstrap flag, member 상태를 요약 출력한다."
+
+### [2026-03-08 21:26:17 KST] User Request: disconnect/resume까지 포함한 2차 멀티플레이 스모크도 추가해줘
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 2인 접속 뒤 재접속 경로까지 바로 확인하고 싶어 했고, 별도 수동 명령 없이 하나의 스크립트에서 `disconnect -> room_hello(resume) -> heartbeat`를 검증할 수 있게 하는 게 현재 Phase 1 확인에 가장 직접적이었음."
+- **Files Touched**: ["scripts/run_multiplayer_cli_two_player_smoke.py", "project_progress.md"]
+- **Validation**: "`python3 scripts/run_multiplayer_cli_two_player_smoke.py --binary /tmp/gostop_cli_connect/Build/Products/Debug/GoStopCLI --scenario disconnect-resume`와 `--scenario ready-start`를 각각 실행했다. `disconnect-resume`에서는 guest가 `disconnected -> connected`로 복귀하고 `room_hello`가 `resumeMode=resume`, 새 `connectionId=conn_guest_002`, `room_heartbeat` 수락을 반환하는 것을 확인했다. 기존 `ready-start` 시나리오도 그대로 통과함을 재확인했다."
+- **Outcome**: "`scripts/run_multiplayer_cli_two_player_smoke.py`에 `--scenario ready-start|disconnect-resume` 옵션을 추가했다. 이제 하나의 엔트리포인트로 기본 2인 접속/ready 흐름과 guest disconnect/resume/heartbeat 흐름을 모두 검증할 수 있다."
+
+### [2026-03-08 21:28:04 KST] User Request: 게임 화면에서 직접 접속하는 테스트가 가능한지 확인
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 현재 멀티플레이 진행 상태를 혼란스러워했고, 앱 내부 UI에서 실제 접속 테스트가 가능한지와 mock shell인지 여부를 코드 기준으로 명확히 구분해줄 필요가 있었음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`rg -n \"MultiplayerShellLabView|MultiplayerShellStore|room_hello|room_create|helloAck|roomSnapshot|URLSessionWebSocketTask|socket|network\" GoStop GoStopCLI`, `sed -n '1,140p' GoStop/ContentView.swift`, `sed -n '1340,1515p' GoStop/Views/MultiplayerShellViews.swift`, `sed -n '1,260p' GoStop/Views/MultiplayerShellState.swift`로 앱 내 멀티플레이 진입점과 실제 네트워크 연결 여부를 확인했다."
+- **Outcome**: "DEBUG 앱의 `MP Lab` 버튼은 존재하지만, 이 화면은 `MultiplayerShellStore` 기반 local mock host이고 실제 room/session ingress에 붙어 있지 않다. 현재 실제 접속 검증이 가능한 경로는 `GoStopCLI` room ingress 스크립트 쪽이며, 게임 화면에서 `서버 접속`을 누르는 형태의 실접속 테스트는 아직 불가능하다."
+
+### [2026-03-08 21:30:16 KST] User Request: agent별 다음 할일 프롬프트 작성
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 현재 멀티플레이 작업을 agent별로 병렬 진행 중이고, 방금 확인된 상태(`MP Lab`은 mock, 실제 ingress는 CLI only)를 반영한 다음 라운드 프롬프트가 필요했음."
+- **Files Touched**: ["agent_code_tasks_round2.md", "project_progress.md"]
+- **Validation**: "`sed -n '1,260p' agent_code_tasks_round1.md`, `sed -n '1,260p' agent_sync_board.md`, `sed -n '1,220p' agent_prompts/agent1_core_prompt.md`, `sed -n '1,220p' agent_prompts/agent2_backend_prompt.md`, `sed -n '1,220p' agent_prompts/agent3_ios_prompt.md`, `sed -n '1,220p' agent_prompts/agent4_test_prompt.md`로 기존 분업 기준과 review fixup 상태를 다시 확인한 뒤, `Phase 2 / In-App Debug Connect` 기준의 agent별 objective / acceptance / copy-paste prompt를 새 문서에 정리했다."
+- **Outcome**: "`agent_code_tasks_round2.md`를 추가했다. 다음 라운드는 `실제 서버 완성` 대신 `DEBUG 앱 안에서 room create/join/ready/disconnect/resume를 실제 coordinator state로 눌러보는 것`을 목표로 잡았고, Agent 1은 authority fixup, Agent 2는 local debug coordinator/shared service, Agent 3는 MP Lab real wiring, Agent 4는 regression/smoke 보강 prompt를 각각 바로 복붙할 수 있게 정리했다."
+
+### [2026-03-08 21:31:42 KST] User Request: agent별 짧은 버전 프롬프트도 만들어줘
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 긴 라운드 문서 대신 각 agent 세션 첫 메시지로 바로 붙여넣을 짧은 프롬프트를 원했음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "직전 턴에 만든 `agent_code_tasks_round2.md`의 목표와 범위를 다시 기준으로 삼아, Agent 1~4 각각의 핵심 목표/수정 범위/금지사항/보고 형식을 1회차 시작 메시지 길이로 압축했다."
+- **Outcome**: "각 agent용 짧은 복붙 프롬프트를 별도 설명 없이 바로 사용할 수 있는 형태로 정리해 전달했다."
+
+### [2026-03-09 21:36:08 KST] User Request: agent 1~4 완료본 리뷰 후 추가 할 일 프롬프트 작성
+- **Skills Planned**: ["basic-code-review", "gostop-game-builder", "project_logger"]
+- **Skills Used**: ["basic-code-review", "gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 agent 1~4 완료본을 리뷰하고, 발견된 문제를 기준으로 다음 라운드 프롬프트를 다시 나눠달라고 요청했음."
+- **Files Touched**: ["agent_code_tasks_round3.md", "project_progress.md"]
+- **Validation**: "`git status --short`, `git diff --stat`, `git diff --name-only`, `git ls-files --others --exclude-standard`, 주요 변경 파일(`GoStop/Core/GameManager.swift`, `GoStop/Core/LocalRoomCoordinatorDebugService.swift`, `GoStop/Views/MultiplayerShellState.swift`, `GoStopCLI/InMemoryRoomCoordinator.swift`, `scripts/run_multiplayer_cli_two_player_smoke.py`)을 읽어 구조를 검토했다. 추가로 escalated `xcodebuild`로 `GoStopCLI`, `GoStop` iOS 빌드를 각각 재검증했고, `python3 scripts/run_multiplayer_cli_two_player_smoke.py --binary /tmp/gostop_cli_review/Build/Products/Debug/GoStopCLI --scenario all`로 CLI smoke 전체를 재실행했다."
+- **Outcome**: "빌드와 CLI smoke는 green이었지만, in-app local debug 흐름에서 `Guest Ready`/`gameStarted`/`showLive` 경로가 빠져 실제 2인 ready/start/live 검증이 막혀 있고, entry의 `Join Invite`는 local debug source에서 즉시 에러로 떨어지는 문제를 발견했다. 이 findings를 기준으로 `agent_code_tasks_round3.md`에 Agent 1~4 후속 프롬프트를 정리했다."
+
+### [2026-03-09 22:21:41 KST] User Request: 4개 agent 완료 결과 확인 후 다음 해야할 일 정리
+- **Skills Planned**: ["basic-code-review", "gostop-game-builder", "project_logger"]
+- **Skills Used**: ["basic-code-review", "gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 agent 1~4의 현재 완료 상태를 다시 확인하고, 남은 작업을 다음 라운드 기준으로 정리해달라고 요청했음."
+- **Files Touched**: ["agent_code_tasks_round4.md", "project_progress.md"]
+- **Validation**: "1) escalated `xcodebuild`로 `GoStopCLI`, `GoStop` iOS 빌드를 다시 확인했고 둘 다 `BUILD SUCCEEDED`. 2) `python3 scripts/run_multiplayer_cli_two_player_smoke.py --binary /tmp/gostop_cli_final_review/Build/Products/Debug/GoStopCLI --scenario all`로 `ready-start`, `disconnect-resume`, `heartbeat-guard` 전부 PASS 확인. 3) `PYTHONDONTWRITEBYTECODE=1 python3 tests/test_agent/multiplayer_runner.py --all-p0 --mode fixture`로 `MP-001 ~ MP-007` PASS, `MP-008` BLOCKED 재확인. 4) `GoStop/Views/MultiplayerShellState.swift`, `GoStop/Core/LocalRoomCoordinatorDebugService.swift`, `agent_sync_board.md`, `multiplayer_test_scenarios.md`를 읽어 현재 남은 gap을 확인했다."
+- **Outcome**: "현재 상태는 local debug connect와 CLI smoke까지는 신뢰 가능한 수준으로 올라왔고, 남은 핵심 gap은 `authoritative live bootstrap wiring`, `CLI smoke의 gameStarted/stateSnapshot pair assert`, `MP-008 deterministic hook`, `real transport path`로 정리된다. 이를 기준으로 `agent_code_tasks_round4.md`를 새로 추가했다."
+
+### [2026-03-09 22:24:09 KST] User Request: 각 agent별 진행 프롬프트 정리
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 Round 4 남은 작업을 각 agent 세션에 바로 붙여넣을 수 있는 프롬프트 형태로 정리해달라고 요청했음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`agent_code_tasks_round4.md`와 직전 검증 결과를 기준으로 Agent 1~4 각각의 목표/수정 범위/금지사항/보고 형식을 복붙용 메시지 길이로 압축했다."
+- **Outcome**: "authoritative live bootstrap, CLI smoke bootstrap assert, `MP-008` deterministic hook, real transport 준비를 중심으로 한 Round 4 agent 프롬프트를 정리해 전달했다."
+
+### [2026-03-09 22:07:50 KST] User Request: DEBUG 앱 local debug service를 CLI ingress semantics에 맞게 보강
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 Agent 2 범위에서 DEBUG 앱의 room flow가 CLI ingress와 같은 attach/start semantics를 타도록 local debug facade를 보강해달라고 요청했다."
+- **Files Touched**: ["GoStop/Core/LocalRoomCoordinatorDebugService.swift", "GoStopCLI/RoomCoordinatorModels.swift", "GoStopCLI/RoomCoordinatorCLIAdapter.swift", "room_protocol.md", "agent_sync_board.md", "project_progress.md"]
+- **Validation**: "`swiftc -module-cache-path /tmp/gostop_swift_module_cache -typecheck GoStopCLI/RoomCoordinatorModels.swift GoStopCLI/InMemoryRoomCoordinator.swift GoStop/Core/LocalRoomCoordinatorDebugService.swift`로 shared coordinator/debug service 타입체크를 통과시켰다. 임시 smoke에서 `LocalRoomCoordinatorDebugService`로 `createRoom -> helloHost -> joinRoom -> helloGuest -> setReady(host) -> setGuestReady -> recordGameStarted`를 실행해 출력이 `fresh / fresh / starting / inGame`으로 나오는 것을 확인했다. 추가로 shim을 둔 `swiftc -typecheck`로 `GoStopCLI/RoomCoordinatorCLIAdapter.swift`가 shared `performRoomHello(...)` 변경 이후에도 깨지지 않음을 확인했다. 마지막으로 unrestricted `xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI ...`와 `xcodebuild -project GoStop.xcodeproj -scheme GoStop -sdk iphonesimulator ...`를 재실행해 두 target 모두 `BUILD SUCCEEDED`를 확인했다."
+- **Outcome**: "`LocalRoomCoordinatorDebugService`에 `helloHost`, `helloGuest`, `setGuestReady`, `recordGameStarted` helper를 추가했고, generic `hello(...)`와 CLI `room_hello`가 shared `performRoomHello(...)` resolver를 사용하도록 정리했다. 문서와 sync board에도 app debug facade가 CLI와 같은 hello/start semantics를 탄다는 점을 반영했다."
+
+### [2026-03-09 22:08:30 KST] User Request: Agent 3 local debug live bootstrap용 authoritative helper와 contract 정리
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 Agent 3가 local debug `.starting -> showLive` 전환에서 mock live state 대신 authoritative bootstrap payload를 바로 쓰게 해 달라고 요청했고, core contract naming과 in-process helper를 먼저 잠가야 다음 턴 UI wiring이 흔들리지 않기 때문."
+- **Files Touched**: ["GoStop/Core/MultiplayerContract.swift", "GoStop/Core/GameManager.swift", "GoStop/Core/TestControlSupport.swift", "multiplayer_contract.md", "agent_sync_board.md", "project_progress.md"]
+- **Validation**: "`xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI -configuration Debug -derivedDataPath /tmp/gostop_cli_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n \"error:|warning:|BUILD SUCCEEDED|BUILD FAILED\"` => `BUILD SUCCEEDED`, `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n \"error:|warning:|BUILD SUCCEEDED|BUILD FAILED\"` => `BUILD SUCCEEDED`."
+- **Outcome**: "core contract에 `MultiplayerGameStartedBootstrapPayload`를 추가하고, `GameManager.multiplayerGameStartedBootstrapPayload(viewerPlayerId:context:)`와 `TestControlSupport.multiplayerGameStartedBootstrapPayload(from:requestData:)`를 통해 local debug/in-process와 bridge JSON helper가 같은 bootstrap source를 공유하도록 정리했다. 문서와 sync board에도 Agent 3가 `showLive`에서 `stateSnapshot(reason=gameStarted)`를 authoritative state source로 쓰도록 최소 payload 세트와 handoff를 반영했다."
+
+### [2026-03-09 22:31:36 KST] User Request: local debug service와 CLI ingress의 recordGameStarted/bootstrap 흐름 정리 및 MP-008 hook 결정
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 Agent 2 범위에서 room `.starting -> recordGameStarted -> bootstrap fetch` 흐름을 local debug service와 CLI ingress 모두에서 더 명확히 만들고, MP-008 deterministic hook을 실제로 선택 가능한 상태로 잠가달라고 요청했다."
+- **Files Touched**: ["GoStop/Core/LocalRoomCoordinatorDebugService.swift", "GoStopCLI/RoomCoordinatorModels.swift", "GoStopCLI/InMemoryRoomCoordinator.swift", "GoStopCLI/RoomCoordinatorCLIAdapter.swift", "room_protocol.md", "agent_sync_board.md", "project_progress.md"]
+- **Validation**: "`swiftc -module-cache-path /tmp/gostop_swift_module_cache -typecheck GoStopCLI/RoomCoordinatorModels.swift GoStopCLI/InMemoryRoomCoordinator.swift GoStop/Core/LocalRoomCoordinatorDebugService.swift`로 shared files typecheck를 통과시켰다. local debug smoke에서 `recordGameStartedAndPrepareBootstrap(roomId:gameId:)`를 포함한 `createRoom -> helloHost -> joinRoom -> helloGuest -> setReady(host) -> setGuestReady -> recordGameStartedAndPrepareBootstrap` 흐름을 실행해 `inGame / get_multiplayer_game_started_bootstrap / guest_b,host_a / staleExpectedStateVersionOverride / 0`을 확인했다. CLI adapter shim smoke에서는 `room_record_game_started_and_prepare_bootstrap` metadata가 `explicitRecordGameStarted`와 `get_multiplayer_game_started_bootstrap` plan을 내고, `room_set/get/clear_mp008_hook`가 `staleExpectedStateVersionOverride` hook state를 유지/해제하는 것을 확인했다. 마지막으로 unrestricted `xcodebuild`로 `GoStopCLI`와 `GoStop` target 모두 `BUILD SUCCEEDED`를 재확인했다."
+- **Outcome**: "`recordGameStarted`는 auto-trigger로 바꾸지 않고 explicit control로 유지했다. 대신 coordinator metadata에 `gameStartControlMode`와 `gameStartedBootstrapPlan`을 추가해 CLI `room_record_game_started*`와 DEBUG `recordGameStartedAndPrepareBootstrap(...)`가 같은 bootstrap fetch context를 내도록 정리했다. MP-008은 `staleExpectedStateVersionOverride` hook으로 고정했고, DEBUG service와 CLI ingress 모두에서 같은 hook shape를 set/get/clear할 수 있게 만들었다."
+
+### [2026-03-10 21:28:39 KST] User Request: 각 agent의 현재 완료 상태를 확인하고 다음 작업과 프롬프트를 정리
+- **Skills Planned**: ["basic-code-review", "gostop-game-builder", "project_logger"]
+- **Skills Used**: ["basic-code-review", "gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 4개 agent의 실제 완료 상태를 다시 점검하고, 현재 검증 결과를 기준으로 다음 라운드 프롬프트를 다시 배분해달라고 요청했다."
+- **Files Touched**: ["agent_sync_board.md", "agent_code_tasks_round5.md", "project_progress.md"]
+- **Validation**: "`sed -n '1,260p' agent_sync_board.md`, `sed -n '560,1220p' GoStop/Views/MultiplayerShellState.swift`, `sed -n '1,260p' GoStop/Core/LocalRoomCoordinatorDebugService.swift`, `sed -n '240,380p' scripts/run_multiplayer_cli_two_player_smoke.py`, `sed -n '1,260p' tests/test_agent/multiplayer_runner.py`, `sed -n '220,360p' agent_sync_board.md`, `sed -n '1,220p' socket_binding_design.md`, `sed -n '1,220p' ui_automation_scope.md`, `sed -n '1,220p' mp_008_gap_injection_design.md`로 현재 상태를 확인했다. 추가로 unrestricted `xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI ...`는 `BUILD SUCCEEDED`, unrestricted `xcodebuild -project GoStop.xcodeproj -scheme GoStop -sdk iphonesimulator ...`는 `GoStop/Views/MultiplayerShellViews.swift:1207`, `:1271`의 extraneous `}` 에러로 `BUILD FAILED`를 확인했다. `python3 scripts/run_multiplayer_cli_two_player_smoke.py --binary /tmp/gostop_cli_status_check/Build/Products/Debug/GoStopCLI --scenario all`은 `ready-start`, `disconnect-resume`, `heartbeat-guard`, `mp008-hook-surface`, `mp008-gameplay-resync` 전부 PASS였고, `PYTHONDONTWRITEBYTECODE=1 python3 tests/test_agent/multiplayer_runner.py --all-p0 --mode fixture`는 `MP-001 ~ MP-008` PASS였다."
+- **Outcome**: "운영 보드에 `F-006`으로 Agent 3의 현재 iOS compile regression을 추가했고, 실제 검증 결과를 반영한 새 라운드 문서 `agent_code_tasks_round5.md`를 만들었다. Round 5는 `app compile 복구`, `matchEnded -> result route`, `transport spike`, `MP-008 live smoke 준비`를 중심으로 Agent 1~4 프롬프트를 다시 정리했다."
+
+### [2026-03-10 21:29:52 KST] User Request: agent별 수행 프롬프트를 알려줘
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 Round 5 상태를 기준으로 각 agent 세션에 바로 붙여넣을 실행 프롬프트를 요청했다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`agent_code_tasks_round5.md`와 직전 상태 점검 결과를 기준으로 Agent 1~4 각각의 목표, 수정 범위, 금지사항, 보고 형식을 복붙용 메시지로 압축했다."
+- **Outcome**: "현재 상태를 반영한 Round 5 agent 실행 프롬프트를 Agent 1~4별로 바로 붙여넣을 수 있는 형태로 정리해 전달했다."
+
+### [2026-03-10 21:31:09 KST] User Request: agent 작업을 동시에 해도 되는지, 순서가 필요한지 확인
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 Round 5 작업을 병렬로 돌려도 되는지, 아니면 의존성 순서가 필요한지 운영 가이드를 요청했다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "직전 상태 점검 결과를 기준으로 현재 blocker를 다시 확인했다. 핵심 상태는 `Agent 3`의 iOS compile regression open, `Agent 1` contract lane stable, `Agent 2` transport/terminal forwarder pending, `Agent 4` socket/live smoke pending이었다."
+- **Outcome**: "현재 라운드는 완전 독립 병렬보다 `Agent 3 선행 hotfix + Agent 1/2 병렬 + Agent 4 후행` 구조가 가장 안전하다고 정리했다."
+
+### [2026-03-10 22:43:59 KST] User Request: Agent 2 room transport spike와 terminal/result relay 구현
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 Agent 2 범위에서 CLI/local debug room semantics를 actual transport spike와 terminal result relay까지 밀어 올리고, Agent 4가 바로 socket smoke를 붙일 수 있는 surface를 만들어 달라고 요청했다."
+- **Files Touched**: ["GoStopCLI/RoomCoordinatorModels.swift", "GoStopCLI/InMemoryRoomCoordinator.swift", "GoStopCLI/RoomCoordinatorCLIAdapter.swift", "GoStopCLI/main.swift", "GoStop/Core/LocalRoomCoordinatorDebugService.swift", "room_protocol.md", "agent_sync_board.md", "project_progress.md"]
+- **Validation**: "unrestricted `xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI -configuration Debug -derivedDataPath /tmp/gostop_cli_agent2_round5 build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n 'error:|warning:|BUILD SUCCEEDED|BUILD FAILED'`와 unrestricted `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_agent2_round5 build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n 'error:|warning:|BUILD SUCCEEDED|BUILD FAILED'`가 둘 다 `BUILD SUCCEEDED`였다. 추가로 built `GoStopCLI` binary에 대해 `(1)` actual GameManager player UUID를 room playerId로 맞춘 상태에서 `room_record_game_started_and_prepare_bootstrap`, `room_projection_preview`, `room_record_match_ended_and_fetch_terminal_summary`가 모두 `status=ok`와 presence merge/terminal summary payload를 반환하는 smoke, `(2)` `room_transport_connect -> room_transport_send(hello/setReady/recordGameStartedAndPrepareBootstrap/recordMatchEndedAndFetchTerminalSummary) -> room_transport_receive`에서 queued `gameEvent`와 `terminalSummary` envelope가 양 플레이어 mailbox에 들어오는 smoke, `(3)` `room_transport_send(action=ack)`를 hello 전 상태에서 호출했을 때 `staleConnectionId`가 유지되는 parity smoke를 통과시켰다."
+- **Outcome**: "shared request builder로 `participantPresenceByPlayerId` merge를 bootstrap/projection/terminal relay 전부에 통일했고, `recordMatchEnded` metadata에 `terminalSummaryRelayRequest`를 추가했다. CLI에는 direct relay (`room_projection_preview`, `room_record_match_ended_and_fetch_terminal_summary`)와 websocket-equivalent spike (`room_transport_connect/send/receive`)를 추가해 Agent 4 socket smoke entrypoint를 열었고, DEBUG app facade에도 `recordGameStartedAndFetchBootstrap`, `projectionPreview`, `recordMatchEndedAndFetchTerminalSummary`를 추가해 local debug가 CLI와 같은 semantics를 따르도록 맞췄다."

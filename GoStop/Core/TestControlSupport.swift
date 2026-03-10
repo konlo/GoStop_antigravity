@@ -27,6 +27,30 @@ enum TestControlSupport {
         payload?.mapValues { $0.value }
     }
 
+    static func parseParticipantPresenceByPlayerId(
+        from payload: [String: Any]?
+    ) -> [String: MultiplayerParticipantPresence]? {
+        let rawPresence =
+            payload?["participantPresenceByPlayerId"] as? [String: Any] ??
+            payload?["presenceByPlayerId"] as? [String: Any]
+        guard let rawPresence else { return nil }
+
+        var parsed: [String: MultiplayerParticipantPresence] = [:]
+        for (playerId, value) in rawPresence {
+            guard let details = value as? [String: Any] else { continue }
+            let source = (details["source"] as? String)
+                .flatMap(MultiplayerPresenceSource.init(rawValue:))
+                ?? .roomSnapshot
+            parsed[playerId] = MultiplayerParticipantPresence(
+                source: source,
+                isConnected: details["isConnected"] as? Bool,
+                isReady: details["isReady"] as? Bool
+            )
+        }
+
+        return parsed.isEmpty ? nil : parsed
+    }
+
     static func parseCardType(_ rawValue: String) -> CardType {
         switch rawValue {
         case "bright":
@@ -74,12 +98,242 @@ enum TestControlSupport {
     }
 
     static func serializedStatePayload(from gameManager: GameManager) -> [String: Any] {
-        let encoder = JSONEncoder()
-        guard let data = try? encoder.encode(gameManager.serializeState()),
-              let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        guard let payload = jsonObject(from: gameManager.serializeState()) else {
             return ["status": "error", "message": "Failed to serialize state"]
         }
         return payload
+    }
+
+    static func serializedMultiplayerProjectionPayload(
+        from gameManager: GameManager,
+        requestData: [String: Any]? = nil
+    ) -> [String: Any] {
+        let viewerPlayerId = requestData?["viewerPlayerId"] as? String
+        let viewerIndex = requestData?["viewerIndex"] as? Int
+        let scope = (requestData?["scope"] as? String)
+            .flatMap(MultiplayerProjectionScope.init(rawValue:))
+            ?? .player
+        let reason = (requestData?["reason"] as? String)
+            .flatMap(MultiplayerSnapshotReason.init(rawValue:))
+            ?? .localPreview
+        let gameId = (requestData?["gameId"] as? String) ?? "local_game"
+        let stateVersion = (requestData?["stateVersion"] as? Int) ?? 0
+        let participantPresenceByPlayerId = parseParticipantPresenceByPlayerId(from: requestData)
+        let resolvedViewerPlayerId = gameManager.resolveMultiplayerViewerPlayerId(
+            preferredPlayerId: viewerPlayerId,
+            preferredPlayerIndex: viewerIndex
+        )
+        let context = gameManager.makeMultiplayerProjectionContext(
+            viewerPlayerId: resolvedViewerPlayerId,
+            traceId: requestData?["traceId"] as? String,
+            roomId: requestData?["roomId"] as? String,
+            gameId: gameId,
+            stateVersion: stateVersion,
+            lastEventId: requestData?["lastEventId"] as? String,
+            snapshotId: requestData?["snapshotId"] as? String,
+            turnId: requestData?["turnId"] as? String,
+            serverTime: requestData?["serverTime"] as? String,
+            snapshotReason: reason,
+            scope: scope,
+            participantPresenceByPlayerId: participantPresenceByPlayerId,
+            engineVersion: requestData?["engineVersion"] as? String,
+            ruleConfigVersion: requestData?["ruleConfigVersion"] as? String
+        )
+        let snapshot = gameManager.multiplayerSnapshot(
+            viewerPlayerId: resolvedViewerPlayerId,
+            context: context
+        )
+
+        guard let payload = jsonObject(from: snapshot) else {
+            return ["status": "error", "message": "Failed to serialize multiplayer projection"]
+        }
+
+        return [
+            "status": "ok",
+            "action": "get_multiplayer_projection",
+            "snapshot": payload
+        ]
+    }
+
+    static func serializedMultiplayerGameStartedBootstrapPayload(
+        from gameManager: GameManager,
+        requestData: [String: Any]? = nil
+    ) -> [String: Any] {
+        let bootstrap = multiplayerGameStartedBootstrapPayload(
+            from: gameManager,
+            requestData: requestData
+        )
+
+        guard let gameStartedPayload = jsonObject(from: bootstrap.gameStarted),
+              let snapshotPayload = jsonObject(from: bootstrap.stateSnapshot) else {
+            return [
+                "status": "error",
+                "action": "get_multiplayer_game_started_bootstrap",
+                "message": "Failed to serialize multiplayer game-start bootstrap payload"
+            ]
+        }
+
+        return [
+            "status": "ok",
+            "action": "get_multiplayer_game_started_bootstrap",
+            "gameStarted": gameStartedPayload,
+            "stateSnapshot": snapshotPayload
+        ]
+    }
+
+    static func multiplayerGameStartedBootstrapPayload(
+        from gameManager: GameManager,
+        requestData: [String: Any]? = nil
+    ) -> MultiplayerGameStartedBootstrapPayload {
+        let viewerPlayerId = requestData?["viewerPlayerId"] as? String
+        let viewerIndex = requestData?["viewerIndex"] as? Int
+        let scope = (requestData?["scope"] as? String)
+            .flatMap(MultiplayerProjectionScope.init(rawValue:))
+            ?? .player
+        let gameId = (requestData?["gameId"] as? String) ?? "local_game"
+        let stateVersion = max(1, (requestData?["stateVersion"] as? Int) ?? 1)
+        let participantPresenceByPlayerId = parseParticipantPresenceByPlayerId(from: requestData)
+        let resolvedViewerPlayerId = gameManager.resolveMultiplayerViewerPlayerId(
+            preferredPlayerId: viewerPlayerId,
+            preferredPlayerIndex: viewerIndex
+        )
+        let context = gameManager.makeMultiplayerProjectionContext(
+            viewerPlayerId: resolvedViewerPlayerId,
+            traceId: requestData?["traceId"] as? String,
+            roomId: requestData?["roomId"] as? String,
+            gameId: gameId,
+            stateVersion: stateVersion,
+            lastEventId: requestData?["lastEventId"] as? String,
+            snapshotId: requestData?["snapshotId"] as? String,
+            turnId: requestData?["turnId"] as? String,
+            serverTime: requestData?["serverTime"] as? String,
+            snapshotReason: .gameStarted,
+            scope: scope,
+            participantPresenceByPlayerId: participantPresenceByPlayerId,
+            engineVersion: requestData?["engineVersion"] as? String,
+            ruleConfigVersion: requestData?["ruleConfigVersion"] as? String
+        )
+        return gameManager.multiplayerGameStartedBootstrapPayload(
+            viewerPlayerId: resolvedViewerPlayerId,
+            context: context
+        )
+    }
+
+    static func multiplayerLiveBootstrapPayload(
+        from gameManager: GameManager,
+        requestData: [String: Any]? = nil
+    ) -> MultiplayerLiveBootstrapPayload {
+        let viewerPlayerId = requestData?["viewerPlayerId"] as? String
+        let viewerIndex = requestData?["viewerIndex"] as? Int
+        let scope = (requestData?["scope"] as? String)
+            .flatMap(MultiplayerProjectionScope.init(rawValue:))
+            ?? .player
+        let gameId = (requestData?["gameId"] as? String) ?? "local_game"
+        let stateVersion = max(1, (requestData?["stateVersion"] as? Int) ?? 1)
+        let participantPresenceByPlayerId = parseParticipantPresenceByPlayerId(from: requestData)
+        let resolvedViewerPlayerId = gameManager.resolveMultiplayerViewerPlayerId(
+            preferredPlayerId: viewerPlayerId,
+            preferredPlayerIndex: viewerIndex
+        )
+        let context = gameManager.makeMultiplayerProjectionContext(
+            viewerPlayerId: resolvedViewerPlayerId,
+            traceId: requestData?["traceId"] as? String,
+            roomId: requestData?["roomId"] as? String,
+            gameId: gameId,
+            stateVersion: stateVersion,
+            lastEventId: requestData?["lastEventId"] as? String,
+            snapshotId: requestData?["snapshotId"] as? String,
+            turnId: requestData?["turnId"] as? String,
+            serverTime: requestData?["serverTime"] as? String,
+            snapshotReason: .gameStarted,
+            scope: scope,
+            participantPresenceByPlayerId: participantPresenceByPlayerId,
+            engineVersion: requestData?["engineVersion"] as? String,
+            ruleConfigVersion: requestData?["ruleConfigVersion"] as? String
+        )
+        return gameManager.multiplayerLiveBootstrapPayload(
+            viewerPlayerId: resolvedViewerPlayerId,
+            context: context
+        )
+    }
+
+    static func serializedMultiplayerTerminalSummaryPayload(
+        from gameManager: GameManager,
+        requestData: [String: Any]? = nil
+    ) -> [String: Any] {
+        guard let summary = multiplayerTerminalSummaryPayload(
+            from: gameManager,
+            requestData: requestData
+        ) else {
+            return [
+                "status": "error",
+                "action": "get_multiplayer_terminal_summary",
+                "message": "Terminal summary is unavailable for the current game state"
+            ]
+        }
+
+        guard let roundPayload = jsonObject(from: summary.roundEnded),
+              let matchPayload = jsonObject(from: summary.matchEnded) else {
+            return [
+                "status": "error",
+                "action": "get_multiplayer_terminal_summary",
+                "message": "Failed to serialize multiplayer terminal summary"
+            ]
+        }
+
+        return [
+            "status": "ok",
+            "action": "get_multiplayer_terminal_summary",
+            "roomId": summary.roomId ?? NSNull(),
+            "gameId": summary.gameId,
+            "summaryStateVersion": summary.summaryStateVersion,
+            "lastEventId": summary.lastEventId ?? NSNull(),
+            "roundEnded": roundPayload,
+            "matchEnded": matchPayload
+        ]
+    }
+
+    static func multiplayerTerminalSummaryPayload(
+        from gameManager: GameManager,
+        requestData: [String: Any]? = nil
+    ) -> MultiplayerTerminalSummaryPayload? {
+        let roundIndex = (requestData?["roundIndex"] as? Int) ?? 1
+        let quitReason = (requestData?["quitReason"] as? String)
+            .flatMap(MultiplayerQuitReason.init(rawValue:))
+        let forfeitingPlayerId = requestData?["forfeitingPlayerId"] as? String
+        let gameId = (requestData?["gameId"] as? String) ?? "local_game"
+        let stateVersion = (requestData?["stateVersion"] as? Int) ?? 0
+        let context = gameManager.makeMultiplayerProjectionContext(
+            viewerPlayerId: requestData?["viewerPlayerId"] as? String,
+            traceId: requestData?["traceId"] as? String,
+            roomId: requestData?["roomId"] as? String,
+            gameId: gameId,
+            stateVersion: stateVersion,
+            lastEventId: requestData?["lastEventId"] as? String,
+            snapshotId: requestData?["snapshotId"] as? String,
+            turnId: requestData?["turnId"] as? String,
+            serverTime: requestData?["serverTime"] as? String,
+            snapshotReason: .localPreview,
+            scope: .player,
+            participantPresenceByPlayerId: parseParticipantPresenceByPlayerId(from: requestData),
+            engineVersion: requestData?["engineVersion"] as? String,
+            ruleConfigVersion: requestData?["ruleConfigVersion"] as? String
+        )
+
+        return gameManager.multiplayerTerminalSummaryPayload(
+            context: context,
+            roundIndex: roundIndex,
+            quitReason: quitReason,
+            forfeitingPlayerId: forfeitingPlayerId
+        )
+    }
+
+    private static func jsonObject<T: Encodable>(from value: T) -> [String: Any]? {
+        let encoder = JSONEncoder()
+        guard let data = try? encoder.encode(value) else {
+            return nil
+        }
+        return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
     }
 
     static func persistenceProbeData() -> [String: Any] {
@@ -182,6 +436,10 @@ enum TestControlSupport {
             gameManager.currentTurnIndex = turnIndex
         }
 
+        if let starterIndex = payload["mock_starter_index"] as? Int {
+            gameManager.setCurrentRoundStarterIndexForTesting(starterIndex)
+        }
+
         if let mockState = payload["mock_gameState"] as? String {
             switch mockState {
             case "ready":
@@ -250,6 +508,13 @@ enum TestControlSupport {
 
         if let mockCompletedTurnCount = payload["mock_completed_turn_count"] as? Int {
             gameManager.setCompletedTurnCountForTesting(mockCompletedTurnCount)
+        }
+
+        if let mockPendingShakeMonth = payload["mock_pending_shake_month"] as? Int {
+            gameManager.pendingShakeMonth = mockPendingShakeMonth
+            if !gameManager.pendingShakeMonths.contains(mockPendingShakeMonth) {
+                gameManager.pendingShakeMonths = [mockPendingShakeMonth]
+            }
         }
 
         if let monthOwners = payload["mock_month_owners"] as? [String: Int] {

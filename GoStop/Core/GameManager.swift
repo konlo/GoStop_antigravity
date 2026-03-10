@@ -123,6 +123,7 @@ class GameManager: ObservableObject {
     @Published var deck = Deck()
     @Published var players: [Player] = []
     @Published var currentTurnIndex: Int = 0
+    @Published private(set) var currentRoundStarterIndex: Int? = nil
     @Published var tableCards: [Card] = []
     @Published var outOfPlayCards: [Card] = []
     
@@ -410,6 +411,7 @@ class GameManager: ObservableObject {
         self.players = [player1, computer]
         bindPlayerChangeForwarding()
         self.currentTurnIndex = 0
+        self.currentRoundStarterIndex = nil
         self.outOfPlayCards = []
         self.gameEndReason = nil
         self.lastPenaltyResult = nil
@@ -542,6 +544,7 @@ class GameManager: ObservableObject {
             : gameText("players.default.player_one")
         gLog(gameText("log.event.game_started", ["starter": starterName]))
         self.uxEventLogs.removeAll() // Ensure HUD is correctly reset for test agent loops
+        currentRoundStarterIndex = players.indices.contains(startingTurnIndex) ? startingTurnIndex : nil
         currentTurnIndex = startingTurnIndex
         gameState = .playing
         maybeScheduleInternalComputerAction()
@@ -550,6 +553,14 @@ class GameManager: ObservableObject {
     func setCompletedTurnCountForTesting(_ count: Int) {
         completedTurnCount = max(0, count)
         turnWasOpeningTurn = completedTurnCount == 0
+    }
+
+    func setCurrentRoundStarterIndexForTesting(_ index: Int?) {
+        guard let index else {
+            currentRoundStarterIndex = nil
+            return
+        }
+        currentRoundStarterIndex = players.indices.contains(index) ? index : nil
     }
 
     /// Returns the current round winner index (0-based) so the next round can start from winner.
@@ -2553,6 +2564,251 @@ extension GameManager {
         state["status"] = AnyCodable("ok")
         return state
     }
+
+    func resolveMultiplayerViewerPlayerId(
+        preferredPlayerId: String? = nil,
+        preferredPlayerIndex: Int? = nil
+    ) -> String? {
+        if let preferredPlayerId,
+           players.contains(where: { $0.id.uuidString == preferredPlayerId }) {
+            return preferredPlayerId
+        }
+
+        if let preferredPlayerIndex,
+           players.indices.contains(preferredPlayerIndex) {
+            return players[preferredPlayerIndex].id.uuidString
+        }
+
+        if let currentPlayer {
+            return currentPlayer.id.uuidString
+        }
+
+        if let firstHuman = players.first(where: { !$0.isComputer }) {
+            return firstHuman.id.uuidString
+        }
+
+        return players.first?.id.uuidString
+    }
+
+    func makeMultiplayerProjectionContext(
+        viewerPlayerId: String? = nil,
+        traceId: String? = nil,
+        roomId: String? = nil,
+        gameId: String = "local_game",
+        stateVersion: Int = 0,
+        lastEventId: String? = nil,
+        snapshotId: String? = nil,
+        turnId: String? = nil,
+        serverTime: String? = nil,
+        snapshotReason: MultiplayerSnapshotReason = .localPreview,
+        scope: MultiplayerProjectionScope = .player,
+        participantPresenceByPlayerId: [String: MultiplayerParticipantPresence]? = nil,
+        engineVersion: String? = nil,
+        ruleConfigVersion: String? = nil
+    ) -> MultiplayerProjectionContext {
+        let resolvedViewerPlayerId = resolveMultiplayerViewerPlayerId(preferredPlayerId: viewerPlayerId)
+        let resolvedTurnId = turnId ?? String(format: "turn_%04d", max(1, completedTurnCount + 1))
+        let resolvedSnapshotId = snapshotId
+            ?? "snap_\(max(0, stateVersion))_\(resolvedViewerPlayerId ?? scope.rawValue)"
+
+        return MultiplayerProjectionContext(
+            traceId: traceId,
+            roomId: roomId,
+            gameId: gameId,
+            stateVersion: stateVersion,
+            lastEventId: lastEventId,
+            turnId: resolvedTurnId,
+            snapshotId: resolvedSnapshotId,
+            serverTime: serverTime ?? Self.multiplayerTimestamp(),
+            snapshotReason: snapshotReason,
+            scope: scope,
+            participantPresenceByPlayerId: participantPresenceByPlayerId,
+            engineVersion: engineVersion ?? Self.multiplayerEngineVersion(),
+            ruleConfigVersion: ruleConfigVersion ?? Self.multiplayerRuleConfigVersion()
+        )
+    }
+
+    func multiplayerSnapshot(
+        viewerPlayerId: String? = nil,
+        context: MultiplayerProjectionContext? = nil
+    ) -> MultiplayerSnapshot {
+        let resolvedViewerPlayerId = resolveMultiplayerViewerPlayerId(preferredPlayerId: viewerPlayerId)
+        let resolvedContext = context ?? makeMultiplayerProjectionContext(viewerPlayerId: resolvedViewerPlayerId)
+        let effectiveViewerPlayerId = resolvedContext.scope == .authority
+            ? resolvedViewerPlayerId
+            : resolveMultiplayerViewerPlayerId(preferredPlayerId: resolvedViewerPlayerId)
+        let pendingChoice = multiplayerPendingChoice(
+            viewerPlayerId: effectiveViewerPlayerId,
+            stateVersion: resolvedContext.stateVersion,
+            scope: resolvedContext.scope
+        )
+        let choiceDeadlineAt = pendingChoice?.deadlineAt
+        let starterPlayerId = multiplayerStarterPlayerId()
+
+        let state = MultiplayerMatchSnapshot(
+            traceId: resolvedContext.traceId,
+            roomId: resolvedContext.roomId,
+            gameId: resolvedContext.gameId,
+            viewerPlayerId: effectiveViewerPlayerId,
+            engineVersion: resolvedContext.engineVersion,
+            ruleConfigVersion: resolvedContext.ruleConfigVersion,
+            stateVersion: resolvedContext.stateVersion,
+            lastEventId: resolvedContext.lastEventId,
+            phase: multiplayerPhase,
+            turnId: resolvedContext.turnId,
+            currentPlayerId: currentPlayer?.id.uuidString,
+            dealerPlayerId: starterPlayerId,
+            starterPlayerId: starterPlayerId,
+            players: players.enumerated().map { seatIndex, player in
+                multiplayerPlayerProjection(
+                    player,
+                    seatIndex: seatIndex,
+                    viewerPlayerId: effectiveViewerPlayerId,
+                    scope: resolvedContext.scope,
+                    participantPresence: resolvedContext.participantPresenceByPlayerId?[player.id.uuidString]
+                )
+            },
+            table: multiplayerTableSnapshot(),
+            deck: MultiplayerDeckSnapshot(remainingCount: deck.cards.count),
+            pendingChoice: pendingChoice,
+            scoreboard: multiplayerScoreboard(),
+            timers: MultiplayerTimers(
+                turnDeadlineAt: nil,
+                choiceDeadlineAt: choiceDeadlineAt
+            ),
+            resume: MultiplayerResumeState(
+                isResumable: false,
+                graceDeadlineAt: nil
+            )
+        )
+
+        return MultiplayerSnapshot(
+            snapshotId: resolvedContext.snapshotId,
+            reason: resolvedContext.snapshotReason,
+            scope: resolvedContext.scope,
+            snapshotStateVersion: resolvedContext.stateVersion,
+            lastIncludedEventId: resolvedContext.lastEventId,
+            state: state
+        )
+    }
+
+    func multiplayerGameStartedPayload(
+        context: MultiplayerProjectionContext
+    ) -> MultiplayerGameStartedPayload {
+        let starterPlayerId = multiplayerStarterPlayerId()
+        return MultiplayerGameStartedPayload(
+            roundIndex: 1,
+            dealerPlayerId: starterPlayerId,
+            starterPlayerId: starterPlayerId,
+            firstPlayerId: starterPlayerId,
+            snapshotId: context.snapshotId,
+            snapshotStateVersion: context.stateVersion
+        )
+    }
+
+    func multiplayerGameStartedBootstrapPayload(
+        viewerPlayerId: String? = nil,
+        context: MultiplayerProjectionContext
+    ) -> MultiplayerGameStartedBootstrapPayload {
+        let gameStarted = multiplayerGameStartedPayload(context: context)
+        let stateSnapshot = multiplayerSnapshot(
+            viewerPlayerId: viewerPlayerId,
+            context: context
+        )
+
+        return MultiplayerGameStartedBootstrapPayload(
+            gameStarted: gameStarted,
+            stateSnapshot: stateSnapshot
+        )
+    }
+
+    func multiplayerLiveBootstrapPayload(
+        viewerPlayerId: String? = nil,
+        context: MultiplayerProjectionContext
+    ) -> MultiplayerLiveBootstrapPayload {
+        let bootstrap = multiplayerGameStartedBootstrapPayload(
+            viewerPlayerId: viewerPlayerId,
+            context: context
+        )
+
+        return MultiplayerLiveBootstrapPayload(
+            activeGameId: context.gameId,
+            gameStarted: bootstrap.gameStarted,
+            stateSnapshot: bootstrap.stateSnapshot
+        )
+    }
+
+    func multiplayerRoundEndedPayload(
+        roundIndex: Int = 1,
+        quitReason: MultiplayerQuitReason? = nil,
+        forfeitingPlayerId: String? = nil
+    ) -> MultiplayerRoundEndedPayload? {
+        guard let summary = multiplayerRoundSummary(
+            roundIndex: roundIndex,
+            quitReason: quitReason,
+            forfeitingPlayerId: forfeitingPlayerId
+        ) else {
+            return nil
+        }
+
+        return MultiplayerRoundEndedPayload(
+            roundIndex: roundIndex,
+            summary: summary
+        )
+    }
+
+    func multiplayerMatchEndedPayload(
+        quitReason: MultiplayerQuitReason? = nil,
+        forfeitingPlayerId: String? = nil
+    ) -> MultiplayerMatchEndedPayload? {
+        guard let summary = multiplayerRoundSummary(
+            roundIndex: 1,
+            quitReason: quitReason,
+            forfeitingPlayerId: forfeitingPlayerId
+        ) else {
+            return nil
+        }
+
+        return MultiplayerMatchEndedPayload(
+            roundIndex: summary.roundIndex,
+            winnerPlayerId: summary.winnerPlayerId,
+            loserPlayerId: summary.loserPlayerId,
+            finalScores: summary.finalScores,
+            settlementSummary: summary.settlementSummary,
+            endReason: summary.endReason,
+            endReasonMessageKey: summary.endReasonMessageKey,
+            forfeitingPlayerId: summary.forfeitingPlayerId,
+            isDraw: summary.isDraw
+        )
+    }
+
+    func multiplayerTerminalSummaryPayload(
+        context: MultiplayerProjectionContext,
+        roundIndex: Int = 1,
+        quitReason: MultiplayerQuitReason? = nil,
+        forfeitingPlayerId: String? = nil
+    ) -> MultiplayerTerminalSummaryPayload? {
+        guard let roundEnded = multiplayerRoundEndedPayload(
+                roundIndex: roundIndex,
+                quitReason: quitReason,
+                forfeitingPlayerId: forfeitingPlayerId
+        ),
+        let matchEnded = multiplayerMatchEndedPayload(
+            quitReason: quitReason,
+            forfeitingPlayerId: forfeitingPlayerId
+        ) else {
+            return nil
+        }
+
+        return MultiplayerTerminalSummaryPayload(
+            roomId: context.roomId,
+            gameId: context.gameId,
+            summaryStateVersion: context.stateVersion,
+            lastEventId: context.lastEventId,
+            roundEnded: roundEnded,
+            matchEnded: matchEnded
+        )
+    }
     
     func restoreState(from historyIndex: Int) {
         guard stateHistory.indices.contains(historyIndex) else { return }
@@ -2574,6 +2830,494 @@ extension GameManager {
         // Complex objects would need deeper restoration if we want full fidelity.
         // For UX monitoring, we primarily need the visual state: cards on table, in hands, etc.
         // This is a simplified restore for now.
+    }
+
+    private var multiplayerPhase: MultiplayerPhase {
+        switch gameState {
+        case .ready:
+            return .waiting
+        case .playing:
+            return .inTurn
+        case .askingShake, .askingGoStop, .choosingCapture, .choosingChrysanthemumRole:
+            return .choicePending
+        case .ended:
+            return .matchEnded
+        }
+    }
+
+    private func multiplayerPlayerProjection(
+        _ player: Player,
+        seatIndex: Int,
+        viewerPlayerId: String?,
+        scope: MultiplayerProjectionScope,
+        participantPresence: MultiplayerParticipantPresence?
+    ) -> MultiplayerPlayerProjection {
+        let playerId = player.id.uuidString
+        let isViewer = playerId == viewerPlayerId
+        let shouldRevealHand = scope == .authority || isViewer
+
+        return MultiplayerPlayerProjection(
+            playerId: playerId,
+            seatIndex: seatIndex,
+            name: player.name,
+            hand: shouldRevealHand ? player.hand.map(multiplayerCardSummary(from:)) : nil,
+            handCount: player.hand.count,
+            captured: multiplayerCapturedCards(for: player),
+            score: player.score,
+            money: player.money,
+            goCount: player.goCount,
+            shakeCount: player.shakeCount,
+            isConnected: participantPresence?.isConnected,
+            isReady: participantPresence?.isReady,
+            presenceSource: participantPresence?.source ?? .unknown,
+            isViewer: isViewer
+        )
+    }
+
+    private func multiplayerCapturedCards(for player: Player) -> MultiplayerCapturedCards {
+        let summaries = player.capturedCards.map(multiplayerCardSummary(from:))
+        return MultiplayerCapturedCards(
+            bright: summaries.filter { $0.kind == CardType.bright.rawValue },
+            animal: summaries.filter { $0.kind == CardType.animal.rawValue },
+            ribbon: summaries.filter { $0.kind == CardType.ribbon.rawValue },
+            junk: summaries.filter {
+                $0.kind == CardType.junk.rawValue ||
+                $0.kind == CardType.doubleJunk.rawValue ||
+                $0.kind == CardType.dummy.rawValue
+            }
+        )
+    }
+
+    private func multiplayerTableSnapshot() -> MultiplayerTableSnapshot {
+        let summaries = tableCards.map(multiplayerCardSummary(from:))
+        let buckets = Dictionary(grouping: summaries, by: { String($0.month) })
+        return MultiplayerTableSnapshot(cards: summaries, monthBuckets: buckets)
+    }
+
+    private func multiplayerScoreboard() -> MultiplayerScoreboard {
+        MultiplayerScoreboard(
+            roundIndex: 1,
+            playerScores: multiplayerPlayerScores(),
+            winnerPlayerId: gameWinner?.id.uuidString
+        )
+    }
+
+    private func multiplayerStarterPlayerId() -> String? {
+        if let currentRoundStarterIndex,
+           players.indices.contains(currentRoundStarterIndex) {
+            return players[currentRoundStarterIndex].id.uuidString
+        }
+
+        if gameState == .playing || gameState == .askingShake || gameState == .askingGoStop ||
+            gameState == .choosingCapture || gameState == .choosingChrysanthemumRole ||
+            gameState == .ended {
+            guard players.indices.contains(currentTurnIndex) else { return nil }
+            return players[currentTurnIndex].id.uuidString
+        }
+
+        return nil
+    }
+
+    private func multiplayerPlayerScores() -> [MultiplayerPlayerScore] {
+        players.map { player in
+            MultiplayerPlayerScore(
+                playerId: player.id.uuidString,
+                score: player.score,
+                goCount: player.goCount,
+                money: player.money
+            )
+        }
+    }
+
+    private func multiplayerRoundSummary(
+        roundIndex: Int,
+        quitReason: MultiplayerQuitReason?,
+        forfeitingPlayerId: String?
+    ) -> MultiplayerRoundSummary? {
+        guard let endReason = multiplayerMatchEndReason(quitReason: quitReason) else {
+            return nil
+        }
+
+        if multiplayerIsForfeitEndReason(endReason) {
+            guard let forfeitingPlayerId,
+                  players.contains(where: { $0.id.uuidString == forfeitingPlayerId }) else {
+                return nil
+            }
+        }
+
+        let participants = multiplayerTerminalParticipants(
+            endReason: endReason,
+            forfeitingPlayerId: forfeitingPlayerId
+        )
+
+        return MultiplayerRoundSummary(
+            roundIndex: roundIndex,
+            winnerPlayerId: participants.winner?.id.uuidString,
+            loserPlayerId: participants.loser?.id.uuidString,
+            finalScores: multiplayerPlayerScores(),
+            settlementSummary: multiplayerSettlementSummary(
+                endReason: endReason,
+                winner: participants.winner,
+                loser: participants.loser
+            ),
+            endReason: endReason,
+            endReasonMessageKey: multiplayerEndReasonMessageKey(endReason),
+            forfeitingPlayerId: forfeitingPlayerId,
+            isDraw: participants.isDraw
+        )
+    }
+
+    private func multiplayerPendingChoice(
+        viewerPlayerId: String?,
+        stateVersion: Int,
+        scope: MultiplayerProjectionScope
+    ) -> MultiplayerChoice? {
+        guard let actor = currentPlayer else { return nil }
+        let actorId = actor.id.uuidString
+
+        switch gameState {
+        case .choosingCapture:
+            let choiceId = "choice_capture_\(stateVersion)_\(actorId)"
+            let sharedCards = [
+                pendingCapturePlayedCard.map { multiplayerChoiceCard(from: $0, zone: "played") },
+                pendingCaptureDrawnCard.map { multiplayerChoiceCard(from: $0, zone: "drawn") }
+            ].compactMap { $0 }
+
+            let options = pendingCaptureOptions.map { option in
+                MultiplayerChoiceOption(
+                    optionCode: option.id,
+                    labelKey: "match.choice.capture.take_pair",
+                    cards: sharedCards + [multiplayerChoiceCard(from: option, zone: "table")],
+                    effectTags: ["capture"],
+                    scoreDeltaPreview: nil,
+                    metadata: multiplayerMetadata([
+                        "selectedTableCardId": option.id
+                    ])
+                )
+            }
+
+            return MultiplayerChoice(
+                choiceId: choiceId,
+                choiceKind: MultiplayerContractChoiceKind.capture,
+                visibility: .allParticipants,
+                actorPlayerId: actorId,
+                promptKey: "match.choice.capture",
+                requestedAt: nil,
+                deadlineAt: nil,
+                expiresAtStateVersion: stateVersion,
+                options: options
+            )
+
+        case .askingShake:
+            let month = pendingShakeMonth ?? pendingShakeMonths.first
+            guard let month else { return nil }
+
+            let shouldRevealShakeCards = scope == .authority || viewerPlayerId == actorId
+            let relatedCards = shouldRevealShakeCards
+                ? actor.hand
+                    .filter { $0.month.rawValue == month }
+                    .map { multiplayerChoiceCard(from: $0, zone: "hand") }
+                : []
+            let choiceId = "choice_shake_\(stateVersion)_\(actorId)_\(month)"
+            let metadata = shouldRevealShakeCards ? multiplayerMetadata(["month": month]) : nil
+
+            return MultiplayerChoice(
+                choiceId: choiceId,
+                choiceKind: MultiplayerContractChoiceKind.shake,
+                visibility: .actorOnly,
+                actorPlayerId: actorId,
+                promptKey: "match.choice.shake",
+                requestedAt: nil,
+                deadlineAt: nil,
+                expiresAtStateVersion: stateVersion,
+                options: [
+                    MultiplayerChoiceOption(
+                        optionCode: "shake_yes",
+                        labelKey: "match.choice.shake.yes",
+                        cards: relatedCards,
+                        effectTags: ["shake"],
+                        scoreDeltaPreview: nil,
+                        metadata: metadata
+                    ),
+                    MultiplayerChoiceOption(
+                        optionCode: "shake_no",
+                        labelKey: "match.choice.shake.no",
+                        cards: relatedCards,
+                        effectTags: ["shake"],
+                        scoreDeltaPreview: nil,
+                        metadata: metadata
+                    )
+                ]
+            )
+
+        case .askingGoStop:
+            let choiceId = "choice_gostop_\(stateVersion)_\(actorId)"
+            return MultiplayerChoice(
+                choiceId: choiceId,
+                choiceKind: MultiplayerContractChoiceKind.goStop,
+                visibility: .allParticipants,
+                actorPlayerId: actorId,
+                promptKey: "match.choice.go_stop",
+                requestedAt: nil,
+                deadlineAt: nil,
+                expiresAtStateVersion: stateVersion,
+                options: [
+                    MultiplayerChoiceOption(
+                        optionCode: "go",
+                        labelKey: "match.choice.go_stop.go",
+                        cards: [],
+                        effectTags: ["go"],
+                        scoreDeltaPreview: nil,
+                        metadata: multiplayerMetadata(["playerId": actorId])
+                    ),
+                    MultiplayerChoiceOption(
+                        optionCode: "stop",
+                        labelKey: "match.choice.go_stop.stop",
+                        cards: [],
+                        effectTags: ["stop"],
+                        scoreDeltaPreview: nil,
+                        metadata: multiplayerMetadata(["playerId": actorId])
+                    )
+                ]
+            )
+
+        case .choosingChrysanthemumRole:
+            guard let chrysanthemumCard = pendingChrysanthemumCard else { return nil }
+            let choiceId = "choice_chrysanthemum_\(stateVersion)_\(actorId)"
+            let card = multiplayerChoiceCard(from: chrysanthemumCard, zone: "pendingCapture")
+            return MultiplayerChoice(
+                choiceId: choiceId,
+                choiceKind: MultiplayerContractChoiceKind.chrysanthemumRole,
+                visibility: .allParticipants,
+                actorPlayerId: actorId,
+                promptKey: "match.choice.chrysanthemum_role",
+                requestedAt: nil,
+                deadlineAt: nil,
+                expiresAtStateVersion: stateVersion,
+                options: [
+                    MultiplayerChoiceOption(
+                        optionCode: CardRole.animal.rawValue,
+                        labelKey: "match.choice.chrysanthemum_role.animal",
+                        cards: [card],
+                        effectTags: ["chrysanthemumRole"],
+                        scoreDeltaPreview: nil,
+                        metadata: multiplayerMetadata(["selectedRole": CardRole.animal.rawValue])
+                    ),
+                    MultiplayerChoiceOption(
+                        optionCode: CardRole.doublePi.rawValue,
+                        labelKey: "match.choice.chrysanthemum_role.double_pi",
+                        cards: [card],
+                        effectTags: ["chrysanthemumRole"],
+                        scoreDeltaPreview: nil,
+                        metadata: multiplayerMetadata(["selectedRole": CardRole.doublePi.rawValue])
+                    )
+                ]
+            )
+
+        case .ready, .playing, .ended:
+            return nil
+        }
+    }
+
+    private func multiplayerCardSummary(from card: Card) -> MultiplayerCardSummary {
+        MultiplayerCardSummary(
+            cardId: card.id,
+            month: card.month.rawValue,
+            kind: card.type.rawValue,
+            imageIndex: card.imageIndex,
+            selectedRole: card.selectedRole?.rawValue
+        )
+    }
+
+    private func multiplayerChoiceCard(from card: Card, zone: String) -> MultiplayerChoiceCard {
+        MultiplayerChoiceCard(
+            cardId: card.id,
+            zone: zone,
+            month: card.month.rawValue,
+            kind: card.type.rawValue,
+            imageIndex: card.imageIndex,
+            selectedRole: card.selectedRole?.rawValue
+        )
+    }
+
+    private func multiplayerMetadata(_ raw: [String: Any?]) -> [String: AnyCodable]? {
+        var metadata: [String: AnyCodable] = [:]
+        for (key, value) in raw {
+            guard let value else { continue }
+            metadata[key] = AnyCodable(value)
+        }
+        return metadata.isEmpty ? nil : metadata
+    }
+
+    private static func multiplayerTimestamp() -> String {
+        ISO8601DateFormatter().string(from: Date())
+    }
+
+    private static func multiplayerEngineVersion() -> String {
+        if let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String {
+            return "gostop-core@\(version)"
+        }
+        return "gostop-core@local-preview"
+    }
+
+    private static func multiplayerRuleConfigVersion() -> String {
+        URL(fileURLWithPath: ConfigurationStore.shared.configurationPath).lastPathComponent
+    }
+
+    private func multiplayerMatchEndReason(
+        quitReason: MultiplayerQuitReason?
+    ) -> MultiplayerMatchEndReason? {
+        if let quitReason {
+            switch quitReason {
+            case .voluntaryExit:
+                return .voluntaryQuit
+            case .disconnectTimeout:
+                return .disconnectTimeout
+            case .adminForfeit:
+                return .adminForfeit
+            }
+        }
+
+        guard gameState == .ended, let gameEndReason else {
+            return nil
+        }
+
+        switch gameEndReason {
+        case .stop:
+            return .stop
+        case .maxScore:
+            return .maxScore
+        case .nagari:
+            return .nagari
+        case .chongtong:
+            return .chongtong
+        case .threeSeolsa:
+            return .threeSeolsa
+        }
+    }
+
+    private func multiplayerTerminalParticipants(
+        endReason: MultiplayerMatchEndReason,
+        forfeitingPlayerId: String?
+    ) -> (winner: Player?, loser: Player?, isDraw: Bool) {
+        if endReason == .nagari {
+            return (winner: nil, loser: nil, isDraw: true)
+        }
+
+        if let forfeitingPlayerId,
+           let forfeitingPlayer = players.first(where: { $0.id.uuidString == forfeitingPlayerId }) {
+            let winner = gameWinner ?? players.first(where: { $0 !== forfeitingPlayer })
+            return (winner: winner, loser: forfeitingPlayer, isDraw: false)
+        }
+
+        if let winner = gameWinner {
+            let loser = gameLoser ?? players.first(where: { $0 !== winner })
+            return (winner: winner, loser: loser, isDraw: false)
+        }
+
+        if let loser = gameLoser {
+            let winner = players.first(where: { $0 !== loser })
+            return (winner: winner, loser: loser, isDraw: false)
+        }
+
+        guard players.count >= 2 else {
+            return (winner: players.first, loser: nil, isDraw: false)
+        }
+
+        let rankedPlayers = players.sorted { lhs, rhs in
+            if lhs.score != rhs.score {
+                return lhs.score > rhs.score
+            }
+            return lhs.id.uuidString < rhs.id.uuidString
+        }
+
+        return (
+            winner: rankedPlayers.first,
+            loser: rankedPlayers.dropFirst().first,
+            isDraw: false
+        )
+    }
+
+    private func multiplayerSettlementSummary(
+        endReason: MultiplayerMatchEndReason,
+        winner: Player?,
+        loser: Player?
+    ) -> MultiplayerSettlementSummary? {
+        if multiplayerIsForfeitEndReason(endReason) {
+            return nil
+        }
+
+        if let lastPenaltyResult {
+            return multiplayerSettlementSummary(from: lastPenaltyResult, isDraw: endReason == .nagari)
+        }
+
+        if endReason == .nagari {
+            return MultiplayerSettlementSummary(
+                finalScore: 0,
+                scoreFormula: gameText("penalty.formula.nagari_draw"),
+                isDraw: true,
+                isGwangbak: false,
+                isPibak: false,
+                isGobak: false,
+                isMungbak: false,
+                isJabak: false,
+                isYeokbak: false
+            )
+        }
+
+        guard let winner, let loser, let rules = RuleLoader.shared.config else {
+            return nil
+        }
+
+        let penalty = PenaltySystem.calculatePenalties(winner: winner, loser: loser, rules: rules)
+        return multiplayerSettlementSummary(from: penalty, isDraw: false)
+    }
+
+    private func multiplayerSettlementSummary(
+        from penalty: PenaltySystem.PenaltyResult,
+        isDraw: Bool
+    ) -> MultiplayerSettlementSummary {
+        MultiplayerSettlementSummary(
+            finalScore: penalty.finalScore,
+            scoreFormula: penalty.scoreFormula,
+            isDraw: isDraw,
+            isGwangbak: penalty.isGwangbak,
+            isPibak: penalty.isPibak,
+            isGobak: penalty.isGobak,
+            isMungbak: penalty.isMungbak,
+            isJabak: penalty.isJabak,
+            isYeokbak: penalty.isYeokbak
+        )
+    }
+
+    private func multiplayerIsForfeitEndReason(_ endReason: MultiplayerMatchEndReason) -> Bool {
+        switch endReason {
+        case .voluntaryQuit, .disconnectTimeout, .adminForfeit:
+            return true
+        case .stop, .maxScore, .nagari, .chongtong, .threeSeolsa:
+            return false
+        }
+    }
+
+    private func multiplayerEndReasonMessageKey(_ endReason: MultiplayerMatchEndReason) -> String {
+        switch endReason {
+        case .stop:
+            return "match.end.stop"
+        case .maxScore:
+            return "match.end.max_score"
+        case .nagari:
+            return "match.end.nagari"
+        case .chongtong:
+            return "match.end.chongtong"
+        case .threeSeolsa:
+            return "match.end.three_seolsa"
+        case .voluntaryQuit:
+            return "match.end.voluntary_quit"
+        case .disconnectTimeout:
+            return "match.end.disconnect_timeout"
+        case .adminForfeit:
+            return "match.end.admin_forfeit"
+        }
     }
 }
 

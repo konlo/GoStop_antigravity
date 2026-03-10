@@ -28,6 +28,12 @@
 		37977AD098390474259748DB /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 159C810168F262CE9273796F /* main.swift */; };
 		382086F1D4678D7A44AFEE6E /* rule.yaml in Resources */ = {isa = PBXBuildFile; fileRef = B5F77E3038A87D0684F2961D /* rule.yaml */; };
 		3C5A692B58A2151110EAE1E0 /* jjok.wav in Resources */ = {isa = PBXBuildFile; fileRef = 5F0BB6C6AFB6A3A5CACFF486 /* jjok.wav */; };
+		A2A2A2A20000000000000011 /* RoomCoordinatorModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2A2A2A20000000000000001 /* RoomCoordinatorModels.swift */; };
+		A2A2A2A20000000000000012 /* InMemoryRoomCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2A2A2A20000000000000002 /* InMemoryRoomCoordinator.swift */; };
+		A2A2A2A20000000000000013 /* RoomCoordinatorCLIAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2A2A2A20000000000000003 /* RoomCoordinatorCLIAdapter.swift */; };
+		A2A2A2A20000000000000014 /* LocalRoomCoordinatorDebugService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2A2A2A20000000000000004 /* LocalRoomCoordinatorDebugService.swift */; };
+		A2A2A2A20000000000000015 /* RoomCoordinatorModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2A2A2A20000000000000001 /* RoomCoordinatorModels.swift */; };
+		A2A2A2A20000000000000016 /* InMemoryRoomCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2A2A2A20000000000000002 /* InMemoryRoomCoordinator.swift */; };
 		41CAA6DED7E8166226000DB5 /* bomb.wav in Resources */ = {isa = PBXBuildFile; fileRef = 2114BD27414D03C58BD142C6 /* bomb.wav */; };
 		4F27D2FD1F9143DAFA032D79 /* sweep.wav in Resources */ = {isa = PBXBuildFile; fileRef = 6C235371731C8EC39BB77518 /* sweep.wav */; };
 		541288BE1C1519BE2B7AE083 /* ConfigManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2857725433426BA8E4DE2D7C /* ConfigManager.swift */; };
@@ -59,12 +65,16 @@
 		ABD95E004FE2778D4B2BFD78 /* AudioManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40A8AF9CA959E19695C3C65E /* AudioManager.swift */; };
 		AC00196FBFB67AA0311E5799 /* ttadak.wav in Resources */ = {isa = PBXBuildFile; fileRef = FFABCFBA7D5C0D514D4743B5 /* ttadak.wav */; };
 		ACBB19108BB2F7E1329AB3EA /* Card.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72B2E9B6CA4C4DB8CC0ED986 /* Card.swift */; };
+		A1B2C3D4E5F60718293A4B5C /* MultiplayerShellViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5D /* MultiplayerShellViews.swift */; };
+		A1B2C3D4E5F60718293A4B6C /* MultiplayerShellState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B6D /* MultiplayerShellState.swift */; };
+		B1C2D3E4F5061728394A5B6C /* MultiplayerContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B6A /* MultiplayerContract.swift */; };
 		AF9A0E3E3C85299B4B671CDC /* shake.wav in Resources */ = {isa = PBXBuildFile; fileRef = 1A6B182DBD528D1CD18DC6A5 /* shake.wav */; };
 		AFE099F3966A98298D996D24 /* chongtong.wav in Resources */ = {isa = PBXBuildFile; fileRef = 0C043E09FB6F416CC5D71507 /* chongtong.wav */; };
 		B0DBC6BF9FCA8453CB3B0FE4 /* LayoutConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D0615E5D598D1F92B7FAF92 /* LayoutConfig.swift */; };
 		B20D1CDDF9665706FA9A0135 /* MessageCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8033CCBA11F2704126432C4D /* MessageCatalog.swift */; };
 		B597523E68A8A42654B8DD0F /* GameView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BA63E4C6CDD8893D44DEAE5 /* GameView.swift */; };
 		B5EED1311F05C120AF7DA6E8 /* Card.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72B2E9B6CA4C4DB8CC0ED986 /* Card.swift */; };
+		C1D2E3F40516273849A5B6C7 /* MultiplayerContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B6A /* MultiplayerContract.swift */; };
 		C4E5C5B23D59D1A9058F7DB5 /* TableSlotManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B21CE98829137B4CABB2EDC /* TableSlotManager.swift */; };
 		C6EA8898DE29CBD4BD1297FB /* ScoringSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C817E2BC7A6C44D1434325E /* ScoringSystem.swift */; };
 		C902BEB18B4990C113F878A3 /* AnimationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0017E840D6A35A68D6AA71CC /* AnimationManager.swift */; };
@@ -132,6 +142,13 @@
 		8B21CE98829137B4CABB2EDC /* TableSlotManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TableSlotManager.swift; sourceTree = "<group>"; };
 		8D300F3C280AF301436D8732 /* Player.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Player.swift; sourceTree = "<group>"; };
 		99627E88FDDD3197942DBC91 /* SpecialEventPopupModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpecialEventPopupModule.swift; sourceTree = "<group>"; };
+		A2A2A2A20000000000000001 /* RoomCoordinatorModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomCoordinatorModels.swift; sourceTree = "<group>"; };
+		A2A2A2A20000000000000002 /* InMemoryRoomCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InMemoryRoomCoordinator.swift; sourceTree = "<group>"; };
+		A2A2A2A20000000000000003 /* RoomCoordinatorCLIAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomCoordinatorCLIAdapter.swift; sourceTree = "<group>"; };
+		A2A2A2A20000000000000004 /* LocalRoomCoordinatorDebugService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalRoomCoordinatorDebugService.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A4B5D /* MultiplayerShellViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultiplayerShellViews.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A4B6D /* MultiplayerShellState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultiplayerShellState.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A4B6A /* MultiplayerContract.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultiplayerContract.swift; sourceTree = "<group>"; };
 		B2494B7B2463310B5E13410E /* DebugEndgameSummaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugEndgameSummaryView.swift; sourceTree = "<group>"; };
 		B5F77E3038A87D0684F2961D /* rule.yaml */ = {isa = PBXFileReference; lastKnownFileType = text.yaml; path = rule.yaml; sourceTree = "<group>"; };
 		B67ACAB0F7C90D1925FA8BC6 /* GoStopTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = GoStopTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -175,6 +192,8 @@
 				E6121B38C070C592434D33A1 /* DebugLayoutOverlayV2.swift */,
 				7A6AE872E752608836265117 /* GameAreaViews.swift */,
 				5BA63E4C6CDD8893D44DEAE5 /* GameView.swift */,
+				A1B2C3D4E5F60718293A4B6D /* MultiplayerShellState.swift */,
+				A1B2C3D4E5F60718293A4B5D /* MultiplayerShellViews.swift */,
 				E2E17F950BAB90799F5D6CEE /* RuleSettingsView.swift */,
 				99627E88FDDD3197942DBC91 /* SpecialEventPopupModule.swift */,
 			);
@@ -207,7 +226,9 @@
 				2857725433426BA8E4DE2D7C /* ConfigManager.swift */,
 				116C189429DB2067520A3E08 /* GameManager.swift */,
 				08DC9353031FD0D4F7EDF917 /* LayoutContext.swift */,
+				A2A2A2A20000000000000004 /* LocalRoomCoordinatorDebugService.swift */,
 				8033CCBA11F2704126432C4D /* MessageCatalog.swift */,
+				A1B2C3D4E5F60718293A4B6A /* MultiplayerContract.swift */,
 				E5D75C2B31530E390EDEB760 /* PenaltySystem.swift */,
 				CB1897B0ADA42D7A7EEFCE34 /* PlayerHandSlotManager.swift */,
 				4C817E2BC7A6C44D1434325E /* ScoringSystem.swift */,
@@ -281,6 +302,9 @@
 			isa = PBXGroup;
 			children = (
 				159C810168F262CE9273796F /* main.swift */,
+				A2A2A2A20000000000000003 /* RoomCoordinatorCLIAdapter.swift */,
+				A2A2A2A20000000000000002 /* InMemoryRoomCoordinator.swift */,
+				A2A2A2A20000000000000001 /* RoomCoordinatorModels.swift */,
 			);
 			path = GoStopCLI;
 			sourceTree = "<group>";
@@ -468,9 +492,13 @@
 				89D4C50CC12F800CCB24D5EA /* LayoutConfigV2.swift in Sources */,
 				9EAF94310537CBCB3CE79C2A /* LayoutContext.swift in Sources */,
 				B20D1CDDF9665706FA9A0135 /* MessageCatalog.swift in Sources */,
+				B1C2D3E4F5061728394A5B6C /* MultiplayerContract.swift in Sources */,
 				33B94FCF62AD0125A4518094 /* PenaltySystem.swift in Sources */,
 				191BB9B8BDE5DDAE9E15BE36 /* Player.swift in Sources */,
 				333625062232E46D6E78948F /* PlayerHandSlotManager.swift in Sources */,
+				A2A2A2A20000000000000012 /* InMemoryRoomCoordinator.swift in Sources */,
+				A2A2A2A20000000000000013 /* RoomCoordinatorCLIAdapter.swift in Sources */,
+				A2A2A2A20000000000000011 /* RoomCoordinatorModels.swift in Sources */,
 				D647DAF14263DC898EF7E864 /* RuleConfig.swift in Sources */,
 				C6EA8898DE29CBD4BD1297FB /* ScoringSystem.swift in Sources */,
 				CCC8CAA072A943D537B4AD09 /* SimulatorBridge.swift in Sources */,
@@ -509,6 +537,12 @@
 				A8E8EE127772993DF00F279D /* LayoutConfigV2.swift in Sources */,
 				29E2F53E72ED922B7A2956C2 /* LayoutContext.swift in Sources */,
 				566DD115DF123D91462F437B /* MessageCatalog.swift in Sources */,
+				C1D2E3F40516273849A5B6C7 /* MultiplayerContract.swift in Sources */,
+				A2A2A2A20000000000000016 /* InMemoryRoomCoordinator.swift in Sources */,
+				A2A2A2A20000000000000014 /* LocalRoomCoordinatorDebugService.swift in Sources */,
+				A2A2A2A20000000000000015 /* RoomCoordinatorModels.swift in Sources */,
+				A1B2C3D4E5F60718293A4B6C /* MultiplayerShellState.swift in Sources */,
+				A1B2C3D4E5F60718293A4B5C /* MultiplayerShellViews.swift in Sources */,
 				5B299B27BA991E7E6C90AC94 /* PenaltySystem.swift in Sources */,
 				0B20DD2801F7CBBF74EA9F8E /* Player.swift in Sources */,
 				621E32AC8A5257900A991AC4 /* PlayerHandSlotManager.swift in Sources */,

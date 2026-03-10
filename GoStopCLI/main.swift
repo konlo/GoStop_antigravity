@@ -10,12 +10,58 @@ struct CommandRequest: Codable {
 
 class CLIEngine {
     let gameManager = GameManager()
+    lazy var roomCLIAdapter: RoomCoordinatorCLIAdapter = {
+        RoomCoordinatorCLIAdapter(
+            authorityRelay: RoomAuthorityRelay(
+                fetchProjectionPreview: { [unowned self] request in
+                    TestControlSupport.serializedMultiplayerProjectionPayload(
+                        from: self.gameManager,
+                        requestData: roomProjectionPreviewRequestData(from: request)
+                    )
+                },
+                fetchGameStartedBootstrap: { [unowned self] request in
+                    TestControlSupport.serializedMultiplayerGameStartedBootstrapPayload(
+                        from: self.gameManager,
+                        requestData: roomGameStartedBootstrapRequestData(from: request)
+                    )
+                },
+                fetchTerminalSummary: { [unowned self] request in
+                    TestControlSupport.serializedMultiplayerTerminalSummaryPayload(
+                        from: self.gameManager,
+                        requestData: roomTerminalSummaryRelayRequestData(from: request)
+                    )
+                }
+            )
+        )
+    }()
     var currentSeed: Int? = nil
     
     func handle(request: CommandRequest) -> [String: Any] {
+        if let roomResponse = roomCLIAdapter.handle(request: request) {
+            return roomResponse
+        }
+
         switch request.action {
         case "get_state":
             return TestControlSupport.serializedStatePayload(from: gameManager)
+
+        case "get_multiplayer_projection":
+            return TestControlSupport.serializedMultiplayerProjectionPayload(
+                from: gameManager,
+                requestData: TestControlSupport.unbox(request.data)
+            )
+
+        case "get_multiplayer_game_started_bootstrap":
+            return TestControlSupport.serializedMultiplayerGameStartedBootstrapPayload(
+                from: gameManager,
+                requestData: TestControlSupport.unbox(request.data)
+            )
+
+        case "get_multiplayer_terminal_summary":
+            return TestControlSupport.serializedMultiplayerTerminalSummaryPayload(
+                from: gameManager,
+                requestData: TestControlSupport.unbox(request.data)
+            )
             
         case "start_game":
             gameManager.startGame()

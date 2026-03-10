@@ -101,7 +101,12 @@ class SimulatorBridge {
             }
             
             gLog("SimulatorBridge: Received action: \(action)")
-            if action != "get_state" {
+            let isReadOnlyAction =
+                action == "get_state" ||
+                action == "get_multiplayer_game_started_bootstrap" ||
+                action == "get_multiplayer_projection" ||
+                action == "get_multiplayer_terminal_summary"
+            if !isReadOnlyAction {
                 cachedStatePayload = nil
                 cachedStateTimestamp = 0
                 if stateSnapshotInFlight {
@@ -120,6 +125,42 @@ class SimulatorBridge {
             switch action {
             case "get_state":
                 enqueueStateResponse(connection: connection)
+
+            case "get_multiplayer_projection":
+                let dataDict = json["data"] as? [String: Any]
+                DispatchQueue.main.async {
+                    self.sendJSONResponse(
+                        payload: TestControlSupport.serializedMultiplayerProjectionPayload(
+                            from: self.gameManager,
+                            requestData: dataDict
+                        ),
+                        connection: connection
+                    )
+                }
+
+            case "get_multiplayer_game_started_bootstrap":
+                let dataDict = json["data"] as? [String: Any]
+                DispatchQueue.main.async {
+                    self.sendJSONResponse(
+                        payload: TestControlSupport.serializedMultiplayerGameStartedBootstrapPayload(
+                            from: self.gameManager,
+                            requestData: dataDict
+                        ),
+                        connection: connection
+                    )
+                }
+
+            case "get_multiplayer_terminal_summary":
+                let dataDict = json["data"] as? [String: Any]
+                DispatchQueue.main.async {
+                    self.sendJSONResponse(
+                        payload: TestControlSupport.serializedMultiplayerTerminalSummaryPayload(
+                            from: self.gameManager,
+                            requestData: dataDict
+                        ),
+                        connection: connection
+                    )
+                }
                 
             case "start_game":
                 DispatchQueue.main.async {
