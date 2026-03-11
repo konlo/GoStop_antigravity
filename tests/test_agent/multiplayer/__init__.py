@@ -16,6 +16,9 @@ from .scenarios import (
     SCENARIO_REGISTRY,
     SCENARIO_SUITES,
     SMOKE_SCENARIOS,
+    SOCKET_DUPLICATE_SCENARIOS,
+    SOCKET_PARITY_SCENARIOS,
+    SOCKET_REVIEW_FIXUP_SCENARIOS,
     SOCKET_SMOKE_SCENARIOS,
 )
 from .fixtures import FIXTURE_LIBRARY
@@ -43,6 +46,9 @@ __all__ = [
     "ScenarioStep",
     "ScenarioStepKind",
     "SMOKE_SCENARIOS",
+    "SOCKET_DUPLICATE_SCENARIOS",
+    "SOCKET_PARITY_SCENARIOS",
+    "SOCKET_REVIEW_FIXUP_SCENARIOS",
     "SOCKET_SMOKE_SCENARIOS",
     "SnapshotRecord",
     "default_socket_derived_data",

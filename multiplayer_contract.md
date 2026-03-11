@@ -4,7 +4,7 @@
 - **Owner**: Agent 1
 - **Primary Consumers**: Agent 2, Agent 3, Agent 4
 - **Status**: Draft
-- **Last Updated**: 2026-03-08
+- **Last Updated**: 2026-03-11
 - **Related Docs**:
   - `room_protocol.md`
   - `multiplayer_ui_flow.md`
@@ -44,6 +44,8 @@
 | hidden information policy | player-scoped projection | Agent 1 | Locked | opponent hand / deck hidden from normal clients |
 | presence/ready ownership | `isConnected` / `isReady` truth belongs to room/session layer, not hardcoded engine defaults | Agent 1 | Locked | engine snapshot accepts optional room-truth merge and otherwise returns `null` + `presenceSource=unknown` |
 | starter/dealer payload | bootstrap/snapshot starter-related fields must reflect actual starter selection result | Agent 1 | Locked | `starterPlayerId` is explicit and `dealerPlayerId` follows the same starter result in current engine |
+| `playerId` ownership | engine/game payloads use authority `playerId` only; room/session layer owns room-to-authority mapping | Agent 1 | Locked | room transport must resolve ingress identity and expose binding metadata to clients |
+| live stale recovery reason | stale `expectedStateVersion` recovery snapshot reason is always `resync` | Agent 1 | Locked | `localPreview` is local helper-only and must not appear on live transport recovery |
 
 ## Swift Type Mapping
 
@@ -58,10 +60,13 @@
 | choice kind | `MultiplayerContractChoiceKind` |
 | choice visibility | `MultiplayerChoiceVisibility` |
 | quit reason | `MultiplayerQuitReason` |
+| duplicate `actionId` disposition | `MultiplayerDuplicateActionIdDisposition` |
 | patch payload | `MultiplayerPatch` |
 | snapshot payload | `MultiplayerSnapshot` |
+| recovery snapshot reason | `MultiplayerRecoverySnapshotReason` |
 | projection context | `MultiplayerProjectionContext` |
 | participant presence merge | `MultiplayerParticipantPresence` |
+| player identity binding | `MultiplayerPlayerIdentityBinding` |
 | presence source | `MultiplayerPresenceSource` |
 | match snapshot | `MultiplayerMatchSnapshot` |
 | player projection | `MultiplayerPlayerProjection` |
@@ -110,6 +115,8 @@
 - 같은 `actionId` + 같은 `playerId` + 같은 command body가 재전송되면, 서버는 기존 terminal result를 replay 한다.
 - replay 시 기존에 발급된 `eventId`들을 그대로 재전송할 수 있다. consumer는 `eventId` idempotency로 중복 적용을 막아야 한다.
 - 같은 `actionId`를 다른 command body로 재사용하면 `actionIdConflict` reject를 반환한다.
+- duplicate `actionId` resolution은 `staleStateVersion` 판단보다 먼저 일어난다. exact duplicate resend는 current authoritative head가 더 앞서 있어도 `exactReplay`여야 하고, `staleStateVersion` + `stateSnapshot(reason=resync)`로 downgrade되면 안 된다.
+- conflicting reuse는 `actionIdConflict` reject여야 한다. conflicting reuse가 `staleStateVersion` reject나 `resync` recovery path로 빠지면 implementation drift다.
 
 ## Match State Model
 
@@ -235,6 +242,18 @@
 - `selectCapture`, `selectShake`, `chooseGoStop`, `chooseChrysanthemumRole`는 반드시 server-issued `choiceId`와 `optionCode`를 보낸다.
 - `resume`은 sync command이며, game state를 mutate하지 않아도 된다.
 - command success는 direct response보다 event stream이 source of truth다. transport layer ack shape는 Agent 2가 감싼다.
+
+### Transport Relay Rules
+- room/websocket transport layer는 gameplay relay command로 `playCard`, `submitChoice`, `quit`를 받을 수 있다.
+- `submitChoice`는 transport convenience alias이며 engine command가 아니다. transport layer는 `choiceCommandName`을 보고 이를 `selectCapture`, `selectShake`, `chooseGoStop`, `chooseChrysanthemumRole` 중 하나로 확정해서 engine에 넘겨야 한다.
+- `submitChoice.payload` minimum fields는 `choiceCommandName`, `choiceId`, `optionCode`다.
+- transport relay는 `actionId`, `expectedStateVersion`, `playerId`, `gameId`, command payload를 engine command envelope로 손실 없이 전달해야 한다.
+- room transport ingress identity source of truth는 client payload의 `playerId`가 아니라 authenticated room session과 `playerIdentityBindings`다. room layer는 client-supplied `playerId`를 그대로 신뢰하지 않고, room `playerId -> authority playerId` mapping을 거친 뒤 engine command envelope를 만들어야 한다.
+- `MultiplayerCommandEnvelope.playerId`는 room lookup이 끝난 뒤의 authority `playerId`다. room-owned session/member identity field는 engine contract 바깥에 있고, transport layer가 별도로 관리한다.
+- relay success/failure source of truth는 room ack가 아니라 nested engine event(`gameEvent.payload.engineEvent`)다.
+- accepted gameplay relay baseline은 `actionAccepted -> statePatched|stateSnapshot -> semantic follow-up` ordered engine events다.
+- stale `expectedStateVersion` reject path는 `actionRejected(code=staleStateVersion)` 뒤에 같은 websocket stream에서 `stateSnapshot(reason=resync)` recovery pair를 이어서 받아야 한다.
+- live stale-version recovery snapshot reason은 `resync`만 허용된다. `localPreview`는 local bridge / debug preview helper에서만 허용되며 live room/game transport에서는 사용할 수 없다.
 
 ### Commands
 | Command | Actor | Preconditions | Success Output | Common Rejects |
@@ -381,6 +400,573 @@
 }
 ```
 
+### Relay-Ready Gameplay Samples
+
+#### `playCard` via `room_transport_send`
+Request:
+```json
+{
+  "action": "room_transport_send",
+  "payload": {
+    "roomId": "room_001",
+    "connectionId": "conn_host_001",
+    "message": {
+      "type": "command",
+      "traceId": "trace_001",
+      "requestId": "req_000041",
+      "roomId": "room_001",
+      "gameId": "game_001",
+      "playerId": "player_a",
+      "actionId": "act_000041",
+      "expectedStateVersion": 12,
+      "command": {
+        "name": "playCard",
+        "payload": {
+          "cardId": "card_03_ribbon_red_poem",
+          "source": "hand"
+        }
+      }
+    }
+  }
+}
+```
+Success relay sequence:
+```json
+[
+  {
+    "type": "gameEvent",
+    "roomId": "room_001",
+    "roomSequence": 41,
+    "payload": {
+      "engineEvent": {
+        "type": "event",
+        "eventName": "actionAccepted",
+        "eventId": "evt_000211",
+        "stateVersion": 13,
+        "causedByActionId": "act_000041",
+        "payload": {
+          "requestId": "req_000041",
+          "actionId": "act_000041",
+          "playerId": "player_a",
+          "commandName": "playCard",
+          "result": {
+            "playedCardId": "card_03_ribbon_red_poem",
+            "pendingChoiceCreated": true,
+            "turnContinues": true
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "gameEvent",
+    "roomId": "room_001",
+    "roomSequence": 42,
+    "payload": {
+      "engineEvent": {
+        "type": "event",
+        "eventName": "statePatched",
+        "eventId": "evt_000212",
+        "stateVersion": 13,
+        "causedByActionId": "act_000041",
+        "payload": {
+          "patchFormat": "json-patch",
+          "baseStateVersion": 12,
+          "targetStateVersion": 13,
+          "ops": [
+            {
+              "op": "replace",
+              "path": "/pendingChoice",
+              "value": {
+                "choiceId": "choice_0007",
+                "choiceKind": "capture"
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "type": "gameEvent",
+    "roomId": "room_001",
+    "roomSequence": 43,
+    "payload": {
+      "engineEvent": {
+        "type": "event",
+        "eventName": "choiceRequested",
+        "eventId": "evt_000213",
+        "stateVersion": 13,
+        "causedByActionId": "act_000041",
+        "payload": {
+          "choiceId": "choice_0007",
+          "choiceKind": "capture",
+          "actorPlayerId": "player_a"
+        }
+      }
+    }
+  }
+]
+```
+Failure relay:
+```json
+{
+  "type": "gameEvent",
+  "roomId": "room_001",
+  "roomSequence": 41,
+  "payload": {
+    "engineEvent": {
+      "type": "event",
+      "eventName": "actionRejected",
+      "eventId": "evt_000212",
+      "stateVersion": 12,
+      "causedByActionId": "act_000041",
+      "payload": {
+        "requestId": "req_000041",
+        "actionId": "act_000041",
+        "playerId": "player_a",
+        "commandName": "playCard",
+        "rejectReason": {
+          "code": "outOfTurn",
+          "retryable": false,
+          "messageKey": "match.reject.out_of_turn",
+          "details": {
+            "currentPlayerId": "player_b",
+            "phase": "inTurn",
+            "turnId": "turn_0008",
+            "latestStateVersion": 12
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+#### `submitChoice` via `room_transport_send`
+Request:
+```json
+{
+  "action": "room_transport_send",
+  "payload": {
+    "roomId": "room_001",
+    "connectionId": "conn_host_001",
+    "message": {
+      "type": "command",
+      "traceId": "trace_001",
+      "requestId": "req_000042",
+      "roomId": "room_001",
+      "gameId": "game_001",
+      "playerId": "player_a",
+      "actionId": "act_000042",
+      "expectedStateVersion": 13,
+      "command": {
+        "name": "submitChoice",
+        "payload": {
+          "choiceCommandName": "selectCapture",
+          "choiceId": "choice_0007",
+          "optionCode": "capture_pair_left"
+        }
+      }
+    }
+  }
+}
+```
+Success relay sequence:
+```json
+[
+  {
+    "type": "gameEvent",
+    "roomId": "room_001",
+    "roomSequence": 44,
+    "payload": {
+      "engineEvent": {
+        "type": "event",
+        "eventName": "actionAccepted",
+        "eventId": "evt_000214",
+        "stateVersion": 14,
+        "causedByActionId": "act_000042",
+        "payload": {
+          "requestId": "req_000042",
+          "actionId": "act_000042",
+          "playerId": "player_a",
+          "commandName": "selectCapture"
+        }
+      }
+    }
+  },
+  {
+    "type": "gameEvent",
+    "roomId": "room_001",
+    "roomSequence": 45,
+    "payload": {
+      "engineEvent": {
+        "type": "event",
+        "eventName": "statePatched",
+        "eventId": "evt_000215",
+        "stateVersion": 14,
+        "causedByActionId": "act_000042",
+        "payload": {
+          "patchFormat": "json-patch",
+          "baseStateVersion": 13,
+          "targetStateVersion": 14,
+          "ops": [
+            {
+              "op": "replace",
+              "path": "/pendingChoice",
+              "value": null
+            },
+            {
+              "op": "replace",
+              "path": "/currentPlayerId",
+              "value": "player_b"
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "type": "gameEvent",
+    "roomId": "room_001",
+    "roomSequence": 46,
+    "payload": {
+      "engineEvent": {
+        "type": "event",
+        "eventName": "turnChanged",
+        "eventId": "evt_000216",
+        "stateVersion": 14,
+        "causedByActionId": "act_000042",
+        "payload": {
+          "turnId": "turn_0008",
+          "currentPlayerId": "player_b",
+          "turnDeadlineAt": "2026-03-08T15:30:31+09:00"
+        }
+      }
+    }
+  }
+]
+```
+Failure relay:
+```json
+{
+  "type": "gameEvent",
+  "roomId": "room_001",
+  "roomSequence": 44,
+  "payload": {
+    "engineEvent": {
+      "type": "event",
+      "eventName": "actionRejected",
+      "eventId": "evt_000217",
+      "stateVersion": 13,
+      "causedByActionId": "act_000042",
+      "payload": {
+        "requestId": "req_000042",
+        "actionId": "act_000042",
+        "playerId": "player_a",
+        "commandName": "selectCapture",
+        "rejectReason": {
+          "code": "choiceOwnerMismatch",
+          "retryable": false,
+          "messageKey": "match.reject.choice_owner_mismatch",
+          "details": {
+            "choiceId": "choice_0007",
+            "actorPlayerId": "player_b",
+            "latestStateVersion": 13
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+#### `quit` via `room_transport_send`
+Request:
+```json
+{
+  "action": "room_transport_send",
+  "payload": {
+    "roomId": "room_001",
+    "connectionId": "conn_host_001",
+    "message": {
+      "type": "command",
+      "traceId": "trace_001",
+      "requestId": "req_000046",
+      "roomId": "room_001",
+      "gameId": "game_001",
+      "playerId": "player_a",
+      "actionId": "act_000046",
+      "expectedStateVersion": 23,
+      "command": {
+        "name": "quit",
+        "payload": {
+          "reason": "voluntaryExit"
+        }
+      }
+    }
+  }
+}
+```
+Success relay sequence:
+```json
+[
+  {
+    "type": "gameEvent",
+    "roomId": "room_001",
+    "roomSequence": 57,
+    "payload": {
+      "engineEvent": {
+        "type": "event",
+        "eventName": "actionAccepted",
+        "eventId": "evt_000217",
+        "stateVersion": 24,
+        "causedByActionId": "act_000046",
+        "payload": {
+          "requestId": "req_000046",
+          "actionId": "act_000046",
+          "playerId": "player_a",
+          "commandName": "quit"
+        }
+      }
+    }
+  },
+  {
+    "type": "gameEvent",
+    "roomId": "room_001",
+    "roomSequence": 58,
+    "payload": {
+      "engineEvent": {
+        "type": "event",
+        "eventName": "matchEnded",
+        "eventId": "evt_000218",
+        "stateVersion": 24,
+        "causedByActionId": "act_000046",
+        "payload": {
+          "roundIndex": 1,
+          "winnerPlayerId": "player_b",
+          "loserPlayerId": "player_a",
+          "finalScores": [
+            {
+              "playerId": "player_b",
+              "score": 5,
+              "goCount": 0,
+              "money": 10000
+            },
+            {
+              "playerId": "player_a",
+              "score": 2,
+              "goCount": 0,
+              "money": 10000
+            }
+          ],
+          "settlementSummary": null,
+          "endReason": "voluntaryQuit",
+          "endReasonMessageKey": "match.end.voluntary_quit",
+          "forfeitingPlayerId": "player_a",
+          "isDraw": false
+        }
+      }
+    }
+  }
+]
+```
+Failure relay:
+```json
+{
+  "type": "gameEvent",
+  "roomId": "room_001",
+  "roomSequence": 57,
+  "payload": {
+    "engineEvent": {
+      "type": "event",
+      "eventName": "actionRejected",
+      "eventId": "evt_000219",
+      "stateVersion": 23,
+      "causedByActionId": "act_000046",
+      "payload": {
+        "requestId": "req_000046",
+        "actionId": "act_000046",
+        "playerId": "player_a",
+        "commandName": "quit",
+        "rejectReason": {
+          "code": "invalidState",
+          "retryable": false,
+          "messageKey": "match.reject.invalid_state",
+          "details": {
+            "phase": "matchEnded",
+            "latestStateVersion": 23
+          }
+        }
+      }
+    }
+  }
+}
+```
+- terminal consumer baseline은 success sequence 중 `matchEnded`다. room layer는 같은 terminal transaction에서 별도 `terminalSummary`를 fan-out할 수 있지만, result route의 game-engine source of truth는 `matchEnded`다.
+
+### Duplicate `actionId` Websocket Parity Samples
+
+#### Exact Duplicate Resend (`duplicateActionIdDisposition=exactReplay`)
+Request:
+```json
+{
+  "action": "room_transport_send",
+  "payload": {
+    "roomId": "room_001",
+    "connectionId": "conn_host_001",
+    "message": {
+      "type": "command",
+      "traceId": "trace_001",
+      "requestId": "req_000041_retry",
+      "roomId": "room_001",
+      "gameId": "game_001",
+      "playerId": "room_host_001",
+      "actionId": "act_000041",
+      "expectedStateVersion": 15,
+      "command": {
+        "name": "playCard",
+        "payload": {
+          "cardId": "card_03_ribbon_red_poem",
+          "source": "hand"
+        }
+      }
+    }
+  }
+}
+```
+Transport diagnostic:
+```json
+{
+  "type": "ack",
+  "roomId": "room_001",
+  "payload": {
+    "requestId": "req_000041_retry",
+    "actionId": "act_000041",
+    "duplicateActionIdDisposition": "exactReplay"
+  }
+}
+```
+Authoritative replay sequence:
+```json
+[
+  {
+    "type": "gameEvent",
+    "roomId": "room_001",
+    "roomSequence": 41,
+    "payload": {
+      "engineEvent": {
+        "type": "event",
+        "eventName": "actionAccepted",
+        "eventId": "evt_000211",
+        "stateVersion": 13,
+        "causedByActionId": "act_000041",
+        "payload": {
+          "requestId": "req_000041",
+          "actionId": "act_000041",
+          "playerId": "player_a",
+          "commandName": "playCard"
+        }
+      }
+    }
+  },
+  {
+    "type": "gameEvent",
+    "roomId": "room_001",
+    "roomSequence": 42,
+    "payload": {
+      "engineEvent": {
+        "type": "event",
+        "eventName": "statePatched",
+        "eventId": "evt_000212",
+        "stateVersion": 13,
+        "causedByActionId": "act_000041",
+        "payload": {
+          "patchFormat": "json-patch",
+          "baseStateVersion": 12,
+          "targetStateVersion": 13
+        }
+      }
+    }
+  }
+]
+```
+- room/client가 보내는 `playerId` echo는 room identity일 수 있지만, replayed nested engine payload의 `playerId`는 authority identity를 유지한다. client는 `playerIdentityBindings`로 이 둘을 연결해야 한다.
+
+#### Conflicting Reuse (`duplicateActionIdDisposition=conflictReject`)
+Request:
+```json
+{
+  "action": "room_transport_send",
+  "payload": {
+    "roomId": "room_001",
+    "connectionId": "conn_host_001",
+    "message": {
+      "type": "command",
+      "traceId": "trace_001",
+      "requestId": "req_000041_conflict",
+      "roomId": "room_001",
+      "gameId": "game_001",
+      "playerId": "room_host_001",
+      "actionId": "act_000041",
+      "expectedStateVersion": 15,
+      "command": {
+        "name": "playCard",
+        "payload": {
+          "cardId": "card_08_bright_fullmoon",
+          "source": "hand"
+        }
+      }
+    }
+  }
+}
+```
+Transport diagnostic:
+```json
+{
+  "type": "ack",
+  "roomId": "room_001",
+  "payload": {
+    "requestId": "req_000041_conflict",
+    "actionId": "act_000041",
+    "duplicateActionIdDisposition": "conflictReject"
+  }
+}
+```
+Authoritative reject:
+```json
+{
+  "type": "gameEvent",
+  "roomId": "room_001",
+  "roomSequence": 44,
+  "payload": {
+    "engineEvent": {
+      "type": "event",
+      "eventName": "actionRejected",
+      "eventId": "evt_000214",
+      "stateVersion": 15,
+      "causedByActionId": "act_000041",
+      "payload": {
+        "requestId": "req_000041_conflict",
+        "actionId": "act_000041",
+        "playerId": "player_a",
+        "commandName": "playCard",
+        "rejectReason": {
+          "code": "actionIdConflict",
+          "retryable": false,
+          "messageKey": "match.reject.action_id_conflict",
+          "details": {
+            "latestStateVersion": 15,
+            "originalCommandName": "playCard"
+          }
+        }
+      }
+    }
+  }
+}
+```
+- conflict reject 뒤에는 `stateSnapshot(reason=resync)` recovery pair가 오지 않는다. `staleStateVersion`/`resync`로 떨어지면 contract drift다.
+
 ## Reject Reason Contract
 
 ### Shape
@@ -418,6 +1004,7 @@
 
 ### Typed Reject / Resync Details
 - `staleStateVersion` reject details baseline type은 `MultiplayerStaleStateVersionRejectDetails`다.
+- `MultiplayerResyncDirective.snapshotReason` type은 `MultiplayerRecoverySnapshotReason`이며 allowed value set은 `resync | gapDetected`로 제한한다.
 - required fields:
   - `expectedStateVersion`
   - `authoritativeStateVersion`
@@ -426,6 +1013,7 @@
   - `resync.snapshotReason`
   - `resync.shouldLockInput`
 - `resync.snapshotReason`은 command stale reject path에서는 `resync`로 고정한다.
+- `localPreview`는 `MultiplayerSnapshot.reason`에서는 local helper 용도로 허용되지만, reject/recovery detail의 `resync.snapshotReason`에는 절대 쓰지 않는다.
 - `gapDetected`는 client가 patch base mismatch 또는 missing game event를 감지한 transport/local recovery path에만 사용한다. command stale reject의 recovery reason으로는 쓰지 않는다.
 - MP-008 P0 deterministic hook은 transport drop이 아니라 stale `expectedStateVersion` override를 사용한다.
 - MP-008 artifact minimum fields는 `injectedMismatchMode`, `clientStateVersion`, `expectedStateVersion`, `authoritativeStateVersion`, `authoritativeEventId`, `recoverySnapshotReason`, `recoverySnapshotId`다.
@@ -489,9 +1077,18 @@
 - normal scoring end(`stop`, `maxScore`, `nagari`, `chongtong`, `threeSeolsa`)에서는 `settlementSummary`를 포함한다.
 - forfeit end(`voluntaryQuit`, `disconnectTimeout`, `adminForfeit`)에서는 `settlementSummary = null`을 기본값으로 하고, room layer는 `forfeitingPlayerId`를 반드시 채운다.
 - `endReasonMessageKey`는 `match.end.*` namespace를 사용한다.
-- Agent 2 terminal forwarder와 Agent 3 result route가 의존해야 하는 required fields는 `roundIndex`, `winnerPlayerId`, `loserPlayerId`, `finalScores[]`, `settlementSummary`, `endReason`, `endReasonMessageKey`, `forfeitingPlayerId`, `isDraw`다.
+- Agent 2 transport terminal relay minimum required fields는 아래처럼 좁힌다.
+  - `roundEnded`: `roundIndex`, `summary`
+  - `roundEnded.summary`: `roundIndex`, `winnerPlayerId`, `loserPlayerId`, `finalScores[]`, `endReason`, `endReasonMessageKey`, `isDraw`
+  - `matchEnded`: `roundIndex`, `winnerPlayerId`, `loserPlayerId`, `finalScores[]`, `endReason`, `endReasonMessageKey`, `isDraw`
+  - conditional fields:
+    - scoring end에서는 `settlementSummary` required, `forfeitingPlayerId = null`
+    - forfeit end에서는 `settlementSummary = null`, `forfeitingPlayerId` required
+  - `terminalSummary`: `roomId`, `gameId`, `summaryStateVersion`, `lastEventId`, `roundEnded`, `matchEnded`
 - `matchEnded`는 `roundIndex`를 포함해야 하며, consumer는 `roundEnded`가 늦거나 생략되더라도 `matchEnded` 단독으로 result shell을 구성할 수 있어야 한다.
 - `get_multiplayer_terminal_summary` response baseline type은 `MultiplayerTerminalSummaryPayload`이며, top-level metadata는 `roomId`, `gameId`, `summaryStateVersion`, `lastEventId`, `roundEnded`, `matchEnded`다.
+- room transport layer는 `gameEvent(roundEnded).payload`, `gameEvent(matchEnded).payload`, `terminalSummary.payload.roundEnded`, `terminalSummary.payload.matchEnded`를 서로 다른 shape로 재합성하지 않는다. terminalSummary는 same authority payload object를 fan-out하는 view여야 한다.
+- Agent 2 validator는 `roundEnded.summary`에서 `settlementSummary`와 `forfeitingPlayerId`를 동시에 required로 간주하면 안 된다. 둘은 `endReason`에 따라 mutually conditioned field다.
 
 ### Event Sample Payloads
 
@@ -959,6 +1556,93 @@
 }
 ```
 
+#### Transport Terminal Minimum Relay Payload
+```json
+{
+  "type": "terminalSummary",
+  "roomId": "room_001",
+  "roomSequence": 59,
+  "payload": {
+    "roomId": "room_001",
+    "gameId": "game_001",
+    "summaryStateVersion": 24,
+    "lastEventId": "evt_000218",
+    "roundEnded": {
+      "roundIndex": 1,
+      "summary": {
+        "roundIndex": 1,
+        "winnerPlayerId": "player_a",
+        "loserPlayerId": "player_b",
+        "finalScores": [
+          {
+            "playerId": "player_a",
+            "score": 7,
+            "goCount": 1,
+            "money": 11200
+          },
+          {
+            "playerId": "player_b",
+            "score": 4,
+            "goCount": 0,
+            "money": 8800
+          }
+        ],
+        "settlementSummary": {
+          "finalScore": 12,
+          "scoreFormula": "(7 + go bonus 1) x gobak 2",
+          "isDraw": false,
+          "isGwangbak": false,
+          "isPibak": false,
+          "isGobak": true,
+          "isMungbak": false,
+          "isJabak": false,
+          "isYeokbak": false
+        },
+        "endReason": "stop",
+        "endReasonMessageKey": "match.end.stop",
+        "forfeitingPlayerId": null,
+        "isDraw": false
+      }
+    },
+    "matchEnded": {
+      "roundIndex": 1,
+      "winnerPlayerId": "player_a",
+      "loserPlayerId": "player_b",
+      "finalScores": [
+        {
+          "playerId": "player_a",
+          "score": 7,
+          "goCount": 1,
+          "money": 11200
+        },
+        {
+          "playerId": "player_b",
+          "score": 4,
+          "goCount": 0,
+          "money": 8800
+        }
+      ],
+      "settlementSummary": {
+        "finalScore": 12,
+        "scoreFormula": "(7 + go bonus 1) x gobak 2",
+        "isDraw": false,
+        "isGwangbak": false,
+        "isPibak": false,
+        "isGobak": true,
+        "isMungbak": false,
+        "isJabak": false,
+        "isYeokbak": false
+      },
+      "endReason": "stop",
+      "endReasonMessageKey": "match.end.stop",
+      "forfeitingPlayerId": null,
+      "isDraw": false
+    }
+  }
+}
+```
+- disconnect timeout / voluntary quit / admin forfeit relay에서는 위 sample에서 `settlementSummary = null`, `forfeitingPlayerId = authority playerId`로 바뀌는 것만 mandatory 차이다.
+
 ## Choice Contract
 
 ### Shape
@@ -1025,6 +1709,9 @@
 - command stale reject path에서는 `actionRejected(code=staleStateVersion)` 뒤에 `stateSnapshot(reason=resync)`가 recovery baseline이다.
 - patch base mismatch 또는 dropped game event를 client가 감지한 path에서는 input을 잠그고 `stateSnapshot(reason=gapDetected)`를 기다리는 것이 baseline이다.
 - MP-008 P0 deterministic validation은 stale `expectedStateVersion` override만 사용한다. dropped game event hook은 future extension으로 남긴다.
+- `dropGameEvents`는 다음 phase smoke hook으로 올리지 않는다. stale gameplay transport resync smoke가 안정화될 때까지 future extension으로 유지한다.
+- stale reject recovery pair에서는 `rejectReason.details.authoritativeStateVersion`과 뒤이은 `stateSnapshot.payload.snapshotStateVersion`이 같아야 하고, `rejectReason.details.authoritativeEventId`와 `stateSnapshot.payload.lastIncludedEventId`가 같은 authoritative head를 가리켜야 한다.
+- live transport stale-version recovery snapshot은 `stateSnapshot.reason = resync`만 허용한다. `localPreview`는 preview/helper contract 전용이며 `gameEvent(stateSnapshot)` live relay에서는 invalid다.
 
 ### Relay-Ready Engine Envelope Samples
 - room websocket은 `gameEvent.payload.engineEvent` 안에 Agent 1 engine envelope를 nested해서 relay 한다.
@@ -1083,6 +1770,87 @@
   }
 }
 ```
+- stale `expectedStateVersion` reject + `stateSnapshot(reason=resync)` recovery pair:
+```json
+[
+  {
+    "action": "room_transport_send",
+    "payload": {
+      "roomId": "room_001",
+      "connectionId": "conn_host_001",
+      "message": {
+        "type": "command",
+        "traceId": "trace_001",
+        "requestId": "req_000121",
+        "roomId": "room_001",
+        "gameId": "game_001",
+        "playerId": "player_a",
+        "actionId": "act_000121",
+        "expectedStateVersion": 14,
+        "command": {
+          "name": "playCard",
+          "payload": {
+            "cardId": "card_02_animal_nightingale",
+            "source": "hand"
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "gameEvent",
+    "roomId": "room_001",
+    "roomSequence": 44,
+    "payload": {
+      "engineEvent": {
+        "type": "event",
+        "eventName": "actionRejected",
+        "eventId": "evt_000301",
+        "stateVersion": 15,
+        "causedByActionId": "act_000121",
+        "payload": {
+          "actionId": "act_000121",
+          "commandName": "playCard",
+          "rejectReason": {
+            "code": "staleStateVersion",
+            "details": {
+              "expectedStateVersion": 14,
+              "authoritativeStateVersion": 15,
+              "authoritativeEventId": "evt_000300",
+              "resync": {
+                "trigger": "staleStateVersionReject",
+                "snapshotReason": "resync",
+                "shouldLockInput": true
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "gameEvent",
+    "roomId": "room_001",
+    "roomSequence": 45,
+    "payload": {
+      "engineEvent": {
+        "type": "event",
+        "eventName": "stateSnapshot",
+        "eventId": "evt_000302",
+        "stateVersion": 15,
+        "payload": {
+          "snapshotId": "snap_000015_player_a",
+          "reason": "resync",
+          "snapshotStateVersion": 15,
+          "lastIncludedEventId": "evt_000300",
+          "scope": "player"
+        }
+      }
+    }
+  }
+]
+```
+- websocket relay baseline은 stale reject와 paired resync snapshot 사이에 다른 game event를 끼우지 않는 것이다. room ack/transport ack는 있어도 되지만, authoritative recovery ordering은 위 두 `gameEvent` sequence로 보장해야 한다.
 - `stateSnapshot(reason=gapDetected)` relay sample:
 ```json
 {
@@ -1103,6 +1871,50 @@
       }
     }
   }
+}
+```
+
+## Player Identity Mapping Contract
+- engine authority payload는 room `playerId`를 알지 못하며, `playerId`/`currentPlayerId`/`winnerPlayerId`/`forfeitingPlayerId` 등 game payload의 identity field는 모두 authority `playerId`다.
+- mapping owner는 room/session layer다. engine은 authority ID만 emit 하고 room ID로 translate 하지 않는다.
+- ingress rule:
+  - client transport session은 room member identity를 가진다.
+  - room layer는 authenticated room session과 `playerIdentityBindings`를 사용해 `roomPlayerId -> authorityPlayerId`를 resolve한 뒤 `MultiplayerCommandEnvelope.playerId`를 채운다.
+  - client가 authority `playerId`를 직접 보내더라도 advisory echo로만 다루고, session mapping과 다르면 reject 또는 overwrite 한다.
+- egress rule:
+  - nested engine payload(`gameStarted`, `stateSnapshot`, `choiceRequested`, `roundEnded`, `matchEnded`, `terminalSummary`)는 authority `playerId`를 유지한다.
+  - room layer는 client가 authority ID를 해석할 수 있도록 stable binding metadata를 room-owned envelope에 붙인다.
+- room-owned binding shape baseline은 `MultiplayerPlayerIdentityBinding { roomPlayerId, authorityPlayerId }`다.
+- `playerIdentityBindings`는 최소 `helloAck`와 `roomSnapshot`에서 제공하고, room membership이 바뀌지 않는 한 같은 room lifetime 동안 stable해야 한다.
+- mapping이 필요한 surface:
+  - bootstrap/projection: `viewerPlayerId`, `players[].playerId`, `participantPresenceByPlayerId`
+  - transport relay: ingress command actor, `actionAccepted.playerId`, `actionRejected.playerId`, `choiceRequested.actorPlayerId`
+  - terminal/result: `winnerPlayerId`, `loserPlayerId`, `finalScores[].playerId`, `forfeitingPlayerId`
+
+### Authority Identity Field Matrix
+- authority `playerId`를 유지하는 engine payload fields:
+  - command/reject/accept: `MultiplayerCommandEnvelope.playerId`, `actionAccepted.playerId`, `actionRejected.playerId`
+  - live state: `viewerPlayerId`, `currentPlayerId`, `dealerPlayerId`, `starterPlayerId`, `players[].playerId`, `participantPresenceByPlayerId` key
+  - turn/choice: `turnChanged.currentPlayerId`, `choiceRequested.actorPlayerId`
+  - terminal: `winnerPlayerId`, `loserPlayerId`, `finalScores[].playerId`, `forfeitingPlayerId`
+- room identity lookup owner:
+  - ingress gameplay/resume/quit command actor resolution은 room transport + authenticated session/member layer
+  - bootstrap/projection/result에서 authority ID를 room-facing badge/name/seat로 바꾸는 lookup은 room snapshot/hello metadata consumer layer
+- engine은 room identity를 다시 emit 하지 않는다. room-facing UX label이 필요하면 room envelope metadata를 기준으로 lookup 해야 한다.
+
+### Room-Owned Binding Sample
+```json
+{
+  "playerIdentityBindings": [
+    {
+      "roomPlayerId": "room_host_001",
+      "authorityPlayerId": "player_a"
+    },
+    {
+      "roomPlayerId": "room_guest_001",
+      "authorityPlayerId": "player_b"
+    }
+  ]
 }
 ```
 
@@ -1202,8 +2014,7 @@
 - [ ] local debug `.starting -> showLive` handoff에서 `MultiplayerLiveBootstrapPayload.stateSnapshot`을 live source of truth로 쓰고, `gameStarted`는 auxiliary marker로만 유지하는 mapper 연결 필요
 
 ### Agent 4
-- [ ] dropped game event 기반 event gap hook을 future extension으로 둘지, 별도 P1 시나리오로 분리할지 결정 필요
-- [ ] duplicate `actionId` 시나리오에서 transport resend와 malicious conflict reuse를 별도 케이스로 분리할지 결정 필요
+- [ ] live websocket/TCP duplicate probe가 exact resend에서는 `duplicateActionIdDisposition=exactReplay`, conflicting reuse에서는 `duplicateActionIdDisposition=conflictReject` + `actionRejected(code=actionIdConflict)`를 실제로 유지하는지 parity 확인 필요
 
 ## Change Log
 - 2026-03-08: `stateVersion`, `eventId`, reject reason, choice payload, snapshot/patch, replay contract, sample command/event payload 초안 구체화
@@ -1214,3 +2025,7 @@
 - 2026-03-09: local debug live bootstrap minimum set을 `MultiplayerGameStartedBootstrapPayload`로 고정하고, `GameManager` / `TestControlSupport` typed helper naming을 맞춤
 - 2026-03-09: `MultiplayerLiveBootstrapPayload` UI-facing helper와 MP-008 `staleStateVersion -> stateSnapshot(reason=resync)` typed resync contract를 추가
 - 2026-03-10: `MultiplayerTerminalSummaryPayload`, `matchEnded.roundIndex`, replay retention policy `privilegedDebugOnly`, relay-ready resync/reject envelope 예시를 추가
+- 2026-03-10: `playCard` / `submitChoice` / `quit` transport relay-ready sample과 `dropGameEvents` future-extension 결정, authority-vs-room `playerId` mapping risk를 추가
+- 2026-03-11: authority `playerId` vs room `playerId` mapping owner를 room/session layer로 고정하고, live stale recovery snapshot reason을 `resync` only로 제한했으며, transport terminal minimum payload를 다시 좁혀 sample로 남김
+- 2026-03-11: authority identity field matrix와 terminal validator mutual-condition rule(`settlementSummary` vs `forfeitingPlayerId`)를 추가해 Agent 2 relay validator 해석 여지를 줄임
+- 2026-03-11: websocket parity용 duplicate `actionId` exact replay / conflict reject sample과 precedence rule(`duplicate` resolution before `staleStateVersion`)을 추가

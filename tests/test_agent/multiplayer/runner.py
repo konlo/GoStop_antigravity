@@ -44,6 +44,7 @@ class MultiplayerScenarioRunner:
         binary_path: Path | None = None,
         derived_data: Path | None = None,
         skip_build: bool = False,
+        socket_transport: str = "tcp",
     ):
         self.output_root = output_root
         self.mode = mode
@@ -51,6 +52,7 @@ class MultiplayerScenarioRunner:
         self.binary_path = binary_path
         self.derived_data = derived_data or default_socket_derived_data()
         self.skip_build = skip_build
+        self.socket_transport = socket_transport
         self.repo_root = Path(__file__).resolve().parents[3]
         self._resolved_socket_binary: Path | None = None
 
@@ -79,6 +81,7 @@ class MultiplayerScenarioRunner:
             result=status,
             started_at=started_at.isoformat(timespec="seconds"),
             mode=self.mode,
+            transport=None,
             trace_id=f"trace_{scenario.scenario_id.lower()}_placeholder",
             room_id="room_placeholder",
             game_id="game_placeholder",
@@ -315,6 +318,7 @@ class MultiplayerScenarioRunner:
             result=status,
             started_at=started_at.isoformat(timespec="seconds"),
             mode=self.mode,
+            transport=None,
             trace_id=fixture.get("traceId"),
             room_id=fixture.get("roomId"),
             game_id=fixture.get("gameId"),
@@ -475,6 +479,7 @@ class MultiplayerScenarioRunner:
                 scenario,
                 repo_root=self.repo_root,
                 binary_path=resolved_binary,
+                transport=self.socket_transport,
             )
         except Exception as error:
             socket_result = {
@@ -494,6 +499,7 @@ class MultiplayerScenarioRunner:
                     "engine": [],
                 },
                 "blockingReasons": [str(error)],
+                "transportBackend": self.socket_transport,
             }
 
         status = socket_result["status"]
@@ -502,6 +508,7 @@ class MultiplayerScenarioRunner:
 
         manifest_notes = [
             "Socket mode executes against GoStopCLI room_transport_* transport spike.",
+            f"socketTransport={self.socket_transport}",
             summary,
         ]
         if resolved_binary is not None:
@@ -517,6 +524,7 @@ class MultiplayerScenarioRunner:
             result=status,
             started_at=started_at.isoformat(timespec="seconds"),
             mode=self.mode,
+            transport=socket_result.get("transportBackend", self.socket_transport),
             trace_id=socket_result.get("traceId"),
             room_id=socket_result.get("roomId"),
             game_id=socket_result.get("gameId"),
@@ -538,6 +546,7 @@ class MultiplayerScenarioRunner:
             "agent.log",
             [
                 f"[{started_at.isoformat(timespec='seconds')}] scenario={scenario.scenario_id} mode={self.mode}",
+                f"transport={socket_result.get('transportBackend', self.socket_transport)}",
                 f"status={status.value}",
                 *logs.get("agent", []),
             ],
@@ -578,6 +587,12 @@ class MultiplayerScenarioRunner:
                 ),
             )
 
+        if isinstance(socket_result.get("transportParity"), dict):
+            store.write_json("transport_parity.json", socket_result["transportParity"])
+
+        if isinstance(socket_result.get("duplicateProbe"), dict):
+            store.write_json("duplicate_probe.json", socket_result["duplicateProbe"])
+
         store.write_replay_manifest(
             ReplayManifest(
                 run_id=run_id,
@@ -587,11 +602,17 @@ class MultiplayerScenarioRunner:
                 baseline_reason="socket",
                 required_ids=REQUIRED_REPLAY_IDS,
                 notes=[
-                    "Socket transport frames are copied into replay/event_stream.ndjson on FAIL, BLOCKED, or explicit replay retention.",
+                    "Socket transport frames are copied into replay/event_stream.ndjson on FAIL, BLOCKED, explicit replay retention, or compare-mode parity capture.",
                 ],
             )
         )
-        if self.save_replay or status != ScenarioStatus.PASS:
+        preserve_live_replay = (
+            self.save_replay
+            or status != ScenarioStatus.PASS
+            or scenario.scenario_id in {"MP-004", "MP-008"}
+            or self.socket_transport == "compare"
+        )
+        if preserve_live_replay:
             store.write_replay_placeholder(
                 "snapshot_reference.json",
                 {
@@ -629,12 +650,13 @@ class MultiplayerScenarioRunner:
                 last_good_state_version="TBD",
                 failure_class="TEST_HARNESS" if status is ScenarioStatus.BLOCKED else "RUNTIME",
                 reproduction_command="python3 tests/test_agent/multiplayer_runner.py --scenario "
-                f"{scenario.scenario_id} --mode socket",
+                f"{scenario.scenario_id} --mode socket --transport {self.socket_transport}",
                 artifact_links=[
                     "manifest.json",
                     "timeline/commands.ndjson",
                     "timeline/events.ndjson",
                     "replay/replay_manifest.json",
+                    "transport_parity.json",
                 ],
                 open_questions=list(blocking_reasons),
             )
@@ -663,6 +685,7 @@ class MultiplayerScenarioRunner:
             "",
             "## Run",
             f"- Mode: {manifest.mode}",
+            f"- Transport: {manifest.transport or 'n/a'}",
             f"- Result: {status.value}",
             f"- Focus: {scenario.focus}",
             "",

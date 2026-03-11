@@ -3,8 +3,8 @@
 ## Meta
 - **Owner**: Agent 2
 - **Primary Consumers**: Agent 1, Agent 3, Agent 4
-- **Status**: Phase 5 Draft
-- **Last Updated**: 2026-03-10
+- **Status**: Phase 7 Draft
+- **Last Updated**: 2026-03-11
 - **Related Docs**:
   - `multiplayer_contract.md`
   - `multiplayer_ui_flow.md`
@@ -55,7 +55,10 @@
 | gameplay turn timeout ownership | Agent 1 deadline/event contract를 그대로 소비 | Agent 2 | Locked | room layer는 fallback action 생성 안 함 |
 | presence merge entrypoint | bootstrap/projection/terminal relay 모두 shared request builder 사용 | Agent 2 | Locked | `participantPresenceByPlayerId` 누락 방지 |
 | terminal forwarder | `recordMatchEnded` metadata에 terminal relay request를 싣고 result consumer까지 fan-out | Agent 2 | Locked | `forfeitingPlayerId`, winner/loser, settlement summary 포함 |
-| transport spike surface | CLI `room_transport_connect/send/receive`를 websocket-equivalent spike로 사용 | Agent 2 | Locked | stale heartbeat / invalid resume reject code parity 유지 |
+| authority player mapping | room seat/session lookup가 room `playerId -> authority playerId`를 internal mapping한다 | Agent 2 | Locked | room envelope는 room `playerId`, nested engine payload는 authority `playerId` 유지 |
+| transport spike surface | CLI `room_transport_connect/send/receive`를 websocket-equivalent spike로 사용 | Agent 2 | Locked | gameplay relay, stale heartbeat, invalid resume reject code parity 유지 |
+| gameplay relay over transport | `playCard`, `submitChoice`, `quit`, `leaveRoom`를 room transport action으로 노출 | Agent 2 | Locked | accepted path는 nested engine envelope, result dismissal은 room event로 완료 |
+| server binding spike | `GoStopCLI --room-transport-websocket-server [--port PORT]` actual websocket path가 shared server boundary + serial frame send queue 위에서 same transport adapter를 재사용 | Agent 2 | Locked | legacy TCP `--room-transport-server`는 parity smoke용 fallback으로 유지 |
 | MP-008 deterministic hook | stale `expectedStateVersion` override | Agent 2 | Locked | per-session outbound queue가 없는 현 구조에서는 `dropNextGameEvent`보다 구현/검증이 단순함 |
 
 ## Entities
@@ -282,12 +285,35 @@
   - `gameStartedBootstrapPlan.fetchAction`은 `get_multiplayer_game_started_bootstrap`이고, `requestsByPlayerId`를 그대로 Agent 1 helper request data로 쓸 수 있다.
 - CLI terminal/projection note:
   - `room_projection_preview`와 `room_record_match_ended_and_fetch_terminal_summary`는 shared presence merge request builder를 사용한다.
-  - terminal path는 `terminalSummaryRelayRequest`와 actual `get_multiplayer_terminal_summary` payload를 함께 반환한다.
+  - direct relay request는 `participantPresenceByPlayerId`, `forfeitingPlayerId`, viewer identity를 room seat 기반 room `playerId -> authority playerId` mapping으로 rewrite한 뒤 Agent 1 helper를 호출한다.
+  - projection helper request는 compatibility를 위해 `snapshotReason`와 `reason`를 함께 싣고, live stale recovery에서는 `reason=resync`만 사용한다.
+  - terminal path는 `terminalSummaryRelayRequest`와 actual `get_multiplayer_terminal_summary` payload를 함께 반환하며, `roundEnded` / `matchEnded` required field를 검증한 뒤 fan-out한다.
 - CLI transport spike note:
   - `room_transport_connect`는 logical socket mailbox를 연다.
-  - `room_transport_send`는 `hello|ack|pong|setReady|snapshot|recordGameStartedAndPrepareBootstrap|recordMatchEndedAndFetchTerminalSummary` action을 지원한다.
+  - `room_transport_send`는 `hello|ack|pong|setReady|snapshot|playCard|submitChoice|quit|leaveRoom|recordGameStartedAndPrepareBootstrap|recordMatchEndedAndFetchTerminalSummary` action을 지원한다.
   - `room_transport_receive`는 queued envelope를 drain한다.
   - `hello`/`ack`는 기존 `performRoomHello(...)` / `recordHeartbeat(_:)`를 그대로 써서 `invalidResumeState`, `staleConnectionId` semantics를 유지한다.
+  - gameplay action에 `actionId`가 있으면 transport layer는 exact duplicate를 prior result replay로, conflicting reuse를 `actionRejected(code=actionIdConflict)`로 노출한다.
+  - gameplay/terminal relay는 seat-based internal identity mapping을 먼저 resolve하므로 room `playerId`와 authority `playerId`가 달라도 `actionAccepted`, `actionRejected`, `roundEnded`, `matchEnded`, `terminalSummary` path가 흔들리지 않는다.
+
+### App Source Network API Shape
+- spike transport boundary:
+  - request frame은 `CommandRequest { action, data }`
+  - websocket은 text frame 1개당 request 1개, TCP는 newline-delimited JSON request 1개다.
+- lifecycle minimum:
+  - `room_create { hostPlayerId, roomType, joinPolicy, now? }`
+  - `room_join { roomId, playerId, deviceId, now? }`
+  - `room_transport_connect { clientId, roomId, sessionId, playerId, deviceId, resumeToken }`
+  - `room_transport_send { clientId, action:\"hello\", connectionId, lastSeen? }`
+  - `room_transport_send { clientId, action:\"leaveRoom\" }`
+  - `room_transport_receive { clientId }`
+- response minimum:
+  - `room_create` / `room_join`는 `room`, `session`, `websocket`, `mutation`을 반환한다.
+  - `room_transport_send(action=hello)`는 immediate ack payload 대신 mailbox에 `helloAck -> roomSnapshot -> roomEvent/gameEvent*`를 queue하고 command response에는 `client`, `metadata`, `queuedEnvelopeCount`만 반환한다.
+  - app source는 `room_transport_receive`의 `envelopes[]`를 inbound stream source of truth로 본다.
+- gameplay minimum:
+  - `room_transport_send { clientId, action, actionId, expectedStateVersion, commandPayload, requestId?, traceId? }`
+  - exact duplicate `actionId`는 same result + same envelope `eventId` replay를 허용하고, conflicting reuse는 `actionRejected(code=actionIdConflict)`를 queue한다.
 
 ### DEBUG App Local Service
 - DEBUG app code는 `MultiplayerDebugServices.roomCoordinator` singleton으로 같은 `InMemoryRoomCoordinator` 골격을 직접 호출할 수 있다.
@@ -300,6 +326,8 @@
   - `setReady(_:)`
   - `setGuestReady(roomId:ready:)`
   - `disconnect(_:)`
+  - `leaveRoom(_:)`
+  - `closeRoom(_:)`
   - `resume(_:)`
   - `heartbeat(_:)`
   - `recordGameStarted(_:)`
@@ -437,21 +465,67 @@
   - resume reject, auth 실패, transport 오류
 
 ### Transport Spike Surface
-- actual websocket 서버가 아직 없을 때는 CLI `room_transport_connect/send/receive`를 socket-equivalent spike로 사용한다.
+- actual websocket path와 TCP fallback은 같은 CLI `room_transport_connect/send/receive` command surface를 공유한다.
+- same JSON command surface는 `GoStopCLI --room-transport-websocket-server --port 9092`와 `GoStopCLI --room-transport-server --port 9091`에서 그대로 유지된다.
 - connect:
   - `room_transport_connect { clientId, roomId, sessionId, playerId, deviceId, resumeToken }`
 - send:
   - `room_transport_send { clientId, action, ... }`
   - `action=hello`는 `connectionId`, optional `lastSeen`을 받고 `helloAck -> roomSnapshot -> roomEvent*`를 queue한다.
   - `action=ack|pong`는 existing bound `connectionId`만 허용한다.
+  - gameplay action은 공통 envelope field `requestId?`, `traceId?`, `actionId`, `expectedStateVersion`, `commandPayload`를 받는다.
+  - `action=playCard` payload는 `{ cardId, source }`다.
+  - `action=submitChoice` payload는 `{ choiceId, optionCode, choiceCommandName? }`다.
+  - `action=quit` payload는 `{ reason=voluntaryExit|disconnectTimeout|adminForfeit }`다.
+  - `action=leaveRoom`은 explicit result dismissal/room exit path이며 별도 `commandPayload` 없이 room mutator를 탄다.
   - `action=recordGameStartedAndPrepareBootstrap`는 `roomEvent` 후 각 participant mailbox에 `gameEvent(gameStarted)` + `gameEvent(stateSnapshot reason=gameStarted)`를 queue한다.
-  - `action=recordMatchEndedAndFetchTerminalSummary`는 `roomEvent` 후 각 participant mailbox에 `terminalSummary`를 queue한다.
+  - `action=recordMatchEndedAndFetchTerminalSummary`는 `roomEvent` 후 각 participant mailbox에 `gameEvent(roundEnded)`, `gameEvent(matchEnded)`, `terminalSummary`를 queue한다.
+  - exact duplicate `actionId`는 prior result와 prior mailbox delta를 caller에게 replay하고, conflicting reuse는 caller mailbox에 `gameEvent(actionRejected code=actionIdConflict)`를 queue한다.
 - receive:
   - `room_transport_receive { clientId }`는 queued envelopes를 drain한다.
 - parity rule:
   - `room_transport_send(action=hello)`와 `room_hello`는 같은 `performRoomHello(...)`를 탄다.
   - `room_transport_send(action=ack|pong)`와 `room_ack|room_pong`는 같은 `recordHeartbeat(_:)`를 탄다.
   - 따라서 stale heartbeat/no-owner ack는 `staleConnectionId`, invalid resume path는 `invalidResumeState`를 유지한다.
+  - `room_transport_send(action=playCard|submitChoice|quit)`와 websocket/TCP binding은 같은 `RoomCoordinatorCLIAdapter` gameplay relay를 탄다.
+
+### Gameplay Relay Ordering
+1. accepted command baseline은 `gameEvent(actionAccepted)`를 먼저 queue한다.
+2. live state mutation은 `gameEvent(statePatched)`로 queue한다.
+3. semantic follow-up은 phase에 따라 `turnChanged`, `choiceRequested`, `roundEnded`, `matchEnded`가 뒤따른다.
+4. stale `expectedStateVersion` reject path는 `gameEvent(actionRejected code=staleStateVersion)` 뒤에 `gameEvent(stateSnapshot reason=resync)`를 queue한다.
+5. `quit` baseline은 `gameEvent(actionAccepted) -> gameEvent(roundEnded) -> gameEvent(matchEnded) -> roomEvent(playerForfeited/roomStateChanged) -> terminalSummary`다.
+6. result dismissal baseline은 `room_transport_send(action=leaveRoom)` 후 `roomEvent(memberLeft)`와 final `roomEvent(roomClosed)`를 authoritative close signal로 사용한다.
+7. exact duplicate `actionId` replay는 prior `eventId`를 유지하고, conflicting reuse는 state mutation 없이 `gameEvent(actionRejected code=actionIdConflict)`만 추가한다.
+
+### Server Binding Boundary
+- startup selection:
+  - `configuredRoomTransportServerMode(from:)`가 websocket 우선, 없으면 TCP fallback을 고른다.
+  - `makeRoomTransportServer(mode:engine:)`가 `RoomTransportServer` boundary 뒤에서 websocket/TCP 구현을 swap한다.
+- shared server rule:
+  - websocket/TCP 모두 `handleCommandPacket(_:,engine:)`를 공통 command decoder로 사용한다.
+  - 따라서 stdin CLI와 같은 `CommandRequest { action, data }` payload, envelope ordering, `invalidResumeState` / `staleConnectionId` error code를 유지한다.
+  - websocket은 per-connection serial frame send queue를 써서 request 처리 순서와 response frame 순서를 같게 유지한다.
+- websocket entrypoint:
+  - `GoStopCLI --room-transport-websocket-server`
+  - `GoStopCLI --room-transport-websocket-server --port 9092`
+  - `GoStopCLI --room-transport-websocket-server=9092`
+- websocket transport:
+  - loopback WebSocket text frame, payload는 stdin CLI와 같은 `CommandRequest { action, data }`
+  - response frame도 stdin CLI와 같은 JSON object다
+  - 내부 adapter는 `room_transport_connect/send/receive` ordering과 `invalidResumeState`, `staleConnectionId` error code를 그대로 유지한다
+- entrypoint:
+  - `GoStopCLI --room-transport-server`
+  - `GoStopCLI --room-transport-server --port 9091`
+  - `GoStopCLI --room-transport-server=9091`
+- transport:
+  - loopback TCP, newline-delimited JSON request/response
+  - request body는 stdin CLI와 같은 `CommandRequest { action, data }`
+  - response body도 stdin CLI와 같은 JSON object다
+- current scope:
+  - websocket server는 actual handshake/listener + shared server boundary + serial frame send queue까지 올렸다
+  - Agent 4 parity smoke가 끝날 때까지 TCP `--room-transport-server`는 fallback harness로 유지한다
+  - ordering, error code, mailbox semantics는 same adapter + shared command handler 재사용으로 유지한다
 
 ### Sample `hello`
 ```json
@@ -648,10 +722,14 @@
 - [x] reconnect는 snapshot-first 복구 순서를 가진다
 - [x] heartbeat / disconnect / reconnect grace / forfeit 경계를 명시한다
 - [x] Agent 1 의존 필드가 별도 섹션으로 분리돼 있다
-- [ ] stale/replaced session heartbeat가 현재 연결 정보를 덮어쓰지 않는다
+- [x] stale/replaced session heartbeat가 현재 연결 정보를 덮어쓰지 않는다
+- [x] gameplay `room_transport_send`가 `playCard`, `submitChoice`, `quit`, `leaveRoom`를 받는다
+- [x] stale `expectedStateVersion` path가 `actionRejected -> stateSnapshot(reason=resync)`를 queue한다
+- [x] result dismissal path가 `leaveRoom -> roomClosed` authoritative room event로 드러난다
 
 ## Open Questions
-- protocol-level open question 없음
+- protocol-level open question:
+  - actual websocket `--room-transport-websocket-server`가 shared `RoomTransportServer` boundary 위에서 current TCP `--room-transport-server` fallback과 same `room_transport_connect/send/receive` ordering, stale heartbeat code parity, `terminalSummary` fan-out을 유지하는지 Agent 4 live parity smoke로 최종 확인 필요
 - implementation follow-up:
   - room transport에서 reconnect grace 만료 시 Agent 1 `quit(reason=disconnectTimeout)`를 실제로 emit해야 한다.
   - stale socket heartbeat를 transport error로 반환할지, silent ignore + audit log로 둘지 결정 필요
@@ -662,3 +740,5 @@
 - 2026-03-08: Swift coordinator naming synced to `RoomLifecycleCoordinating`, `InMemoryRoomCoordinator`, `RoomCoordinatorMutation`, including `leaveRoom`, `closeRoom`, and `recordHeartbeat`
 - 2026-03-08: `GoStopCLI` target now includes room coordinator files and `RoomCoordinatorCLIAdapter`; fresh `hello` is backed by `attachSession(_:)`
 - 2026-03-08: app target now reuses the same coordinator via `LocalRoomCoordinatorDebugService`, and `recordHeartbeat(_:)` rejects stale/replaced/expired connection ownership
+- 2026-03-10: `room_transport_send` gameplay relay now accepts `playCard`, `submitChoice`, `quit`, `leaveRoom`, queues nested engine envelopes including stale-version resync recovery, and exposes a TCP `--room-transport-server` binding skeleton
+- 2026-03-11: transport relay now rewrites room `playerId` to authority `playerId` via room seat/session lookup, validates `roundEnded`/`matchEnded` terminal payloads, fixes live stale recovery `stateSnapshot(reason=resync)`, adds `--room-transport-websocket-server` websocket listener skeleton, routes TCP/websocket startup through a shared `RoomTransportServer` boundary, and exposes duplicate `actionId` replay/conflict semantics on live transport

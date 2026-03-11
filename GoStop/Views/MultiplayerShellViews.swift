@@ -281,25 +281,35 @@ struct MultiplayerBannerState: Identifiable {
     let style: MultiplayerBannerStyle
     let title: String
     let detail: String
+    let messageKey: String?
 
     init(
         id: String = UUID().uuidString,
         style: MultiplayerBannerStyle,
         title: String,
-        detail: String
+        detail: String,
+        messageKey: String? = nil
     ) {
         self.id = id
         self.style = style
         self.title = title
         self.detail = detail
+        self.messageKey = messageKey
     }
 }
 
-struct MultiplayerPersistedSessionSummary {
+struct MultiplayerPersistedSessionSummary: Codable, Equatable {
     let roomId: String
     let sessionId: String
+    let playerId: String?
+    let deviceId: String?
+    let resumeToken: String?
     let lastKnownGameId: String?
     let graceExpiresAt: Date?
+
+    var isAttachReady: Bool {
+        playerId != nil && deviceId != nil && resumeToken != nil
+    }
 }
 
 struct MultiplayerEntryShellState {
@@ -354,6 +364,8 @@ struct MultiplayerChoiceShellState {
     let actorPlayerId: String
     let promptKey: String
     let deadlineAt: Date?
+    let isRedactedForViewer: Bool
+    let redactionMessageKey: String?
     let options: [MultiplayerChoiceOptionShellState]
 }
 
@@ -424,33 +436,58 @@ struct MultiplayerResultSettlementState {
 }
 
 enum MultiplayerResultLeavePolicy {
+    case leaveAvailable
+    case pendingLeaveAcknowledgement
     case pendingRoomClosure
-    case enabled
 
     var title: String {
         switch self {
+        case .leaveAvailable:
+            return "Leave Result"
+        case .pendingLeaveAcknowledgement:
+            return "Waiting For Leave Ack"
         case .pendingRoomClosure:
-            return "Leave Room Pending"
-        case .enabled:
-            return "Leave Room"
+            return "Waiting For Room Closure"
         }
     }
 
     var subtitle: String {
         switch self {
+        case .leaveAvailable:
+            return "Send leaveRoom when finished reading. Dismiss only after leave ack or roomClosed lands."
+        case .pendingLeaveAcknowledgement:
+            return "leaveRoom was sent. The client is waiting for the authoritative completion signal."
         case .pendingRoomClosure:
-            return "Result dismissal stays locked until roomClosed or an explicit leave acknowledgment lands."
-        case .enabled:
-            return "The server has confirmed the terminal room exit. You can safely return to entry."
+            return "The local session already left. Final dismissal is waiting for roomClosed."
         }
     }
 
     var isEnabled: Bool {
         switch self {
-        case .pendingRoomClosure:
-            return false
-        case .enabled:
+        case .leaveAvailable:
             return true
+        case .pendingLeaveAcknowledgement, .pendingRoomClosure:
+            return false
+        }
+    }
+
+    var messageKey: String {
+        switch self {
+        case .leaveAvailable:
+            return "match.result.leave.ready"
+        case .pendingLeaveAcknowledgement:
+            return "match.result.leave.pending"
+        case .pendingRoomClosure:
+            return "match.result.leave.wait_room_closed"
+        }
+    }
+
+    var showsProgress: Bool {
+        switch self {
+        case .pendingLeaveAcknowledgement, .pendingRoomClosure:
+            return true
+        case .leaveAvailable:
+            return false
         }
     }
 }
@@ -483,6 +520,9 @@ struct MultiplayerShellPreviewShowcaseState {
             persistedResume: MultiplayerPersistedSessionSummary(
                 roomId: "room_001",
                 sessionId: "sess_001",
+                playerId: "player_a",
+                deviceId: "debug-ios-host",
+                resumeToken: "resume_tok_001",
                 lastKnownGameId: "game_001",
                 graceExpiresAt: Date.now.addingTimeInterval(22)
             ),
@@ -547,6 +587,8 @@ struct MultiplayerShellPreviewShowcaseState {
                 actorPlayerId: "player_a",
                 promptKey: "match.choice.capture",
                 deadlineAt: Date.now.addingTimeInterval(14),
+                isRedactedForViewer: false,
+                redactionMessageKey: nil,
                 options: [
                     MultiplayerChoiceOptionShellState(
                         optionCode: "capture_pair_left",
@@ -629,7 +671,7 @@ struct MultiplayerShellPreviewShowcaseState {
             endReasonMessageKey: "match.end.disconnect_timeout",
             forfeitingPlayerId: "player_b",
             isDraw: false,
-            leavePolicy: .pendingRoomClosure,
+            leavePolicy: .leaveAvailable,
             integrationNotes: [
                 "Player display names still need mapping from room member payload.",
                 "match.end.* localization keys still need UI catalog wiring.",
@@ -637,6 +679,17 @@ struct MultiplayerShellPreviewShowcaseState {
             ]
         )
     )
+}
+
+private func localizedShellText(_ key: String, fallback: String) -> String {
+    let resolved = gameText(key)
+    return resolved == key ? fallback : resolved
+}
+
+private func localizedShellText(_ key: String?) -> String? {
+    guard let key else { return nil }
+    let resolved = gameText(key)
+    return resolved == key ? nil : resolved
 }
 
 struct MultiplayerEntryView: View {
@@ -661,7 +714,11 @@ struct MultiplayerEntryView: View {
                                         .font(.system(size: 20, weight: .black, design: .rounded))
                                         .foregroundStyle(.white)
 
-                                    Text("Room \(persistedResume.roomId) is eligible for reconnect if the next hello handshake succeeds.")
+                                    Text(
+                                        persistedResume.isAttachReady
+                                        ? "Room \(persistedResume.roomId) is eligible for reconnect if the next hello handshake succeeds."
+                                        : "Room \(persistedResume.roomId) is still cached locally, but resume attach is blocked until playerId, deviceId, and resumeToken are available."
+                                    )
                                         .font(.system(size: 14, weight: .medium, design: .rounded))
                                         .foregroundStyle(.white.opacity(0.76))
                                 }
@@ -672,6 +729,7 @@ struct MultiplayerEntryView: View {
                             HStack(spacing: 12) {
                                 MultiplayerStatPill(label: "Session", value: shortIdentifier(persistedResume.sessionId))
                                 MultiplayerStatPill(label: "Game", value: shortIdentifier(persistedResume.lastKnownGameId ?? "none"))
+                                MultiplayerStatPill(label: "Attach", value: persistedResume.isAttachReady ? "Ready" : "Incomplete")
                                 MultiplayerStatPill(
                                     label: "Grace",
                                     value: countdownText(to: persistedResume.graceExpiresAt, reference: Date.now)
@@ -686,6 +744,7 @@ struct MultiplayerEntryView: View {
                             ) {
                                 onAction(.resume)
                             }
+                            .disabled(state.pendingAction == .resume || !persistedResume.isAttachReady)
                         }
                     }
                 }
@@ -783,7 +842,7 @@ struct MultiplayerRoomView: View {
 
                     MultiplayerSecondaryButton(
                         title: "Leave Room",
-                        subtitle: "Debug lab reset only. Product leave flow still needs room-level API wiring.",
+                        subtitle: "Send leaveRoom and wait for the authoritative room lifecycle completion before dismissing.",
                         accentColor: Color(red: 0.80, green: 0.29, blue: 0.23)
                     ) {
                         onLeaveTapped()
@@ -933,11 +992,23 @@ struct MultiplayerLiveShellView: View {
                                 .foregroundStyle(.white.opacity(0.7))
 
                             VStack(spacing: 10) {
-                                if pendingChoice.choiceKind == .shake && pendingChoice.actorPlayerId != state.localPlayerId {
+                                if pendingChoice.isRedactedForViewer {
                                     HStack {
-                                        Text("Opponent is deciding whether to shake.")
-                                            .font(.system(size: 15, weight: .semibold, design: .rounded))
-                                            .foregroundStyle(.white.opacity(0.8))
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text(
+                                                localizedShellText(
+                                                    pendingChoice.redactionMessageKey ?? "",
+                                                    fallback: "Opponent is deciding whether to shake."
+                                                )
+                                            )
+                                                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                                                .foregroundStyle(.white.opacity(0.8))
+                                            if let localizedRedaction = localizedShellText(pendingChoice.redactionMessageKey) {
+                                                Text(localizedRedaction)
+                                                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                                                    .foregroundStyle(.white.opacity(0.56))
+                                            }
+                                        }
                                         Spacer()
                                     }
                                     .padding(12)
@@ -949,7 +1020,7 @@ struct MultiplayerLiveShellView: View {
                                     ForEach(pendingChoice.options) { option in
                                         HStack(alignment: .top, spacing: 12) {
                                             VStack(alignment: .leading, spacing: 4) {
-                                                Text(option.labelKey)
+                                                Text(localizedShellText(option.labelKey, fallback: option.labelKey))
                                                     .font(.system(size: 15, weight: .bold, design: .rounded))
                                                     .foregroundStyle(.white)
                                                 Text("optionCode \(option.optionCode)")
@@ -987,9 +1058,9 @@ struct MultiplayerLiveShellView: View {
                             Text("Last Reject: \(lastReject.code)")
                                 .font(.system(size: 16, weight: .black, design: .rounded))
                                 .foregroundStyle(Color(red: 0.99, green: 0.62, blue: 0.28))
-                            Text(lastReject.messageKey)
-                                .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                                .foregroundStyle(.white.opacity(0.62))
+                            Text(localizedShellText(lastReject.messageKey, fallback: lastReject.messageKey))
+                                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                .foregroundStyle(.white.opacity(0.72))
 
                             ForEach(lastReject.detailRows) { row in
                                 HStack(spacing: 10) {
@@ -1122,8 +1193,10 @@ struct MultiplayerResultView: View {
     let onLeaveTapped: () -> Void
 
     var body: some View {
-        MultiplayerShellSurface(title: "Match Result", subtitle: "Rendered only after an authoritative terminal summary payload is available.") {
+        MultiplayerShellSurface(title: "Match Result", subtitle: "Rendered only after an authoritative terminal summary payload is available. Dismissal waits for room lifecycle completion.") {
             VStack(alignment: .leading, spacing: 18) {
+                MultiplayerBannerView(state: lifecycleBanner)
+
                 MultiplayerPanelCard {
                     VStack(alignment: .leading, spacing: 14) {
                         HStack(alignment: .top, spacing: 12) {
@@ -1151,7 +1224,15 @@ struct MultiplayerResultView: View {
 
                         HStack(spacing: 12) {
                             MultiplayerStatPill(label: "Reason", value: state.endReasonCode)
-                            MultiplayerStatPill(label: "Message Key", value: state.endReasonMessageKey)
+                            MultiplayerStatPill(
+                                label: "Reason Text",
+                                value: localizedShellText(state.endReasonMessageKey, fallback: state.endReasonMessageKey)
+                            )
+                            MultiplayerStatPill(label: "Leave State", value: state.leavePolicy.title)
+                            MultiplayerStatPill(
+                                label: "Leave Text",
+                                value: localizedShellText(state.leavePolicy.messageKey, fallback: state.leavePolicy.messageKey)
+                            )
                             if let forfeitingPlayerId = state.forfeitingPlayerId {
                                 MultiplayerStatPill(label: "Forfeit", value: shortIdentifier(forfeitingPlayerId))
                             }
@@ -1231,7 +1312,8 @@ struct MultiplayerResultView: View {
                     title: state.leavePolicy.title,
                     subtitle: state.leavePolicy.subtitle,
                     accentColor: Color(red: 0.88, green: 0.30, blue: 0.24),
-                    isEnabled: state.leavePolicy.isEnabled
+                    isEnabled: state.leavePolicy.isEnabled,
+                    showsProgress: state.leavePolicy.showsProgress
                 ) {
                     onLeaveTapped()
                 }
@@ -1266,6 +1348,32 @@ struct MultiplayerResultView: View {
             return Color(red: 0.31, green: 0.74, blue: 0.97)
         }
         return didLocalPlayerWin ? Color(red: 0.93, green: 0.73, blue: 0.20) : Color(red: 0.88, green: 0.30, blue: 0.24)
+    }
+
+    private var lifecycleBanner: MultiplayerBannerState {
+        switch state.leavePolicy {
+        case .leaveAvailable:
+            return MultiplayerBannerState(
+                style: .info,
+                title: "Result Retained",
+                detail: "The terminal summary is final. Keep the route open until the player explicitly sends leaveRoom.",
+                messageKey: state.leavePolicy.messageKey
+            )
+        case .pendingLeaveAcknowledgement:
+            return MultiplayerBannerState(
+                style: .warning,
+                title: "Leave Pending",
+                detail: "The local session already sent leaveRoom. The route stays here until the authoritative leave ack or roomClosed signal arrives.",
+                messageKey: state.leavePolicy.messageKey
+            )
+        case .pendingRoomClosure:
+            return MultiplayerBannerState(
+                style: .info,
+                title: "Waiting For roomClosed",
+                detail: "The local seat already left. Only the final roomClosed signal is still pending.",
+                messageKey: state.leavePolicy.messageKey
+            )
+        }
     }
 
     private func resultScoreRow(_ row: MultiplayerResultScoreRowState) -> some View {
@@ -1427,11 +1535,27 @@ struct MultiplayerShellLabView: View {
     @Environment(\.dismiss) private var dismiss
 #if DEBUG
     @StateObject private var localDebugStore: MultiplayerShellStore
+    @StateObject private var transportStore: MultiplayerShellStore
 
     @MainActor
     init() {
+        let transportOptions = MultiplayerShellTransportOptions.labDefault
         _localDebugStore = StateObject(
             wrappedValue: MultiplayerShellStore(source: MultiplayerLocalDebugShellSource())
+        )
+        _transportStore = StateObject(
+            wrappedValue: MultiplayerShellStore(
+                source: MultiplayerTransportShellSource(options: transportOptions),
+                environment: MultiplayerShellEnvironment(
+                    sessionPersistence: MultiplayerUserDefaultsSessionPersistence(
+                        storageKey: "multiplayer.shell.transport.persisted-session"
+                    ),
+                    networkingAdapter: MultiplayerWebSocketCommandNetworkingAdapter(
+                        options: transportOptions,
+                        clientId: "ios_transport_lab_host"
+                    )
+                )
+            )
         )
     }
 #else
@@ -1444,6 +1568,11 @@ struct MultiplayerShellLabView: View {
                 interactiveTab
                     .tabItem {
                         Label("Coordinator", systemImage: "dot.radiowaves.left.and.right")
+                    }
+
+                transportTab
+                    .tabItem {
+                        Label("Transport", systemImage: "network")
                     }
 
                 MultiplayerMappedPayloadDemoView()
@@ -1466,6 +1595,15 @@ struct MultiplayerShellLabView: View {
     private var interactiveTab: some View {
 #if DEBUG
         MultiplayerShellShowcaseView(store: localDebugStore)
+#else
+        MultiplayerShellShowcaseView()
+#endif
+    }
+
+    @ViewBuilder
+    private var transportTab: some View {
+#if DEBUG
+        MultiplayerShellShowcaseView(store: transportStore)
 #else
         MultiplayerShellShowcaseView()
 #endif
@@ -1557,14 +1695,14 @@ struct MultiplayerShellShowcaseView: View {
                         MultiplayerRoomView(
                             state: store.roomState,
                             onReadyTapped: { store.performControl(.ready) },
-                            onLeaveTapped: { store.reset() }
+                            onLeaveTapped: { store.performControl(.leaveRoom) }
                         )
                     case .live:
                         MultiplayerLiveShellView(state: store.liveState)
                     case .result:
                         MultiplayerResultView(
                             state: store.resultState,
-                            onLeaveTapped: { store.reset() }
+                            onLeaveTapped: { store.performControl(.leaveRoom) }
                         )
                     }
 
@@ -1798,6 +1936,7 @@ private struct MultiplayerSecondaryButton: View {
     let subtitle: String
     let accentColor: Color
     let isEnabled: Bool
+    let showsProgress: Bool
     let action: () -> Void
 
     init(
@@ -1805,20 +1944,29 @@ private struct MultiplayerSecondaryButton: View {
         subtitle: String,
         accentColor: Color,
         isEnabled: Bool = true,
+        showsProgress: Bool = false,
         action: @escaping () -> Void
     ) {
         self.title = title
         self.subtitle = subtitle
         self.accentColor = accentColor
         self.isEnabled = isEnabled
+        self.showsProgress = showsProgress
         self.action = action
     }
 
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(title)
-                    .font(.system(size: 16, weight: .black, design: .rounded))
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    Text(title)
+                        .font(.system(size: 16, weight: .black, design: .rounded))
+                    if showsProgress {
+                        ProgressView()
+                            .scaleEffect(0.82)
+                            .tint(.white.opacity(0.7))
+                    }
+                }
                 Text(subtitle)
                     .font(.system(size: 12, weight: .medium, design: .rounded))
             }
@@ -1913,6 +2061,15 @@ private struct MultiplayerBannerView: View {
                 Text(state.detail)
                     .font(.system(size: 13, weight: .medium, design: .rounded))
                     .foregroundStyle(.white.opacity(0.72))
+                if let localizedMessage = localizedShellText(state.messageKey) {
+                    Text(localizedMessage)
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.60))
+                } else if let messageKey = state.messageKey {
+                    Text(messageKey)
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.54))
+                }
             }
 
             Spacer(minLength: 0)

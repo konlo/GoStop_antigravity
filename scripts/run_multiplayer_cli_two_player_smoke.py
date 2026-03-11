@@ -12,8 +12,52 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 
+KNOWN_CLI_BINARY_ROOTS = [
+    Path("/tmp/gostop_cli_two_player_smoke"),
+    Path("/tmp/gostop_cli_agent4_round7_recheck"),
+    Path("/tmp/gostop_cli_round7_review"),
+    Path("/tmp/gostop_cli_round6_review"),
+    Path("/tmp/gostop_cli_status_check"),
+    Path("/tmp/gostop_cli_build"),
+    Path("/tmp/gostop_cli_agent2_round5"),
+    Path("/tmp/gostop_cli_final_review"),
+]
+
+
 def default_output_root(repo_root: Path) -> Path:
     return repo_root / "test_artifacts" / "multiplayer_cli_smoke"
+
+
+def binary_candidates(derived_data: Path) -> list[Path]:
+    roots = [derived_data, *KNOWN_CLI_BINARY_ROOTS]
+    candidates: list[Path] = []
+    seen: set[Path] = set()
+    for root in roots:
+        candidate = root / "Build/Products/Debug/GoStopCLI"
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        candidates.append(candidate)
+    return candidates
+
+
+def resolve_binary(repo_root: Path, derived_data: Path, binary: Optional[str], skip_build: bool) -> Path:
+    if binary:
+        return Path(binary).resolve()
+
+    for candidate in binary_candidates(derived_data):
+        if candidate.exists():
+            return candidate
+
+    if skip_build:
+        searched = "\n".join(f"- {candidate}" for candidate in binary_candidates(derived_data))
+        raise SystemExit(
+            "GoStopCLI binary not found while --skip-build is enabled.\n"
+            f"Searched:\n{searched}"
+        )
+
+    print(f"[1/3] Building GoStopCLI into {derived_data}")
+    return build_cli(repo_root, derived_data)
 
 
 def build_cli(repo_root: Path, derived_data: Path) -> Path:
@@ -813,7 +857,14 @@ def main() -> None:
     )
     parser.add_argument(
         "--scenario",
-        choices=["ready-start", "disconnect-resume", "heartbeat-guard", "all"],
+        choices=[
+            "ready-start",
+            "disconnect-resume",
+            "heartbeat-guard",
+            "mp008-hook-surface",
+            "mp008-gameplay-resync",
+            "all",
+        ],
         default="ready-start",
         help="Which multiplayer smoke scenario to run.",
     )
@@ -824,13 +875,7 @@ def main() -> None:
 
     output_root = Path(args.output_root).resolve() if args.output_root else default_output_root(repo_root)
 
-    if args.binary:
-        binary_path = Path(args.binary).resolve()
-    elif args.skip_build:
-        binary_path = derived_data / "Build/Products/Debug/GoStopCLI"
-    else:
-        print(f"[1/3] Building GoStopCLI into {derived_data}")
-        binary_path = build_cli(repo_root, derived_data)
+    binary_path = resolve_binary(repo_root, derived_data, args.binary, args.skip_build)
 
     if not binary_path.exists():
         raise SystemExit(f"GoStopCLI binary not found: {binary_path}")

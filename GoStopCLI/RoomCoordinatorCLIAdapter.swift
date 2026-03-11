@@ -60,6 +60,11 @@ private struct RoomTransportConnectCLIRequest: Codable {
 private struct RoomTransportSendCLIRequest: Codable {
     var clientId: String
     var action: String
+    var requestId: String?
+    var traceId: String?
+    var actionId: String?
+    var expectedStateVersion: Int?
+    var commandPayload: [String: AnyCodable]?
     var connectionId: String?
     var ready: Bool?
     var gameId: String?
@@ -85,16 +90,78 @@ private struct RoomTransportClientState {
     var connectionId: String?
 }
 
+private struct RoomTransportGameState {
+    var roomId: String
+    var gameId: String
+    var stateVersion: Int
+    var lastEventOrdinal: Int
+    var lastEventId: String?
+    var lastTurnId: String?
+}
+
+private struct RoomTransportActionRecordKey: Hashable {
+    var roomId: String
+    var playerId: String
+    var actionId: String
+}
+
+private struct RoomTransportActionRecordContext {
+    var key: RoomTransportActionRecordKey
+    var fingerprint: String
+    var mailboxCursor: [String: Int]
+}
+
+private struct RoomTransportActionRecord {
+    var fingerprint: String
+    var response: [String: Any]
+    var replayEnvelopesByClientId: [String: [[String: Any]]]
+}
+
+private enum RoomTransportDuplicateActionResolution {
+    case fresh(RoomTransportActionRecordContext?)
+    case replay([String: Any])
+}
+
+private struct RoomTransportResolvedGameplayCommand {
+    var requestId: String
+    var traceId: String?
+    var actionId: String
+    var roomPlayerId: String
+    var authorityPlayerId: String
+    var expectedStateVersion: Int
+    var commandName: MultiplayerCommandName
+    var commandPayload: [String: Any]
+}
+
+struct RoomAuthorityGameplayExecutionRequest {
+    var playerId: String
+    var commandName: MultiplayerCommandName
+    var commandPayload: [String: Any]
+}
+
+struct RoomAuthorityGameplayExecutionResult {
+    var result: [String: Any]
+}
+
+struct RoomAuthorityGameplayRejection: Error {
+    var code: MultiplayerRejectCode
+    var retryable: Bool
+    var messageKey: String
+}
+
 struct RoomAuthorityRelay {
     var fetchProjectionPreview: (RoomProjectionPreviewRequest) -> [String: Any]
     var fetchGameStartedBootstrap: (RoomGameStartedBootstrapRequest) -> [String: Any]
     var fetchTerminalSummary: (RoomTerminalSummaryRelayRequest) -> [String: Any]
+    var executeGameplayCommand: (RoomAuthorityGameplayExecutionRequest) throws -> RoomAuthorityGameplayExecutionResult
 }
 
 private enum RoomCLIAdapterError: Error {
     case authorityRelayUnavailable
     case transportClientNotFound(String)
     case unsupportedTransportAction(String)
+    case transportGameNotStarted(String)
+    case invalidAuthorityPayload(String)
 }
 
 final class RoomCoordinatorCLIAdapter {
@@ -106,6 +173,9 @@ final class RoomCoordinatorCLIAdapter {
     private var deterministicFaultHook: RoomDeterministicFaultHook?
     private var transportClients: [String: RoomTransportClientState] = [:]
     private var transportMailboxes: [String: [[String: Any]]] = [:]
+    private var transportGameStates: [String: RoomTransportGameState] = [:]
+    private var transportActionRecords: [RoomTransportActionRecordKey: RoomTransportActionRecord] = [:]
+    private var authorityPlayerIdByRoomId: [String: [String: String]] = [:]
 
     init(
         configuration: RoomCoordinatorConfiguration = .phase0,
@@ -307,8 +377,12 @@ final class RoomCoordinatorCLIAdapter {
     ) throws -> [String: Any] {
         let authorityRelay = try requireAuthorityRelay()
         let mutation = try coordinator.recordGameStarted(payload)
-        let bootstrapByPlayerId = mutation.metadata.gameStartedBootstrapPlan?.requestsByPlayerId.mapValues {
-            authorityRelay.fetchGameStartedBootstrap($0)
+        let bootstrapByPlayerId = try mutation.metadata.gameStartedBootstrapPlan.map { plan in
+            try fetchBootstrapPayloadsByPlayerId(
+                bootstrapPlan: plan,
+                roomSnapshot: mutation.snapshot,
+                authorityRelay: authorityRelay
+            )
         } ?? [:]
 
         return success(
@@ -328,7 +402,13 @@ final class RoomCoordinatorCLIAdapter {
         guard let snapshot = coordinator.snapshot(for: payload.roomId) else {
             throw RoomCoordinatorError.roomNotFound(roomId: payload.roomId)
         }
-        guard let request = makeProjectionPreviewRequest(
+        let gameId = payload.gameId ?? snapshot.room.activeGameId ?? "game_\(payload.roomId)"
+        let gameState = resolveTransportGameState(
+            roomId: payload.roomId,
+            gameId: gameId,
+            fallbackStateVersion: payload.stateVersion ?? 0
+        )
+        guard var request = makeProjectionPreviewRequest(
             from: snapshot,
             viewerPlayerId: payload.viewerPlayerId,
             gameId: payload.gameId,
@@ -342,6 +422,13 @@ final class RoomCoordinatorCLIAdapter {
                 actual: snapshot.room.roomState
             )
         }
+        request = try mappedProjectionPreviewRequest(
+            request,
+            roomSnapshot: snapshot,
+            gameState: gameState,
+            authorityRelay: authorityRelay,
+            preferredRoomPlayerId: payload.viewerPlayerId
+        )
 
         return success(
             action: action,
@@ -371,13 +458,18 @@ final class RoomCoordinatorCLIAdapter {
         guard let terminalRequest = mutation.metadata.terminalSummaryRelayRequest else {
             throw RoomCoordinatorError.invalidRoomState(expected: [.ended], actual: mutation.snapshot.room.roomState)
         }
+        let (mappedTerminalRequest, terminalPayload) = try fetchTerminalSummaryPayload(
+            authorityRelay: authorityRelay,
+            roomSnapshot: mutation.snapshot,
+            terminalRequest: terminalRequest
+        )
 
         return success(
             action: action,
             data: [
                 "mutation": mutationResponse(mutation),
-                "terminalSummaryRequest": roomTerminalSummaryRelayRequestData(from: terminalRequest),
-                "terminalSummary": authorityRelay.fetchTerminalSummary(terminalRequest),
+                "terminalSummaryRequest": roomTerminalSummaryRelayRequestData(from: mappedTerminalRequest),
+                "terminalSummary": terminalPayload,
             ]
         )
     }
@@ -467,6 +559,11 @@ final class RoomCoordinatorCLIAdapter {
                 ),
                 for: payload.clientId
             )
+            try enqueueResumeSnapshotIfNeeded(
+                resolution: resolution,
+                client: client,
+                payload: payload
+            )
             broadcastRoomEvents(
                 mutation.events,
                 in: mutation.snapshot.room.roomId,
@@ -517,6 +614,22 @@ final class RoomCoordinatorCLIAdapter {
                     "queuedEnvelopeCount": transportMailboxes[payload.clientId]?.count ?? 0,
                 ]
             )
+        case "leaveRoom":
+            let mutation = try coordinator.leaveRoom(
+                LeaveRoomRequest(
+                    roomId: client.roomId,
+                    playerId: client.playerId
+                )
+            )
+            broadcastRoomEvents(mutation.events, in: client.roomId)
+            return success(
+                action: action,
+                data: [
+                    "transportAction": payload.action,
+                    "mutation": mutationResponse(mutation),
+                    "queuedEnvelopeCount": transportMailboxes[payload.clientId]?.count ?? 0,
+                ]
+            )
         case "snapshot":
             guard let snapshot = coordinator.snapshot(for: client.roomId) else {
                 throw RoomCoordinatorError.roomNotFound(roomId: client.roomId)
@@ -538,6 +651,12 @@ final class RoomCoordinatorCLIAdapter {
                     "queuedEnvelopeCount": transportMailboxes[payload.clientId]?.count ?? 0,
                 ]
             )
+        case "playCard", "submitChoice", "quit":
+            return try handleTransportGameplay(
+                payload,
+                client: client,
+                action: action
+            )
         case "recordGameStartedAndPrepareBootstrap":
             let authorityRelay = try requireAuthorityRelay()
             let mutation = try coordinator.recordGameStarted(
@@ -548,45 +667,19 @@ final class RoomCoordinatorCLIAdapter {
             )
             broadcastRoomEvents(mutation.events, in: client.roomId)
             if let bootstrapPlan = mutation.metadata.gameStartedBootstrapPlan {
-                for request in bootstrapPlan.requestsByPlayerId.values {
-                    guard let targetClientId = transportClientID(
-                        roomId: client.roomId,
-                        playerId: request.viewerPlayerId
-                    ) else {
-                        continue
-                    }
-                    let bootstrapPayload = authorityRelay.fetchGameStartedBootstrap(request)
-                    if let gameStarted = bootstrapPayload["gameStarted"] {
-                        enqueue(
-                            envelope: makeTransportEnvelope(
-                                type: "gameEvent",
-                                roomId: request.roomId,
-                                sessionId: transportClients[targetClientId]?.sessionId,
-                                roomSequence: mutation.snapshot.room.lastRoomSequence,
-                                payload: ["engineEvent": gameStarted]
-                            ),
-                            for: targetClientId
-                        )
-                    }
-                    if let stateSnapshot = bootstrapPayload["stateSnapshot"] {
-                        enqueue(
-                            envelope: makeTransportEnvelope(
-                                type: "gameEvent",
-                                roomId: request.roomId,
-                                sessionId: transportClients[targetClientId]?.sessionId,
-                                roomSequence: mutation.snapshot.room.lastRoomSequence,
-                                payload: ["engineEvent": stateSnapshot]
-                            ),
-                            for: targetClientId
-                        )
-                    }
-                }
+                try enqueueBootstrapEnvelopes(
+                    bootstrapPlan: bootstrapPlan,
+                    mutation: mutation,
+                    authorityRelay: authorityRelay
+                )
             }
             return success(
                 action: action,
                 data: [
                     "transportAction": payload.action,
                     "mutation": mutationResponse(mutation),
+                    "authoritativeStateVersion": transportGameStates[client.roomId]?.stateVersion ?? NSNull(),
+                    "authoritativeEventId": transportGameStates[client.roomId]?.lastEventId ?? NSNull(),
                     "queuedEnvelopeCount": transportMailboxes[payload.clientId]?.count ?? 0,
                 ]
             )
@@ -605,16 +698,15 @@ final class RoomCoordinatorCLIAdapter {
             )
             broadcastRoomEvents(mutation.events, in: client.roomId)
             if let terminalRequest = mutation.metadata.terminalSummaryRelayRequest {
-                let terminalPayload = authorityRelay.fetchTerminalSummary(terminalRequest)
-                broadcast(
-                    envelope: makeTransportEnvelope(
-                        type: "terminalSummary",
-                        roomId: terminalRequest.roomId,
-                        sessionId: nil,
-                        roomSequence: mutation.snapshot.room.lastRoomSequence,
-                        payload: terminalPayload
-                    ),
-                    in: client.roomId
+                let (_, terminalPayload) = try fetchTerminalSummaryPayload(
+                    authorityRelay: authorityRelay,
+                    roomSnapshot: mutation.snapshot,
+                    terminalRequest: terminalRequest
+                )
+                try enqueueTerminalSummaryEnvelopes(
+                    terminalPayload: terminalPayload,
+                    terminalRequest: terminalRequest,
+                    mutation: mutation
                 )
             }
             return success(
@@ -622,12 +714,1733 @@ final class RoomCoordinatorCLIAdapter {
                 data: [
                     "transportAction": payload.action,
                     "mutation": mutationResponse(mutation),
+                    "authoritativeStateVersion": transportGameStates[client.roomId]?.stateVersion ?? NSNull(),
+                    "authoritativeEventId": transportGameStates[client.roomId]?.lastEventId ?? NSNull(),
                     "queuedEnvelopeCount": transportMailboxes[payload.clientId]?.count ?? 0,
                 ]
             )
         default:
             throw RoomCLIAdapterError.unsupportedTransportAction(payload.action)
         }
+    }
+
+    private func enqueueResumeSnapshotIfNeeded(
+        resolution: RoomHelloResolution,
+        client: RoomTransportClientState,
+        payload: RoomTransportSendCLIRequest
+    ) throws {
+        guard resolution.resumeMode == .resume else {
+            return
+        }
+        let snapshot = resolution.mutation.snapshot
+        guard [.starting, .inGame, .ended].contains(snapshot.room.roomState),
+              let gameId = snapshot.room.activeGameId else {
+            return
+        }
+
+        let authorityRelay = try requireAuthorityRelay()
+        let currentGameState = resolveTransportGameState(
+            roomId: snapshot.room.roomId,
+            gameId: gameId,
+            fallbackStateVersion: payload.lastSeen?.stateVersion ?? 0
+        )
+        let stateSnapshot = try fetchProjectionSnapshot(
+            authorityRelay: authorityRelay,
+            roomSnapshot: snapshot,
+            viewerPlayerId: client.playerId,
+            gameState: currentGameState,
+            snapshotReason: .resume
+        )
+        let eventId = nextGameEventID(for: snapshot.room.roomId)
+        let engineEvent = makeEngineEventEnvelope(
+            traceId: payload.traceId,
+            roomId: snapshot.room.roomId,
+            gameId: gameId,
+            eventId: eventId,
+            stateVersion: stateSnapshot.snapshotStateVersion,
+            causedByActionId: payload.actionId,
+            eventName: .stateSnapshot,
+            payload: try requireJSONObject(from: stateSnapshot)
+        )
+        enqueueGameEvent(
+            engineEvent: engineEvent,
+            roomId: snapshot.room.roomId,
+            clientId: client.clientId,
+            roomSequence: snapshot.room.lastRoomSequence
+        )
+
+        var nextState = currentGameState
+        nextState.stateVersion = max(currentGameState.stateVersion, stateSnapshot.snapshotStateVersion)
+        nextState.lastEventId = eventId
+        nextState.lastTurnId = stateSnapshot.state.turnId
+        transportGameStates[snapshot.room.roomId] = nextState
+    }
+
+    private func enqueueBootstrapEnvelopes(
+        bootstrapPlan: RoomGameStartedBootstrapPlan,
+        mutation: RoomCoordinatorMutation,
+        authorityRelay: RoomAuthorityRelay
+    ) throws {
+        let roomId = mutation.snapshot.room.roomId
+        let roomSequence = mutation.snapshot.room.lastRoomSequence
+        let bootstrapPayloadsByPlayerId = try fetchBootstrapPayloadsByPlayerId(
+            bootstrapPlan: bootstrapPlan,
+            roomSnapshot: mutation.snapshot,
+            authorityRelay: authorityRelay
+        )
+        var resolvedSnapshotsByPlayerId: [String: MultiplayerSnapshot] = [:]
+        var resolvedGameStartedByPlayerId: [String: [String: Any]] = [:]
+
+        for request in bootstrapPlan.requestsByPlayerId.values.sorted(by: { $0.viewerPlayerId < $1.viewerPlayerId }) {
+            guard let bootstrapPayload = bootstrapPayloadsByPlayerId[request.viewerPlayerId] else {
+                continue
+            }
+            guard let gameStartedPayload = bootstrapPayload["gameStarted"] as? [String: Any] else {
+                throw RoomCLIAdapterError.invalidAuthorityPayload("gameStarted")
+            }
+            guard let stateSnapshotPayload = bootstrapPayload["stateSnapshot"] as? [String: Any] else {
+                throw RoomCLIAdapterError.invalidAuthorityPayload("stateSnapshot")
+            }
+            resolvedGameStartedByPlayerId[request.viewerPlayerId] = gameStartedPayload
+            resolvedSnapshotsByPlayerId[request.viewerPlayerId] = try decodeJSONObject(
+                MultiplayerSnapshot.self,
+                from: stateSnapshotPayload
+            )
+        }
+
+        guard let sampleSnapshot = resolvedSnapshotsByPlayerId.values.first else {
+            return
+        }
+
+        let gameStartedEventId = nextGameEventID(for: roomId)
+        let stateSnapshotEventId = nextGameEventID(for: roomId)
+        for request in bootstrapPlan.requestsByPlayerId.values.sorted(by: { $0.viewerPlayerId < $1.viewerPlayerId }) {
+            guard let targetClientId = transportClientID(roomId: roomId, playerId: request.viewerPlayerId),
+                  let gameStartedPayload = resolvedGameStartedByPlayerId[request.viewerPlayerId],
+                  let stateSnapshot = resolvedSnapshotsByPlayerId[request.viewerPlayerId] else {
+                continue
+            }
+            enqueueGameEvent(
+                engineEvent: makeEngineEventEnvelope(
+                    traceId: nil,
+                    roomId: roomId,
+                    gameId: request.gameId,
+                    eventId: gameStartedEventId,
+                    stateVersion: stateSnapshot.snapshotStateVersion,
+                    causedByActionId: nil,
+                    eventName: .gameStarted,
+                    payload: gameStartedPayload
+                ),
+                roomId: roomId,
+                clientId: targetClientId,
+                roomSequence: roomSequence
+            )
+            enqueueGameEvent(
+                engineEvent: makeEngineEventEnvelope(
+                    traceId: nil,
+                    roomId: roomId,
+                    gameId: request.gameId,
+                    eventId: stateSnapshotEventId,
+                    stateVersion: stateSnapshot.snapshotStateVersion,
+                    causedByActionId: nil,
+                    eventName: .stateSnapshot,
+                    payload: try requireJSONObject(from: stateSnapshot)
+                ),
+                roomId: roomId,
+                clientId: targetClientId,
+                roomSequence: roomSequence
+            )
+        }
+
+        transportGameStates[roomId] = RoomTransportGameState(
+            roomId: roomId,
+            gameId: sampleSnapshot.state.gameId,
+            stateVersion: sampleSnapshot.snapshotStateVersion,
+            lastEventOrdinal: parseEventOrdinal(from: stateSnapshotEventId),
+            lastEventId: stateSnapshotEventId,
+            lastTurnId: sampleSnapshot.state.turnId
+        )
+    }
+
+    private func enqueueTerminalSummaryEnvelopes(
+        terminalPayload: [String: Any],
+        terminalRequest: RoomTerminalSummaryRelayRequest,
+        mutation: RoomCoordinatorMutation
+    ) throws {
+        try validateTerminalSummaryPayload(terminalPayload)
+        let roundEndedPayload = try requireDictionary("roundEnded", in: terminalPayload)
+        let matchEndedPayload = try requireDictionary("matchEnded", in: terminalPayload)
+        let roomId = terminalRequest.roomId
+        let roundEndedEventId = nextGameEventID(for: roomId)
+        let matchEndedEventId = nextGameEventID(for: roomId)
+        let roomSequence = mutation.snapshot.room.lastRoomSequence
+
+        broadcastGameEvent(
+            engineEvent: makeEngineEventEnvelope(
+                traceId: nil,
+                roomId: roomId,
+                gameId: terminalRequest.gameId,
+                eventId: roundEndedEventId,
+                stateVersion: terminalRequest.summaryStateVersion,
+                causedByActionId: nil,
+                eventName: .roundEnded,
+                payload: roundEndedPayload
+            ),
+            roomId: roomId,
+            roomSequence: roomSequence
+        )
+        broadcastGameEvent(
+            engineEvent: makeEngineEventEnvelope(
+                traceId: nil,
+                roomId: roomId,
+                gameId: terminalRequest.gameId,
+                eventId: matchEndedEventId,
+                stateVersion: terminalRequest.summaryStateVersion,
+                causedByActionId: nil,
+                eventName: .matchEnded,
+                payload: matchEndedPayload
+            ),
+            roomId: roomId,
+            roomSequence: roomSequence
+        )
+        broadcast(
+            envelope: makeTransportEnvelope(
+                type: "terminalSummary",
+                roomId: roomId,
+                sessionId: nil,
+                roomSequence: roomSequence,
+                payload: terminalPayload
+            ),
+            in: roomId
+        )
+
+        transportGameStates[roomId] = RoomTransportGameState(
+            roomId: roomId,
+            gameId: terminalRequest.gameId,
+            stateVersion: terminalRequest.summaryStateVersion,
+            lastEventOrdinal: parseEventOrdinal(from: matchEndedEventId),
+            lastEventId: matchEndedEventId,
+            lastTurnId: transportGameStates[roomId]?.lastTurnId
+        )
+    }
+
+    private func handleTransportGameplay(
+        _ payload: RoomTransportSendCLIRequest,
+        client: RoomTransportClientState,
+        action: String
+    ) throws -> [String: Any] {
+        let authorityRelay = try requireAuthorityRelay()
+        let roomSnapshot = try requireRoomSnapshot(client.roomId)
+        guard roomSnapshot.room.roomState == .inGame || roomSnapshot.room.roomState == .ended,
+              let gameId = roomSnapshot.room.activeGameId ?? payload.gameId else {
+            throw RoomCLIAdapterError.transportGameNotStarted(client.roomId)
+        }
+
+        let currentGameState = resolveTransportGameState(
+            roomId: client.roomId,
+            gameId: gameId,
+            fallbackStateVersion: payload.expectedStateVersion ?? 0
+        )
+        let authorityPlayerMapping = try resolveAuthorityPlayerIdMapping(
+            roomSnapshot: roomSnapshot,
+            authorityRelay: authorityRelay,
+            gameId: gameId,
+            fallbackStateVersion: currentGameState.stateVersion,
+            lastEventId: currentGameState.lastEventId,
+            preferredRoomPlayerId: client.playerId
+        )
+        let authorityPlayerId = mappedAuthorityPlayerId(
+            for: client.playerId,
+            authorityPlayerIdByRoomPlayerId: authorityPlayerMapping
+        )
+        let clientStateVersion = payload.expectedStateVersion ?? currentGameState.stateVersion
+        let effectiveExpectedStateVersion = resolvedExpectedStateVersion(
+            client: client,
+            requestedStateVersion: clientStateVersion
+        )
+        let fallbackResolvedCommand = provisionalTransportGameplayCommand(
+            payload: payload,
+            roomPlayerId: client.playerId,
+            authorityPlayerId: authorityPlayerId,
+            expectedStateVersion: effectiveExpectedStateVersion
+        )
+        let duplicateActionResolution = try resolveDuplicateTransportAction(
+            payload: payload,
+            client: client,
+            effectiveExpectedStateVersion: effectiveExpectedStateVersion,
+            authoritativeStateVersion: currentGameState.stateVersion,
+            authoritativeEventId: currentGameState.lastEventId,
+            fallbackResolvedCommand: fallbackResolvedCommand,
+            action: action
+        )
+        switch duplicateActionResolution {
+        case let .replay(response):
+            return response
+        case let .fresh(recordContext):
+            return try handleFreshTransportGameplay(
+                payload,
+                client: client,
+                action: action,
+                roomSnapshot: roomSnapshot,
+                authorityRelay: authorityRelay,
+                currentGameState: currentGameState,
+                clientStateVersion: clientStateVersion,
+                effectiveExpectedStateVersion: effectiveExpectedStateVersion,
+                authorityPlayerId: authorityPlayerId,
+                fallbackResolvedCommand: fallbackResolvedCommand,
+                recordContext: recordContext
+            )
+        }
+    }
+
+    private func handleFreshTransportGameplay(
+        _ payload: RoomTransportSendCLIRequest,
+        client: RoomTransportClientState,
+        action: String,
+        roomSnapshot: RoomCoordinatorSnapshot,
+        authorityRelay: RoomAuthorityRelay,
+        currentGameState: RoomTransportGameState,
+        clientStateVersion: Int,
+        effectiveExpectedStateVersion: Int,
+        authorityPlayerId: String,
+        fallbackResolvedCommand: RoomTransportResolvedGameplayCommand,
+        recordContext: RoomTransportActionRecordContext?
+    ) throws -> [String: Any] {
+        let gameId = roomSnapshot.room.activeGameId ?? payload.gameId ?? currentGameState.gameId
+        let resolvedCommand: RoomTransportResolvedGameplayCommand
+        do {
+            resolvedCommand = try resolveTransportGameplayCommand(
+                payload: payload,
+                client: client,
+                gameState: currentGameState,
+                authorityRelay: authorityRelay,
+                roomSnapshot: roomSnapshot,
+                authorityPlayerId: authorityPlayerId,
+                expectedStateVersion: effectiveExpectedStateVersion
+            )
+        } catch let rejection as RoomAuthorityGameplayRejection {
+            let response = try rejectTransportGameplay(
+                resolvedCommand: fallbackResolvedCommand,
+                client: client,
+                rejection: rejection,
+                authoritativeStateVersion: currentGameState.stateVersion,
+                authoritativeEventId: currentGameState.lastEventId,
+                action: action
+            )
+            return recordedTransportActionResponse(
+                response,
+                context: recordContext
+            )
+        }
+
+        if effectiveExpectedStateVersion != currentGameState.stateVersion {
+            let response = try rejectTransportGameplayForStaleState(
+                resolvedCommand: resolvedCommand,
+                client: client,
+                roomSnapshot: roomSnapshot,
+                authorityRelay: authorityRelay,
+                currentGameState: currentGameState,
+                clientStateVersion: clientStateVersion,
+                effectiveExpectedStateVersion: effectiveExpectedStateVersion,
+                action: action
+            )
+            return recordedTransportActionResponse(
+                response,
+                context: recordContext
+            )
+        }
+
+        do {
+            if resolvedCommand.commandName == .quit {
+                let response = try handleTransportQuitCommand(
+                    resolvedCommand,
+                    client: client,
+                    roomSnapshot: roomSnapshot,
+                    currentGameState: currentGameState,
+                    authorityRelay: authorityRelay,
+                    action: action
+                )
+                return recordedTransportActionResponse(
+                    response,
+                    context: recordContext
+                )
+            }
+
+            let beforeSnapshotsByPlayerId = try fetchProjectionSnapshotsByPlayerId(
+                authorityRelay: authorityRelay,
+                roomSnapshot: roomSnapshot,
+                gameState: currentGameState,
+                snapshotReason: .localPreview
+            )
+            let execution = try authorityRelay.executeGameplayCommand(
+                RoomAuthorityGameplayExecutionRequest(
+                    playerId: resolvedCommand.authorityPlayerId,
+                    commandName: resolvedCommand.commandName,
+                    commandPayload: resolvedCommand.commandPayload
+                )
+            )
+
+            var nextGameState = currentGameState
+            nextGameState.stateVersion = currentGameState.stateVersion + 1
+            let afterRoomSnapshot = try requireRoomSnapshot(client.roomId)
+            let afterSnapshotsByPlayerId = try fetchProjectionSnapshotsByPlayerId(
+                authorityRelay: authorityRelay,
+                roomSnapshot: afterRoomSnapshot,
+                gameState: nextGameState,
+                snapshotReason: .localPreview
+            )
+
+            let actionAcceptedEventId = nextGameEventID(for: client.roomId)
+            broadcastGameEvent(
+                engineEvent: makeEngineEventEnvelope(
+                    traceId: resolvedCommand.traceId,
+                    roomId: client.roomId,
+                    gameId: gameId,
+                    eventId: actionAcceptedEventId,
+                    stateVersion: nextGameState.stateVersion,
+                    causedByActionId: resolvedCommand.actionId,
+                    eventName: .actionAccepted,
+                    payload: try requireJSONObject(
+                        from: MultiplayerActionAcceptedPayload(
+                            requestId: resolvedCommand.requestId,
+                            actionId: resolvedCommand.actionId,
+                            playerId: resolvedCommand.authorityPlayerId,
+                            commandName: resolvedCommand.commandName,
+                            result: execution.result.mapValues(AnyCodable.init)
+                        )
+                    )
+                ),
+                roomId: client.roomId,
+                roomSequence: afterRoomSnapshot.room.lastRoomSequence
+            )
+
+            let statePatchedEventId = nextGameEventID(for: client.roomId)
+            for member in afterRoomSnapshot.room.members.sorted(by: { $0.seat < $1.seat }) {
+                guard let targetClientId = transportClientID(roomId: client.roomId, playerId: member.playerId),
+                      let beforeSnapshot = beforeSnapshotsByPlayerId[member.playerId],
+                      let afterSnapshot = afterSnapshotsByPlayerId[member.playerId] else {
+                    continue
+                }
+                let patchPayload = try makeStatePatchPayload(
+                    from: beforeSnapshot.state,
+                    to: afterSnapshot.state,
+                    baseStateVersion: currentGameState.stateVersion,
+                    targetStateVersion: nextGameState.stateVersion
+                )
+                enqueueGameEvent(
+                    engineEvent: makeEngineEventEnvelope(
+                        traceId: resolvedCommand.traceId,
+                        roomId: client.roomId,
+                        gameId: gameId,
+                        eventId: statePatchedEventId,
+                        stateVersion: nextGameState.stateVersion,
+                        causedByActionId: resolvedCommand.actionId,
+                        eventName: .statePatched,
+                        payload: patchPayload
+                    ),
+                    roomId: client.roomId,
+                    clientId: targetClientId,
+                    roomSequence: afterRoomSnapshot.room.lastRoomSequence
+                )
+            }
+
+            var lastEventId = statePatchedEventId
+            let sampleAfterSnapshot = afterSnapshotsByPlayerId[client.playerId] ?? afterSnapshotsByPlayerId.values.first
+            if let sampleAfterSnapshot,
+               sampleAfterSnapshot.state.phase == .matchEnded {
+                let roundEndedEventId = nextGameEventID(for: client.roomId)
+                let matchEndedEventId = nextGameEventID(for: client.roomId)
+                let matchEndedMutation = try coordinator.recordMatchEnded(
+                    RecordMatchEndedRequest(
+                        roomId: client.roomId,
+                        roundIndex: sampleAfterSnapshot.state.scoreboard.roundIndex,
+                        quitReason: nil,
+                        forfeitingPlayerId: nil,
+                        summaryStateVersion: nextGameState.stateVersion,
+                        lastEventId: matchEndedEventId,
+                        resultRetentionAt: nil
+                    )
+                )
+                let terminalRequest =
+                    matchEndedMutation.metadata.terminalSummaryRelayRequest ??
+                    makeTerminalSummaryRelayRequest(
+                        from: matchEndedMutation.snapshot,
+                        roundIndex: sampleAfterSnapshot.state.scoreboard.roundIndex,
+                        quitReason: nil,
+                        forfeitingPlayerId: nil,
+                        summaryStateVersion: nextGameState.stateVersion,
+                        lastEventId: matchEndedEventId
+                    )
+                guard let terminalRequest else {
+                    throw RoomCLIAdapterError.invalidAuthorityPayload("terminalSummaryRelayRequest")
+                }
+                let (_, terminalPayload) = try fetchTerminalSummaryPayload(
+                    authorityRelay: authorityRelay,
+                    roomSnapshot: matchEndedMutation.snapshot,
+                    terminalRequest: terminalRequest
+                )
+                let roundEndedPayload = try requireDictionary("roundEnded", in: terminalPayload)
+                let matchEndedPayload = try requireDictionary("matchEnded", in: terminalPayload)
+
+                broadcastGameEvent(
+                    engineEvent: makeEngineEventEnvelope(
+                        traceId: resolvedCommand.traceId,
+                        roomId: client.roomId,
+                        gameId: gameId,
+                        eventId: roundEndedEventId,
+                        stateVersion: nextGameState.stateVersion,
+                        causedByActionId: resolvedCommand.actionId,
+                        eventName: .roundEnded,
+                        payload: roundEndedPayload
+                    ),
+                    roomId: client.roomId,
+                    roomSequence: afterRoomSnapshot.room.lastRoomSequence
+                )
+                broadcastGameEvent(
+                    engineEvent: makeEngineEventEnvelope(
+                        traceId: resolvedCommand.traceId,
+                        roomId: client.roomId,
+                        gameId: gameId,
+                        eventId: matchEndedEventId,
+                        stateVersion: nextGameState.stateVersion,
+                        causedByActionId: resolvedCommand.actionId,
+                        eventName: .matchEnded,
+                        payload: matchEndedPayload
+                    ),
+                    roomId: client.roomId,
+                    roomSequence: afterRoomSnapshot.room.lastRoomSequence
+                )
+                broadcastRoomEvents(matchEndedMutation.events, in: client.roomId)
+                broadcast(
+                    envelope: makeTransportEnvelope(
+                        type: "terminalSummary",
+                        roomId: client.roomId,
+                        sessionId: nil,
+                        roomSequence: matchEndedMutation.snapshot.room.lastRoomSequence,
+                        payload: terminalPayload
+                    ),
+                    in: client.roomId
+                )
+                lastEventId = matchEndedEventId
+            } else {
+                let turnChangedPayload = makeTurnChangedPayload(
+                    before: beforeSnapshotsByPlayerId[client.playerId],
+                    after: afterSnapshotsByPlayerId[client.playerId]
+                )
+                if let turnChangedPayload {
+                    let turnChangedEventId = nextGameEventID(for: client.roomId)
+                    broadcastGameEvent(
+                        engineEvent: makeEngineEventEnvelope(
+                            traceId: resolvedCommand.traceId,
+                            roomId: client.roomId,
+                            gameId: gameId,
+                            eventId: turnChangedEventId,
+                            stateVersion: nextGameState.stateVersion,
+                            causedByActionId: resolvedCommand.actionId,
+                            eventName: .turnChanged,
+                            payload: turnChangedPayload
+                        ),
+                        roomId: client.roomId,
+                        roomSequence: afterRoomSnapshot.room.lastRoomSequence
+                    )
+                    lastEventId = turnChangedEventId
+                }
+
+                if afterSnapshotsByPlayerId.values.contains(where: { $0.state.pendingChoice != nil }) {
+                    let choiceRequestedEventId = nextGameEventID(for: client.roomId)
+                    for member in afterRoomSnapshot.room.members.sorted(by: { $0.seat < $1.seat }) {
+                        guard let targetClientId = transportClientID(roomId: client.roomId, playerId: member.playerId),
+                              let choice = afterSnapshotsByPlayerId[member.playerId]?.state.pendingChoice else {
+                            continue
+                        }
+                        enqueueGameEvent(
+                            engineEvent: makeEngineEventEnvelope(
+                                traceId: resolvedCommand.traceId,
+                                roomId: client.roomId,
+                                gameId: gameId,
+                                eventId: choiceRequestedEventId,
+                                stateVersion: nextGameState.stateVersion,
+                                causedByActionId: resolvedCommand.actionId,
+                                eventName: .choiceRequested,
+                                payload: try requireJSONObject(from: choice)
+                            ),
+                            roomId: client.roomId,
+                            clientId: targetClientId,
+                            roomSequence: afterRoomSnapshot.room.lastRoomSequence
+                        )
+                    }
+                    lastEventId = choiceRequestedEventId
+                }
+            }
+
+            nextGameState.lastEventId = lastEventId
+            nextGameState.lastTurnId = sampleAfterSnapshot?.state.turnId
+            transportGameStates[client.roomId] = nextGameState
+
+            let response = success(
+                action: action,
+                data: [
+                    "transportAction": payload.action,
+                    "requestId": resolvedCommand.requestId,
+                    "actionId": resolvedCommand.actionId,
+                    "commandName": resolvedCommand.commandName.rawValue,
+                    "authoritativeStateVersion": nextGameState.stateVersion,
+                    "authoritativeEventId": nextGameState.lastEventId ?? NSNull(),
+                    "queuedEnvelopeCount": transportMailboxes[payload.clientId]?.count ?? 0,
+                ]
+            )
+            return recordedTransportActionResponse(
+                response,
+                context: recordContext
+            )
+        } catch let rejection as RoomAuthorityGameplayRejection {
+            let response = try rejectTransportGameplay(
+                resolvedCommand: resolvedCommand,
+                client: client,
+                rejection: rejection,
+                authoritativeStateVersion: currentGameState.stateVersion,
+                authoritativeEventId: currentGameState.lastEventId,
+                action: action
+            )
+            return recordedTransportActionResponse(
+                response,
+                context: recordContext
+            )
+        }
+    }
+
+    private func handleTransportQuitCommand(
+        _ resolvedCommand: RoomTransportResolvedGameplayCommand,
+        client: RoomTransportClientState,
+        roomSnapshot: RoomCoordinatorSnapshot,
+        currentGameState: RoomTransportGameState,
+        authorityRelay: RoomAuthorityRelay,
+        action: String
+    ) throws -> [String: Any] {
+        let gameId = roomSnapshot.room.activeGameId ?? currentGameState.gameId
+        let nextStateVersion = currentGameState.stateVersion + 1
+        let actionAcceptedEventId = nextGameEventID(for: client.roomId)
+        let roundEndedEventId = nextGameEventID(for: client.roomId)
+        let matchEndedEventId = nextGameEventID(for: client.roomId)
+
+        let quitReasonRaw = (resolvedCommand.commandPayload["reason"] as? String) ?? MultiplayerQuitReason.voluntaryExit.rawValue
+        let mutation = try coordinator.recordMatchEnded(
+            RecordMatchEndedRequest(
+                roomId: client.roomId,
+                roundIndex: 1,
+                quitReason: quitReasonRaw,
+                forfeitingPlayerId: client.playerId,
+                summaryStateVersion: nextStateVersion,
+                lastEventId: matchEndedEventId,
+                resultRetentionAt: nil
+            )
+        )
+
+        let terminalRequest =
+            mutation.metadata.terminalSummaryRelayRequest ??
+            makeTerminalSummaryRelayRequest(
+                from: mutation.snapshot,
+                roundIndex: 1,
+                quitReason: quitReasonRaw,
+                forfeitingPlayerId: client.playerId,
+                summaryStateVersion: nextStateVersion,
+                lastEventId: matchEndedEventId
+            )
+        guard let terminalRequest else {
+            throw RoomCLIAdapterError.invalidAuthorityPayload("terminalSummaryRelayRequest")
+        }
+        let (_, terminalPayload) = try fetchTerminalSummaryPayload(
+            authorityRelay: authorityRelay,
+            roomSnapshot: mutation.snapshot,
+            terminalRequest: terminalRequest
+        )
+        let roundEndedPayload = try requireDictionary("roundEnded", in: terminalPayload)
+        let matchEndedPayload = try requireDictionary("matchEnded", in: terminalPayload)
+
+        broadcastGameEvent(
+            engineEvent: makeEngineEventEnvelope(
+                traceId: resolvedCommand.traceId,
+                roomId: client.roomId,
+                gameId: gameId,
+                eventId: actionAcceptedEventId,
+                stateVersion: nextStateVersion,
+                causedByActionId: resolvedCommand.actionId,
+                eventName: .actionAccepted,
+                payload: try requireJSONObject(
+                        from: MultiplayerActionAcceptedPayload(
+                            requestId: resolvedCommand.requestId,
+                            actionId: resolvedCommand.actionId,
+                            playerId: resolvedCommand.authorityPlayerId,
+                            commandName: .quit,
+                            result: ["quitReason": AnyCodable(quitReasonRaw)]
+                        )
+                    )
+                ),
+            roomId: client.roomId,
+            roomSequence: mutation.snapshot.room.lastRoomSequence
+        )
+        broadcastGameEvent(
+            engineEvent: makeEngineEventEnvelope(
+                traceId: resolvedCommand.traceId,
+                roomId: client.roomId,
+                gameId: gameId,
+                eventId: roundEndedEventId,
+                stateVersion: nextStateVersion,
+                causedByActionId: resolvedCommand.actionId,
+                eventName: .roundEnded,
+                payload: roundEndedPayload
+            ),
+            roomId: client.roomId,
+            roomSequence: mutation.snapshot.room.lastRoomSequence
+        )
+        broadcastGameEvent(
+            engineEvent: makeEngineEventEnvelope(
+                traceId: resolvedCommand.traceId,
+                roomId: client.roomId,
+                gameId: gameId,
+                eventId: matchEndedEventId,
+                stateVersion: nextStateVersion,
+                causedByActionId: resolvedCommand.actionId,
+                eventName: .matchEnded,
+                payload: matchEndedPayload
+            ),
+            roomId: client.roomId,
+            roomSequence: mutation.snapshot.room.lastRoomSequence
+        )
+        broadcastRoomEvents(mutation.events, in: client.roomId)
+        broadcast(
+            envelope: makeTransportEnvelope(
+                type: "terminalSummary",
+                roomId: client.roomId,
+                sessionId: nil,
+                roomSequence: mutation.snapshot.room.lastRoomSequence,
+                payload: terminalPayload
+            ),
+            in: client.roomId
+        )
+
+        transportGameStates[client.roomId] = RoomTransportGameState(
+            roomId: client.roomId,
+            gameId: gameId,
+            stateVersion: nextStateVersion,
+            lastEventOrdinal: parseEventOrdinal(from: matchEndedEventId),
+            lastEventId: matchEndedEventId,
+            lastTurnId: currentGameState.lastTurnId
+        )
+
+        return success(
+            action: action,
+            data: [
+                "transportAction": "quit",
+                "requestId": resolvedCommand.requestId,
+                "actionId": resolvedCommand.actionId,
+                "commandName": MultiplayerCommandName.quit.rawValue,
+                "mutation": mutationResponse(mutation),
+                "authoritativeStateVersion": nextStateVersion,
+                "authoritativeEventId": matchEndedEventId,
+                "queuedEnvelopeCount": transportMailboxes[client.clientId]?.count ?? 0,
+            ]
+        )
+    }
+
+    private func rejectTransportGameplay(
+        resolvedCommand: RoomTransportResolvedGameplayCommand,
+        client: RoomTransportClientState,
+        rejection: RoomAuthorityGameplayRejection,
+        authoritativeStateVersion: Int,
+        authoritativeEventId: String?,
+        action: String
+    ) throws -> [String: Any] {
+        let rejectEventId = nextGameEventID(for: client.roomId)
+        let engineEvent = makeEngineEventEnvelope(
+            traceId: resolvedCommand.traceId,
+            roomId: client.roomId,
+            gameId: transportGameStates[client.roomId]?.gameId,
+            eventId: rejectEventId,
+            stateVersion: authoritativeStateVersion,
+            causedByActionId: resolvedCommand.actionId,
+            eventName: .actionRejected,
+            payload: try requireJSONObject(
+                from: MultiplayerActionRejectedPayload(
+                    requestId: resolvedCommand.requestId,
+                    actionId: resolvedCommand.actionId,
+                    playerId: resolvedCommand.authorityPlayerId,
+                    commandName: resolvedCommand.commandName,
+                    rejectReason: MultiplayerRejectReason(
+                        code: rejection.code,
+                        retryable: rejection.retryable,
+                        messageKey: rejection.messageKey,
+                        details: rejectionDetails(
+                            code: rejection.code,
+                            authoritativeStateVersion: authoritativeStateVersion,
+                            authoritativeEventId: authoritativeEventId,
+                            clientStateVersion: resolvedCommand.expectedStateVersion,
+                            effectiveExpectedStateVersion: resolvedCommand.expectedStateVersion,
+                            injectedMismatchMode: nil,
+                            recoverySnapshotId: nil
+                        )
+                    )
+                )
+            )
+        )
+        enqueueGameEvent(
+            engineEvent: engineEvent,
+            roomId: client.roomId,
+            clientId: client.clientId,
+            roomSequence: coordinator.snapshot(for: client.roomId)?.room.lastRoomSequence
+        )
+
+        if var gameState = transportGameStates[client.roomId] {
+            gameState.lastEventId = rejectEventId
+            gameState.lastEventOrdinal = parseEventOrdinal(from: rejectEventId)
+            transportGameStates[client.roomId] = gameState
+        }
+
+        return success(
+            action: action,
+            data: [
+                "transportAction": resolvedCommand.commandName.rawValue,
+                "requestId": resolvedCommand.requestId,
+                "actionId": resolvedCommand.actionId,
+                "commandName": resolvedCommand.commandName.rawValue,
+                "authoritativeStateVersion": authoritativeStateVersion,
+                "authoritativeEventId": rejectEventId,
+                "queuedEnvelopeCount": transportMailboxes[client.clientId]?.count ?? 0,
+            ]
+        )
+    }
+
+    private func rejectTransportGameplayForStaleState(
+        resolvedCommand: RoomTransportResolvedGameplayCommand,
+        client: RoomTransportClientState,
+        roomSnapshot: RoomCoordinatorSnapshot,
+        authorityRelay: RoomAuthorityRelay,
+        currentGameState: RoomTransportGameState,
+        clientStateVersion: Int,
+        effectiveExpectedStateVersion: Int,
+        action: String
+    ) throws -> [String: Any] {
+        let rejectEventId = nextGameEventID(for: client.roomId)
+        let injectedMismatchMode = deterministicFaultHook?.targetSessionId == client.sessionId
+            ? deterministicFaultHook?.kind.rawValue
+            : nil
+        let resyncSnapshot = try fetchProjectionSnapshot(
+            authorityRelay: authorityRelay,
+            roomSnapshot: roomSnapshot,
+            viewerPlayerId: client.playerId,
+            gameState: currentGameState,
+            snapshotReason: .resync,
+            lastEventIdOverride: rejectEventId
+        )
+        let rejectPayload = MultiplayerActionRejectedPayload(
+            requestId: resolvedCommand.requestId,
+            actionId: resolvedCommand.actionId,
+            playerId: resolvedCommand.authorityPlayerId,
+            commandName: resolvedCommand.commandName,
+            rejectReason: MultiplayerRejectReason(
+                code: .staleStateVersion,
+                retryable: true,
+                messageKey: "multiplayer.reject.stale_state_version",
+                details: rejectionDetails(
+                    code: .staleStateVersion,
+                    authoritativeStateVersion: currentGameState.stateVersion,
+                    authoritativeEventId: currentGameState.lastEventId,
+                    clientStateVersion: clientStateVersion,
+                    effectiveExpectedStateVersion: effectiveExpectedStateVersion,
+                    injectedMismatchMode: injectedMismatchMode,
+                    recoverySnapshotId: resyncSnapshot.snapshotId
+                )
+            )
+        )
+        enqueueGameEvent(
+            engineEvent: makeEngineEventEnvelope(
+                traceId: resolvedCommand.traceId,
+                roomId: client.roomId,
+                gameId: currentGameState.gameId,
+                eventId: rejectEventId,
+                stateVersion: currentGameState.stateVersion,
+                causedByActionId: resolvedCommand.actionId,
+                eventName: .actionRejected,
+                payload: try requireJSONObject(from: rejectPayload)
+            ),
+            roomId: client.roomId,
+            clientId: client.clientId,
+            roomSequence: roomSnapshot.room.lastRoomSequence
+        )
+
+        let snapshotEventId = nextGameEventID(for: client.roomId)
+        enqueueGameEvent(
+            engineEvent: makeEngineEventEnvelope(
+                traceId: resolvedCommand.traceId,
+                roomId: client.roomId,
+                gameId: currentGameState.gameId,
+                eventId: snapshotEventId,
+                stateVersion: currentGameState.stateVersion,
+                causedByActionId: resolvedCommand.actionId,
+                eventName: .stateSnapshot,
+                payload: try requireJSONObject(from: resyncSnapshot)
+            ),
+            roomId: client.roomId,
+            clientId: client.clientId,
+            roomSequence: roomSnapshot.room.lastRoomSequence
+        )
+
+        var nextState = currentGameState
+        nextState.lastEventId = snapshotEventId
+        nextState.lastEventOrdinal = parseEventOrdinal(from: snapshotEventId)
+        nextState.lastTurnId = resyncSnapshot.state.turnId
+        transportGameStates[client.roomId] = nextState
+
+        return success(
+            action: action,
+            data: [
+                "transportAction": payloadName(for: resolvedCommand.commandName),
+                "requestId": resolvedCommand.requestId,
+                "actionId": resolvedCommand.actionId,
+                "commandName": resolvedCommand.commandName.rawValue,
+                "authoritativeStateVersion": currentGameState.stateVersion,
+                "authoritativeEventId": snapshotEventId,
+                "queuedEnvelopeCount": transportMailboxes[client.clientId]?.count ?? 0,
+            ]
+        )
+    }
+
+    private func resolveTransportGameplayCommand(
+        payload: RoomTransportSendCLIRequest,
+        client: RoomTransportClientState,
+        gameState: RoomTransportGameState,
+        authorityRelay: RoomAuthorityRelay,
+        roomSnapshot: RoomCoordinatorSnapshot,
+        authorityPlayerId: String,
+        expectedStateVersion: Int
+    ) throws -> RoomTransportResolvedGameplayCommand {
+        let commandPayload = TestControlSupport.unbox(payload.commandPayload) ?? [:]
+        let requestId = payload.requestId ?? "req_\(payload.action)_\(gameState.stateVersion)_\(client.playerId)"
+        let actionId = payload.actionId ?? "act_\(payload.action)_\(gameState.stateVersion)_\(client.playerId)"
+
+        let snapshot = try fetchProjectionSnapshot(
+            authorityRelay: authorityRelay,
+            roomSnapshot: roomSnapshot,
+            viewerPlayerId: client.playerId,
+            gameState: gameState,
+            snapshotReason: .localPreview
+        )
+
+        switch payload.action {
+        case "playCard":
+            guard snapshot.state.phase == .inTurn else {
+                throw RoomAuthorityGameplayRejection(
+                    code: .invalidPhase,
+                    retryable: true,
+                    messageKey: "multiplayer.reject.invalid_phase"
+                )
+            }
+            guard snapshot.state.currentPlayerId == authorityPlayerId else {
+                throw RoomAuthorityGameplayRejection(
+                    code: .outOfTurn,
+                    retryable: true,
+                    messageKey: "multiplayer.reject.out_of_turn"
+                )
+            }
+            guard let cardId = commandPayload["cardId"] as? String,
+                  let player = snapshot.state.players.first(where: { $0.playerId == authorityPlayerId }),
+                  player.hand?.contains(where: { $0.cardId == cardId }) == true else {
+                throw RoomAuthorityGameplayRejection(
+                    code: .invalidCard,
+                    retryable: true,
+                    messageKey: "multiplayer.reject.invalid_card"
+                )
+            }
+            return RoomTransportResolvedGameplayCommand(
+                requestId: requestId,
+                traceId: payload.traceId,
+                actionId: actionId,
+                roomPlayerId: client.playerId,
+                authorityPlayerId: authorityPlayerId,
+                expectedStateVersion: expectedStateVersion,
+                commandName: .playCard,
+                commandPayload: [
+                    "cardId": cardId,
+                    "source": commandPayload["source"] as? String ?? "hand",
+                ]
+            )
+        case "submitChoice":
+            guard snapshot.state.phase == .choicePending,
+                  let pendingChoice = snapshot.state.pendingChoice else {
+                throw RoomAuthorityGameplayRejection(
+                    code: .invalidPhase,
+                    retryable: true,
+                    messageKey: "multiplayer.reject.invalid_phase"
+                )
+            }
+            guard pendingChoice.actorPlayerId == authorityPlayerId else {
+                throw RoomAuthorityGameplayRejection(
+                    code: .choiceOwnerMismatch,
+                    retryable: true,
+                    messageKey: "multiplayer.reject.choice_owner_mismatch"
+                )
+            }
+            guard let choiceId = commandPayload["choiceId"] as? String,
+                  choiceId == pendingChoice.choiceId,
+                  let optionCode = commandPayload["optionCode"] as? String,
+                  let option = pendingChoice.options.first(where: { $0.optionCode == optionCode }) else {
+                throw RoomAuthorityGameplayRejection(
+                    code: .invalidChoice,
+                    retryable: true,
+                    messageKey: "multiplayer.reject.invalid_choice"
+                )
+            }
+
+            let resolvedName = choiceCommandName(for: pendingChoice.choiceKind)
+            if let requestedCommandName = (commandPayload["choiceCommandName"] as? String)
+                .flatMap(MultiplayerCommandName.init(rawValue:)),
+               requestedCommandName != resolvedName {
+                throw RoomAuthorityGameplayRejection(
+                    code: .invalidChoice,
+                    retryable: false,
+                    messageKey: "multiplayer.reject.invalid_choice"
+                )
+            }
+
+            var executionPayload: [String: Any] = [
+                "choiceId": choiceId,
+                "optionCode": optionCode,
+            ]
+            if resolvedName == .selectCapture {
+                executionPayload["cardId"] = optionCode
+            }
+            if resolvedName == .selectShake,
+               let month = option.metadata?["month"]?.value as? Int {
+                executionPayload["month"] = month
+            }
+            return RoomTransportResolvedGameplayCommand(
+                requestId: requestId,
+                traceId: payload.traceId,
+                actionId: actionId,
+                roomPlayerId: client.playerId,
+                authorityPlayerId: authorityPlayerId,
+                expectedStateVersion: expectedStateVersion,
+                commandName: resolvedName,
+                commandPayload: executionPayload
+            )
+        case "quit":
+            let quitReason = (commandPayload["reason"] as? String) ?? MultiplayerQuitReason.voluntaryExit.rawValue
+            guard MultiplayerQuitReason(rawValue: quitReason) != nil else {
+                throw RoomAuthorityGameplayRejection(
+                    code: .invalidState,
+                    retryable: false,
+                    messageKey: "multiplayer.reject.invalid_state"
+                )
+            }
+            return RoomTransportResolvedGameplayCommand(
+                requestId: requestId,
+                traceId: payload.traceId,
+                actionId: actionId,
+                roomPlayerId: client.playerId,
+                authorityPlayerId: authorityPlayerId,
+                expectedStateVersion: expectedStateVersion,
+                commandName: .quit,
+                commandPayload: ["reason": quitReason]
+            )
+        default:
+            throw RoomCLIAdapterError.unsupportedTransportAction(payload.action)
+        }
+    }
+
+    private func fetchProjectionSnapshotsByPlayerId(
+        authorityRelay: RoomAuthorityRelay,
+        roomSnapshot: RoomCoordinatorSnapshot,
+        gameState: RoomTransportGameState,
+        snapshotReason: MultiplayerSnapshotReason
+    ) throws -> [String: MultiplayerSnapshot] {
+        var snapshotsByPlayerId: [String: MultiplayerSnapshot] = [:]
+        for member in roomSnapshot.room.members {
+            snapshotsByPlayerId[member.playerId] = try fetchProjectionSnapshot(
+                authorityRelay: authorityRelay,
+                roomSnapshot: roomSnapshot,
+                viewerPlayerId: member.playerId,
+                gameState: gameState,
+                snapshotReason: snapshotReason
+            )
+        }
+        return snapshotsByPlayerId
+    }
+
+    private func fetchBootstrapPayloadsByPlayerId(
+        bootstrapPlan: RoomGameStartedBootstrapPlan,
+        roomSnapshot: RoomCoordinatorSnapshot,
+        authorityRelay: RoomAuthorityRelay
+    ) throws -> [String: [String: Any]] {
+        guard let seedRequest = bootstrapPlan.requestsByPlayerId.values.sorted(by: { $0.viewerPlayerId < $1.viewerPlayerId }).first else {
+            return [:]
+        }
+        let mapping = try resolveAuthorityPlayerIdMappingForBootstrap(
+            roomSnapshot: roomSnapshot,
+            bootstrapRequest: seedRequest,
+            authorityRelay: authorityRelay
+        )
+
+        return try Dictionary(
+            uniqueKeysWithValues: bootstrapPlan.requestsByPlayerId.values.map { request in
+                var mappedRequest = request
+                mappedRequest.authorityPlayerIdByRoomPlayerId = mapping
+                let payload = authorityRelay.fetchGameStartedBootstrap(mappedRequest)
+                if let stateSnapshotPayload = payload["stateSnapshot"] as? [String: Any] {
+                    let snapshot = try decodeJSONObject(MultiplayerSnapshot.self, from: stateSnapshotPayload)
+                    try refreshAuthorityPlayerIdMapping(roomSnapshot: roomSnapshot, authoritySnapshot: snapshot)
+                }
+                return (request.viewerPlayerId, payload)
+            }
+        )
+    }
+
+    private func resolveAuthorityPlayerIdMappingForBootstrap(
+        roomSnapshot: RoomCoordinatorSnapshot,
+        bootstrapRequest: RoomGameStartedBootstrapRequest,
+        authorityRelay: RoomAuthorityRelay
+    ) throws -> [String: String] {
+        if let existing = authorityPlayerIdByRoomId[roomSnapshot.room.roomId],
+           mapping(existing, covers: roomSnapshot) {
+            return existing
+        }
+
+        var probeRequest = bootstrapRequest
+        probeRequest.authorityPlayerIdByRoomPlayerId = nil
+        let payload = authorityRelay.fetchGameStartedBootstrap(probeRequest)
+        guard let stateSnapshotPayload = payload["stateSnapshot"] as? [String: Any] else {
+            throw RoomCLIAdapterError.invalidAuthorityPayload("stateSnapshot")
+        }
+        let authoritySnapshot = try decodeJSONObject(MultiplayerSnapshot.self, from: stateSnapshotPayload)
+        return try refreshAuthorityPlayerIdMapping(
+            roomSnapshot: roomSnapshot,
+            authoritySnapshot: authoritySnapshot
+        )
+    }
+
+    private func mappedProjectionPreviewRequest(
+        _ request: RoomProjectionPreviewRequest,
+        roomSnapshot: RoomCoordinatorSnapshot,
+        gameState: RoomTransportGameState,
+        authorityRelay: RoomAuthorityRelay,
+        preferredRoomPlayerId: String
+    ) throws -> RoomProjectionPreviewRequest {
+        let mapping = try resolveAuthorityPlayerIdMapping(
+            roomSnapshot: roomSnapshot,
+            authorityRelay: authorityRelay,
+            gameId: gameState.gameId,
+            fallbackStateVersion: gameState.stateVersion,
+            lastEventId: gameState.lastEventId,
+            preferredRoomPlayerId: preferredRoomPlayerId
+        )
+        var mappedRequest = request
+        mappedRequest.authorityPlayerIdByRoomPlayerId = mapping
+        return mappedRequest
+    }
+
+    private func fetchTerminalSummaryPayload(
+        authorityRelay: RoomAuthorityRelay,
+        roomSnapshot: RoomCoordinatorSnapshot,
+        terminalRequest: RoomTerminalSummaryRelayRequest
+    ) throws -> (RoomTerminalSummaryRelayRequest, [String: Any]) {
+        let mapping = try resolveAuthorityPlayerIdMapping(
+            roomSnapshot: roomSnapshot,
+            authorityRelay: authorityRelay,
+            gameId: terminalRequest.gameId,
+            fallbackStateVersion: terminalRequest.summaryStateVersion,
+            lastEventId: terminalRequest.lastEventId,
+            preferredRoomPlayerId: terminalRequest.forfeitingPlayerId ?? roomSnapshot.room.members.first?.playerId
+        )
+        var mappedRequest = terminalRequest
+        mappedRequest.authorityPlayerIdByRoomPlayerId = mapping
+        let terminalPayload = authorityRelay.fetchTerminalSummary(mappedRequest)
+        try validateTerminalSummaryPayload(terminalPayload)
+        return (mappedRequest, terminalPayload)
+    }
+
+    private func validateTerminalSummaryPayload(_ terminalPayload: [String: Any]) throws {
+        _ = try requireDictionary("roundEnded", in: terminalPayload)
+        _ = try requireDictionary("matchEnded", in: terminalPayload)
+    }
+
+    private func resolveAuthorityPlayerIdMapping(
+        roomSnapshot: RoomCoordinatorSnapshot,
+        authorityRelay: RoomAuthorityRelay,
+        gameId: String,
+        fallbackStateVersion: Int,
+        lastEventId: String?,
+        preferredRoomPlayerId: String?
+    ) throws -> [String: String] {
+        if let existing = authorityPlayerIdByRoomId[roomSnapshot.room.roomId],
+           mapping(existing, covers: roomSnapshot) {
+            return existing
+        }
+
+        let probeMember =
+            roomSnapshot.room.members.first(where: { $0.playerId == preferredRoomPlayerId })
+            ?? roomSnapshot.room.members.sorted(by: { $0.seat < $1.seat }).first
+        guard let probeMember,
+              let probeRequest = makeProjectionPreviewRequest(
+                from: roomSnapshot,
+                viewerPlayerId: probeMember.playerId,
+                gameId: gameId,
+                projectionScope: "player",
+                snapshotReason: MultiplayerSnapshotReason.localPreview.rawValue,
+                stateVersion: fallbackStateVersion,
+                lastEventId: lastEventId
+              ) else {
+            throw RoomCLIAdapterError.invalidAuthorityPayload("projectionRequest")
+        }
+
+        let probePayload = authorityRelay.fetchProjectionPreview(probeRequest)
+        guard let snapshotPayload = probePayload["snapshot"] as? [String: Any] else {
+            throw RoomCLIAdapterError.invalidAuthorityPayload("projectionSnapshot")
+        }
+        let authoritySnapshot = try decodeJSONObject(MultiplayerSnapshot.self, from: snapshotPayload)
+        return try refreshAuthorityPlayerIdMapping(
+            roomSnapshot: roomSnapshot,
+            authoritySnapshot: authoritySnapshot
+        )
+    }
+
+    @discardableResult
+    private func refreshAuthorityPlayerIdMapping(
+        roomSnapshot: RoomCoordinatorSnapshot,
+        authoritySnapshot: MultiplayerSnapshot
+    ) throws -> [String: String] {
+        let roomPlayerIdBySeat = Dictionary(
+            uniqueKeysWithValues: roomSnapshot.room.members.map { ($0.seat, $0.playerId) }
+        )
+        var authorityMapping: [String: String] = [:]
+        for authorityPlayer in authoritySnapshot.state.players {
+            guard let roomPlayerId = roomPlayerIdBySeat[authorityPlayer.seatIndex] else {
+                continue
+            }
+            authorityMapping[roomPlayerId] = authorityPlayer.playerId
+        }
+        guard mapping(authorityMapping, covers: roomSnapshot) else {
+            throw RoomCLIAdapterError.invalidAuthorityPayload("playerIdMapping")
+        }
+        authorityPlayerIdByRoomId[roomSnapshot.room.roomId] = authorityMapping
+        return authorityMapping
+    }
+
+    private func mapping(
+        _ authorityPlayerIdByRoomPlayerId: [String: String],
+        covers snapshot: RoomCoordinatorSnapshot
+    ) -> Bool {
+        Set(snapshot.room.members.map(\.playerId)).isSubset(of: Set(authorityPlayerIdByRoomPlayerId.keys))
+    }
+
+    private func fetchProjectionSnapshot(
+        authorityRelay: RoomAuthorityRelay,
+        roomSnapshot: RoomCoordinatorSnapshot,
+        viewerPlayerId: String,
+        gameState: RoomTransportGameState,
+        snapshotReason: MultiplayerSnapshotReason,
+        lastEventIdOverride: String? = nil
+    ) throws -> MultiplayerSnapshot {
+        guard let request = makeProjectionPreviewRequest(
+            from: roomSnapshot,
+            viewerPlayerId: viewerPlayerId,
+            gameId: gameState.gameId,
+            projectionScope: "player",
+            snapshotReason: snapshotReason.rawValue,
+            stateVersion: gameState.stateVersion,
+            lastEventId: lastEventIdOverride ?? gameState.lastEventId
+        ) else {
+            throw RoomCLIAdapterError.invalidAuthorityPayload("projectionRequest")
+        }
+        let mappedRequest = try mappedProjectionPreviewRequest(
+            request,
+            roomSnapshot: roomSnapshot,
+            gameState: gameState,
+            authorityRelay: authorityRelay,
+            preferredRoomPlayerId: viewerPlayerId
+        )
+        let payload = authorityRelay.fetchProjectionPreview(mappedRequest)
+        guard let snapshotPayload = payload["snapshot"] as? [String: Any] else {
+            throw RoomCLIAdapterError.invalidAuthorityPayload("projectionSnapshot")
+        }
+        let snapshot = try decodeJSONObject(MultiplayerSnapshot.self, from: snapshotPayload)
+        try refreshAuthorityPlayerIdMapping(
+            roomSnapshot: roomSnapshot,
+            authoritySnapshot: snapshot
+        )
+        return snapshot
+    }
+
+    private func resolveTransportGameState(
+        roomId: String,
+        gameId: String,
+        fallbackStateVersion: Int
+    ) -> RoomTransportGameState {
+        transportGameStates[roomId] ?? RoomTransportGameState(
+            roomId: roomId,
+            gameId: gameId,
+            stateVersion: fallbackStateVersion,
+            lastEventOrdinal: 0,
+            lastEventId: nil,
+            lastTurnId: nil
+        )
+    }
+
+    private func resolvedExpectedStateVersion(
+        client: RoomTransportClientState,
+        requestedStateVersion: Int
+    ) -> Int {
+        guard let deterministicFaultHook,
+              deterministicFaultHook.kind == .staleExpectedStateVersionOverride,
+              deterministicFaultHook.targetSessionId == client.sessionId else {
+            return requestedStateVersion
+        }
+        return deterministicFaultHook.overriddenExpectedStateVersion
+    }
+
+    private func resolveDuplicateTransportAction(
+        payload: RoomTransportSendCLIRequest,
+        client: RoomTransportClientState,
+        effectiveExpectedStateVersion: Int,
+        authoritativeStateVersion: Int,
+        authoritativeEventId: String?,
+        fallbackResolvedCommand: RoomTransportResolvedGameplayCommand,
+        action: String
+    ) throws -> RoomTransportDuplicateActionResolution {
+        guard let actionId = payload.actionId,
+              !actionId.isEmpty else {
+            return .fresh(nil)
+        }
+
+        let key = RoomTransportActionRecordKey(
+            roomId: client.roomId,
+            playerId: client.playerId,
+            actionId: actionId
+        )
+        let fingerprint = try transportActionFingerprint(
+            payload: payload,
+            client: client,
+            effectiveExpectedStateVersion: effectiveExpectedStateVersion
+        )
+
+        if let existing = transportActionRecords[key] {
+            if existing.fingerprint == fingerprint {
+                replayRecordedTransportAction(existing, for: client.clientId)
+                let response = responseWithDuplicateDisposition(
+                    existing.response,
+                    disposition: "exactReplay",
+                    clientId: client.clientId
+                )
+                return .replay(response)
+            }
+
+            let conflictResponse = try rejectTransportGameplay(
+                resolvedCommand: fallbackResolvedCommand,
+                client: client,
+                rejection: RoomAuthorityGameplayRejection(
+                    code: .actionIdConflict,
+                    retryable: false,
+                    messageKey: "multiplayer.reject.action_id_conflict"
+                ),
+                authoritativeStateVersion: authoritativeStateVersion,
+                authoritativeEventId: authoritativeEventId,
+                action: action
+            )
+            return .replay(
+                responseWithDuplicateDisposition(
+                    conflictResponse,
+                    disposition: "conflictReject",
+                    clientId: client.clientId
+                )
+            )
+        }
+
+        return .fresh(
+            RoomTransportActionRecordContext(
+                key: key,
+                fingerprint: fingerprint,
+                mailboxCursor: transportMailboxCursor(roomId: client.roomId, including: client.clientId)
+            )
+        )
+    }
+
+    private func transportActionFingerprint(
+        payload: RoomTransportSendCLIRequest,
+        client: RoomTransportClientState,
+        effectiveExpectedStateVersion: Int
+    ) throws -> String {
+        let fingerprintPayload: [String: Any] = [
+            "roomId": client.roomId,
+            "playerId": client.playerId,
+            "action": payload.action,
+            "expectedStateVersion": effectiveExpectedStateVersion,
+            "commandPayload": sanitizeJSONValue(TestControlSupport.unbox(payload.commandPayload) ?? [:]),
+        ]
+        let data = try JSONSerialization.data(withJSONObject: fingerprintPayload, options: [.sortedKeys])
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    private func recordedTransportActionResponse(
+        _ response: [String: Any],
+        context: RoomTransportActionRecordContext?
+    ) -> [String: Any] {
+        guard let context else {
+            return response
+        }
+
+        transportActionRecords[context.key] = RoomTransportActionRecord(
+            fingerprint: context.fingerprint,
+            response: response,
+            replayEnvelopesByClientId: transportMailboxDelta(since: context.mailboxCursor)
+        )
+        return response
+    }
+
+    private func replayRecordedTransportAction(
+        _ record: RoomTransportActionRecord,
+        for clientId: String
+    ) {
+        for envelope in record.replayEnvelopesByClientId[clientId] ?? [] {
+            enqueue(envelope: envelope, for: clientId)
+        }
+    }
+
+    private func responseWithDuplicateDisposition(
+        _ response: [String: Any],
+        disposition: String,
+        clientId: String
+    ) -> [String: Any] {
+        guard var data = response["data"] as? [String: Any] else {
+            return response
+        }
+        data["duplicateActionIdDisposition"] = disposition
+        if let queuedEnvelopeCount = transportMailboxes[clientId]?.count {
+            data["queuedEnvelopeCount"] = queuedEnvelopeCount
+        } else if data["queuedEnvelopeCount"] == nil {
+            data["queuedEnvelopeCount"] = 0
+        }
+        var nextResponse = response
+        nextResponse["data"] = data
+        return nextResponse
+    }
+
+    private func transportMailboxCursor(
+        roomId: String,
+        including clientId: String
+    ) -> [String: Int] {
+        var clientIds = Set(connectedTransportClientIDs(in: roomId))
+        clientIds.insert(clientId)
+        return Dictionary(
+            uniqueKeysWithValues: clientIds.map { clientId in
+                (clientId, transportMailboxes[clientId]?.count ?? 0)
+            }
+        )
+    }
+
+    private func transportMailboxDelta(
+        since cursor: [String: Int]
+    ) -> [String: [[String: Any]]] {
+        Dictionary(
+            uniqueKeysWithValues: cursor.map { clientId, startIndex in
+                let mailbox = transportMailboxes[clientId] ?? []
+                let clampedStartIndex = min(startIndex, mailbox.count)
+                return (clientId, Array(mailbox.dropFirst(clampedStartIndex)))
+            }
+        )
+    }
+
+    private func nextGameEventID(for roomId: String) -> String {
+        var state = transportGameStates[roomId] ?? RoomTransportGameState(
+            roomId: roomId,
+            gameId: coordinator.snapshot(for: roomId)?.room.activeGameId ?? "game_\(roomId)",
+            stateVersion: 0,
+            lastEventOrdinal: 0,
+            lastEventId: nil,
+            lastTurnId: nil
+        )
+        state.lastEventOrdinal += 1
+        let eventId = String(format: "evt_%06d", state.lastEventOrdinal)
+        state.lastEventId = eventId
+        transportGameStates[roomId] = state
+        return eventId
+    }
+
+    private func parseEventOrdinal(from eventId: String) -> Int {
+        Int(eventId.split(separator: "_").last ?? "") ?? 0
+    }
+
+    private func payloadName(for commandName: MultiplayerCommandName) -> String {
+        switch commandName {
+        case .playCard:
+            return "playCard"
+        case .selectCapture, .selectShake, .chooseGoStop, .chooseChrysanthemumRole:
+            return "submitChoice"
+        case .resume:
+            return "resume"
+        case .quit:
+            return "quit"
+        }
+    }
+
+    private func choiceCommandName(
+        for choiceKind: MultiplayerContractChoiceKind
+    ) -> MultiplayerCommandName {
+        switch choiceKind {
+        case .capture:
+            return .selectCapture
+        case .shake:
+            return .selectShake
+        case .goStop:
+            return .chooseGoStop
+        case .chrysanthemumRole:
+            return .chooseChrysanthemumRole
+        }
+    }
+
+    private func provisionalTransportGameplayCommand(
+        payload: RoomTransportSendCLIRequest,
+        roomPlayerId: String,
+        authorityPlayerId: String,
+        expectedStateVersion: Int
+    ) -> RoomTransportResolvedGameplayCommand {
+        let commandPayload = TestControlSupport.unbox(payload.commandPayload) ?? [:]
+        let commandName: MultiplayerCommandName
+        switch payload.action {
+        case "submitChoice":
+            commandName = (commandPayload["choiceCommandName"] as? String)
+                .flatMap(MultiplayerCommandName.init(rawValue:))
+                ?? .selectCapture
+        case "quit":
+            commandName = .quit
+        default:
+            commandName = .playCard
+        }
+
+        return RoomTransportResolvedGameplayCommand(
+            requestId: payload.requestId ?? "req_\(payload.action)_\(roomPlayerId)",
+            traceId: payload.traceId,
+            actionId: payload.actionId ?? "act_\(payload.action)_\(roomPlayerId)",
+            roomPlayerId: roomPlayerId,
+            authorityPlayerId: authorityPlayerId,
+            expectedStateVersion: expectedStateVersion,
+            commandName: commandName,
+            commandPayload: commandPayload
+        )
+    }
+
+    private func makeTurnChangedPayload(
+        before: MultiplayerSnapshot?,
+        after: MultiplayerSnapshot?
+    ) -> [String: Any]? {
+        guard let after,
+              let currentPlayerId = after.state.currentPlayerId else {
+            return nil
+        }
+        guard before?.state.turnId != after.state.turnId ||
+                before?.state.currentPlayerId != after.state.currentPlayerId else {
+            return nil
+        }
+        let payload = MultiplayerTurnChangedPayload(
+            turnId: after.state.turnId,
+            currentPlayerId: currentPlayerId,
+            turnDeadlineAt: after.state.timers.turnDeadlineAt
+        )
+        return try? requireJSONObject(from: payload)
+    }
+
+    private func makeStatePatchPayload(
+        from beforeState: MultiplayerMatchSnapshot,
+        to afterState: MultiplayerMatchSnapshot,
+        baseStateVersion: Int,
+        targetStateVersion: Int
+    ) throws -> [String: Any] {
+        let beforeObject = try requireJSONObject(from: beforeState)
+        let afterObject = try requireJSONObject(from: afterState)
+        let keys = Set(beforeObject.keys).union(afterObject.keys).sorted()
+        var ops: [MultiplayerJSONPatchOperation] = []
+
+        for key in keys {
+            let beforeValue = beforeObject[key]
+            let afterValue = afterObject[key]
+            switch (beforeValue, afterValue) {
+            case (.none, let value?):
+                ops.append(MultiplayerJSONPatchOperation(op: "add", path: "/\(key)", value: AnyCodable(value)))
+            case (let value?, .none):
+                _ = value
+                ops.append(MultiplayerJSONPatchOperation(op: "remove", path: "/\(key)"))
+            case (let lhs?, let rhs?):
+                if !jsonValuesEqual(lhs, rhs) {
+                    ops.append(MultiplayerJSONPatchOperation(op: "replace", path: "/\(key)", value: AnyCodable(rhs)))
+                }
+            case (.none, .none):
+                break
+            }
+        }
+
+        let patch = MultiplayerPatch(
+            patchFormat: .jsonPatch,
+            baseStateVersion: baseStateVersion,
+            targetStateVersion: targetStateVersion,
+            ops: ops
+        )
+        return try requireJSONObject(from: patch)
+    }
+
+    private func jsonValuesEqual(_ lhs: Any, _ rhs: Any) -> Bool {
+        let lhsWrapped = ["value": sanitizeJSONValue(lhs)]
+        let rhsWrapped = ["value": sanitizeJSONValue(rhs)]
+        guard let lhsData = try? JSONSerialization.data(withJSONObject: lhsWrapped, options: [.sortedKeys]),
+              let rhsData = try? JSONSerialization.data(withJSONObject: rhsWrapped, options: [.sortedKeys]) else {
+            return false
+        }
+        return lhsData == rhsData
+    }
+
+    private func sanitizeJSONValue(_ value: Any) -> Any {
+        if let value = value as? NSNull {
+            return value
+        }
+        if let value = value as? [String: Any] {
+            return value.mapValues(sanitizeJSONValue)
+        }
+        if let value = value as? [Any] {
+            return value.map(sanitizeJSONValue)
+        }
+        return value
+    }
+
+    private func enqueueGameEvent(
+        engineEvent: [String: Any],
+        roomId: String,
+        clientId: String,
+        roomSequence: Int?
+    ) {
+        enqueue(
+            envelope: makeTransportEnvelope(
+                type: "gameEvent",
+                roomId: roomId,
+                sessionId: transportClients[clientId]?.sessionId,
+                roomSequence: roomSequence,
+                payload: ["engineEvent": engineEvent]
+            ),
+            for: clientId
+        )
+    }
+
+    private func broadcastGameEvent(
+        engineEvent: [String: Any],
+        roomId: String,
+        roomSequence: Int?
+    ) {
+        for clientId in connectedTransportClientIDs(in: roomId) {
+            enqueueGameEvent(
+                engineEvent: engineEvent,
+                roomId: roomId,
+                clientId: clientId,
+                roomSequence: roomSequence
+            )
+        }
+    }
+
+    private func makeEngineEventEnvelope(
+        traceId: String?,
+        roomId: String?,
+        gameId: String?,
+        eventId: String,
+        stateVersion: Int,
+        causedByActionId: String?,
+        eventName: MultiplayerEventName,
+        payload: [String: Any]
+    ) -> [String: Any] {
+        var envelope: [String: Any] = [
+            "type": "event",
+            "eventId": eventId,
+            "stateVersion": stateVersion,
+            "serverTime": dateString(Date()),
+            "eventName": eventName.rawValue,
+            "payload": payload,
+        ]
+        if let traceId {
+            envelope["traceId"] = traceId
+        }
+        if let roomId {
+            envelope["roomId"] = roomId
+        }
+        if let gameId {
+            envelope["gameId"] = gameId
+        }
+        if let causedByActionId {
+            envelope["causedByActionId"] = causedByActionId
+        }
+        return envelope
+    }
+
+    private func rejectionDetails(
+        code: MultiplayerRejectCode,
+        authoritativeStateVersion: Int,
+        authoritativeEventId: String?,
+        clientStateVersion: Int,
+        effectiveExpectedStateVersion: Int,
+        injectedMismatchMode: String?,
+        recoverySnapshotId: String?
+    ) -> [String: AnyCodable]? {
+        guard code == .staleStateVersion else {
+            return nil
+        }
+
+        let resync = MultiplayerResyncDirective(
+            trigger: .staleStateVersionReject,
+            snapshotReason: .resync,
+            clientStateVersion: clientStateVersion,
+            expectedStateVersion: effectiveExpectedStateVersion,
+            authoritativeStateVersion: authoritativeStateVersion,
+            clientEventId: nil,
+            authoritativeEventId: authoritativeEventId,
+            shouldLockInput: true
+        )
+        let resyncPayload = (try? requireJSONObject(from: resync)) ?? [:]
+        var details: [String: AnyCodable] = [
+            "expectedStateVersion": AnyCodable(effectiveExpectedStateVersion),
+            "authoritativeStateVersion": AnyCodable(authoritativeStateVersion),
+            "clientStateVersion": AnyCodable(clientStateVersion),
+            "resync": AnyCodable(resyncPayload),
+            "recoverySnapshotReason": AnyCodable(MultiplayerSnapshotReason.resync.rawValue),
+        ]
+        if let authoritativeEventId {
+            details["authoritativeEventId"] = AnyCodable(authoritativeEventId)
+        }
+        if let recoverySnapshotId {
+            details["recoverySnapshotId"] = AnyCodable(recoverySnapshotId)
+        }
+        if let injectedMismatchMode {
+            details["injectedMismatchMode"] = AnyCodable(injectedMismatchMode)
+        }
+        return details
+    }
+
+    private func requireRoomSnapshot(_ roomId: String) throws -> RoomCoordinatorSnapshot {
+        guard let snapshot = coordinator.snapshot(for: roomId) else {
+            throw RoomCoordinatorError.roomNotFound(roomId: roomId)
+        }
+        return snapshot
+    }
+
+    private func requireDictionary(_ key: String, in payload: [String: Any]) throws -> [String: Any] {
+        guard let dictionary = payload[key] as? [String: Any] else {
+            throw RoomCLIAdapterError.invalidAuthorityPayload(key)
+        }
+        return dictionary
+    }
+
+    private func decodeJSONObject<T: Decodable>(_ type: T.Type, from payload: Any) throws -> T {
+        let data = try JSONSerialization.data(withJSONObject: payload, options: [])
+        return try decoder.decode(type, from: data)
+    }
+
+    private func requireJSONObject<T: Encodable>(from value: T) throws -> [String: Any] {
+        let data = try JSONEncoder().encode(value)
+        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw RoomCLIAdapterError.invalidAuthorityPayload(String(describing: T.self))
+        }
+        return object
     }
 
     private func transportReceive(_ payload: RoomTransportReceiveCLIRequest) -> [String: Any] {
@@ -1034,6 +2847,10 @@ final class RoomCoordinatorCLIAdapter {
             return "transportClientNotFound"
         case .unsupportedTransportAction:
             return "unsupportedTransportAction"
+        case .transportGameNotStarted:
+            return "transportGameNotStarted"
+        case .invalidAuthorityPayload:
+            return "invalidAuthorityPayload"
         }
     }
 
@@ -1076,6 +2893,10 @@ final class RoomCoordinatorCLIAdapter {
             return "Transport client not found: \(clientId)"
         case let .unsupportedTransportAction(action):
             return "Unsupported transport action: \(action)"
+        case let .transportGameNotStarted(roomId):
+            return "Transport gameplay requires an active game for room \(roomId)"
+        case let .invalidAuthorityPayload(payloadName):
+            return "Authority payload is missing required field: \(payloadName)"
         }
     }
 

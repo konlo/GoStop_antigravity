@@ -62,6 +62,7 @@ class RunManifest:
     result: ScenarioStatus
     started_at: str
     mode: str
+    transport: str | None = None
     trace_id: str | None = None
     room_id: str | None = None
     game_id: str | None = None

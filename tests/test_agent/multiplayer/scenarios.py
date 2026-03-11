@@ -10,7 +10,7 @@ def _p0_scenarios() -> list[ScenarioDefinition]:
             scenario_id="MP-001",
             name="Auto-start bootstrap reaches live match",
             priority="P0",
-            automation="Scaffolded + CLI smoke + socket smoke",
+            automation="Scaffolded + CLI smoke + socket parity smoke",
             focus="room lifecycle + initial projection + ID continuity",
             description="Create room, join guest, set both players ready, and verify auto-start bootstrap into live match.",
             steps=[
@@ -57,36 +57,41 @@ def _p0_scenarios() -> list[ScenarioDefinition]:
             ],
             notes=[
                 "CLI smoke explicitly drives room_record_game_started and then fetches get_multiplayer_game_started_bootstrap to assert the paired bootstrap payload.",
-                "Socket mode now validates the same paired bootstrap contract through room_transport_connect/send/receive, but it still does not prove a future external websocket server binding.",
+                "Socket mode validates the same paired bootstrap contract through both GoStopCLI TCP fallback and websocket transport facades.",
             ],
         ),
         ScenarioDefinition(
             scenario_id="MP-002",
             name="Round completes with deterministic result summary",
             priority="P0",
-            automation="Scaffolded",
+            automation="Scaffolded + fixture + socket terminal parity smoke",
             focus="roundEnded/matchEnded + replay package",
             description="Play a full scripted round and persist the final summary in a replayable artifact set.",
             steps=[
                 "Bootstrap a live match with deterministic inputs.",
-                "Send only legal commands until roundEnded or matchEnded.",
-                "Persist terminal summary, final snapshots, and replay manifest.",
+                "Drive the terminal path and observe roundEnded/matchEnded/terminalSummary plus final roomClosed completion.",
+                "Leave the ended room and verify roomClosed lifecycle completion.",
+                "Persist terminal summary or the precise terminal relay failure in the replayable artifact set.",
             ],
             assertions=[
                 "Exactly one terminal event is emitted for the round or match.",
                 "Final summary is consistent across both player projections.",
                 "Replay package contains enough data to reproduce the terminal result.",
+                "Result dismissal reaches roomClosed after the final leaveRoom ack.",
             ],
             observability=[
                 "last successful actionId before terminal event",
                 "terminal eventId and stateVersion",
                 "engine/rule version in replay manifest",
+                "terminalSummary relay status and roomClosed roomSequence",
             ],
             required_events=[
                 "gameEvent:actionAccepted",
                 "gameEvent:statePatched",
                 "gameEvent:turnChanged",
                 "gameEvent:roundEnded|matchEnded",
+                "terminalSummary",
+                "roomEvent:roomClosed",
             ],
             required_artifacts=[
                 "manifest.json",
@@ -95,6 +100,10 @@ def _p0_scenarios() -> list[ScenarioDefinition]:
                 "snapshots/latest_server.json",
                 "replay/replay_manifest.json",
                 "replay/event_stream.ndjson",
+            ],
+            notes=[
+                "Fixture remains the source of truth for normal stop settlement consistency.",
+                "Socket mode validates the actual terminal lifecycle over both TCP fallback and websocket transport, including roundEnded/matchEnded/terminalSummary fan-out and leaveRoom -> roomClosed completion.",
             ],
         ),
         ScenarioDefinition(
@@ -133,33 +142,38 @@ def _p0_scenarios() -> list[ScenarioDefinition]:
             scenario_id="MP-004",
             name="Exact duplicate actionId replays prior terminal result",
             priority="P0",
-            automation="Scaffolded",
+            automation="Scaffolded + socket duplicate replay smoke",
             focus="duplicate actionId + idempotent replay",
-            description="Resend an identical command with the same actionId and confirm replay without a second mutation.",
+            description="Resend an identical command with the same actionId and confirm exact replay, then resend a conflicting payload and confirm conflictReject without a second mutation.",
             steps=[
-                "Send one legal playCard with actionId act_dup_001.",
+                "Send one legal gameplay command with actionId act_dup_001.",
                 "Resend the exact same payload with the same actionId after the first terminal result.",
-                "Inspect eventId reuse and stateVersion stability.",
+                "Resend a conflicting payload with the same actionId and inspect conflict reject delivery plus stateVersion stability.",
             ],
             assertions=[
                 "Duplicate resend does not create a second gameplay mutation.",
                 "Exact duplicate returns the prior terminal result instead of a new mutation.",
+                "Conflicting duplicate returns duplicateActionIdDisposition=conflictReject and actionRejected(code=actionIdConflict).",
                 "No additional stateVersion bump occurs for the duplicate resend.",
             ],
             observability=[
                 "first-seen and duplicate-seen timestamps",
                 "actionId to requestId fan-out",
                 "replayed eventId reuse",
+                "conflict reject eventId and queuedEnvelopeCount",
             ],
             required_events=[
-                "gameEvent:actionAccepted",
-                "gameEvent:statePatched|stateSnapshot",
+                "gameEvent:roundEnded|matchEnded",
+                "gameEvent:actionRejected(code=actionIdConflict)",
             ],
             required_artifacts=[
                 "manifest.json",
                 "timeline/commands.ndjson",
                 "timeline/events.ndjson",
                 "replay/event_stream.ndjson",
+            ],
+            notes=[
+                "Socket smoke uses a legal quit command after bootstrap because it reaches a terminal result with stable event IDs on both TCP fallback and websocket transports.",
             ],
         ),
         ScenarioDefinition(
@@ -273,12 +287,12 @@ def _p0_scenarios() -> list[ScenarioDefinition]:
             scenario_id="MP-008",
             name="StateVersion mismatch recovers through authoritative snapshot",
             priority="P0",
-            automation="Scaffolded + fixture-backed stale-version resync + socket preflight",
+            automation="Scaffolded + fixture-backed stale-version resync + socket gameplay smoke",
             focus="staleStateVersion reject + authoritative resync snapshot path",
             description="Inject stale expectedStateVersion deterministically and recover via stateSnapshot(reason=resync).",
             steps=[
                 "Persist injectedMismatchMode=staleExpectedStateVersion and the fixed mismatch cursor before the command is sent.",
-                "Send the next command with a stale expectedStateVersion override.",
+                "Send the next gameplay command with a stale expectedStateVersion override.",
                 "Detect mismatch by actionRejected(rejectCode=staleStateVersion).",
                 "Suspend input and wait for a resync snapshot.",
                 "Resume live play after the snapshot hash matches the server hash.",
@@ -310,7 +324,9 @@ def _p0_scenarios() -> list[ScenarioDefinition]:
             notes=[
                 "The locked deterministic path is stale expectedStateVersion override; dropped event gap remains a future extension.",
                 "MP-008 should generate replay/injection_manifest.json plus timeline/mismatch.ndjson even when the run fails early.",
-                "Socket mode can now prove live bootstrap + hook attachment, but full gameplay resync stays blocked until room_transport_send exposes gameplay commands with expectedStateVersion.",
+                "Socket mode now executes the live stale-version probe over TCP using a deterministic quit command after start_game warmup.",
+                "Current live socket smoke asserts actionRejected(staleStateVersion) plus stateSnapshot(reason=resync) on the same transport run.",
+                "playCard mapping drift is no longer a blocker for the locked P0 quit-based resync path.",
             ],
         ),
     ]
@@ -322,7 +338,7 @@ def _review_regression_scenarios() -> list[ScenarioDefinition]:
             scenario_id="MP-013",
             name="Shake choice hides actor-only hand data from non-actor viewers",
             priority="P1",
-            automation="Fixture-backed",
+            automation="Fixture-backed + socket parity smoke",
             focus="askingShake privacy + viewer-scoped redaction",
             description="Trigger askingShake and verify actor projection keeps option metadata while non-actor projection is redacted.",
             steps=[
@@ -332,7 +348,7 @@ def _review_regression_scenarios() -> list[ScenarioDefinition]:
             ],
             assertions=[
                 "Actor snapshot exposes shake options with actorOnly visibility.",
-                "Non-actor snapshot keeps the same choiceId but redacts cards and hand metadata.",
+                "Non-actor snapshot keeps the same choiceId and option labels but redacts cards and hand metadata.",
                 "No hidden hand identifier leaks through summary, metadata, or option payloads.",
             ],
             observability=[
@@ -350,12 +366,16 @@ def _review_regression_scenarios() -> list[ScenarioDefinition]:
                 "snapshots/player_a_initial.json",
                 "snapshots/player_b_initial.json",
             ],
+            notes=[
+                "Fixture mode remains the deterministic baseline for actorOnly shake redaction.",
+                "Socket mode reuses the same actor/peer projection assertions over TCP fallback and websocket transport so the privacy regression can be replayed when app-side websocket binding lands.",
+            ],
         ),
         ScenarioDefinition(
             scenario_id="MP-014",
             name="Stale or replaced heartbeat is rejected without session rollback",
             priority="P1",
-            automation="Fixture-backed + socket smoke",
+            automation="Fixture-backed + socket parity smoke",
             focus="newest-wins heartbeat guard + stale connection rejection",
             description="Send heartbeat from disconnected or replaced connection ownership and verify error surfacing plus stable current session binding.",
             steps=[
@@ -394,11 +414,19 @@ REVIEW_REGRESSION_SCENARIOS = _review_regression_scenarios()
 ALL_SCENARIOS = [*P0_SCENARIOS, *REVIEW_REGRESSION_SCENARIOS]
 SCENARIO_REGISTRY = {scenario.scenario_id: scenario for scenario in ALL_SCENARIOS}
 SMOKE_SCENARIOS = [SCENARIO_REGISTRY[scenario_id] for scenario_id in ("MP-001", "MP-006")]
-SOCKET_SMOKE_SCENARIOS = [SCENARIO_REGISTRY[scenario_id] for scenario_id in ("MP-001", "MP-014")]
+SOCKET_SMOKE_SCENARIOS = [SCENARIO_REGISTRY[scenario_id] for scenario_id in ("MP-001", "MP-002", "MP-008", "MP-014")]
+SOCKET_PARITY_SCENARIOS = [
+    SCENARIO_REGISTRY[scenario_id] for scenario_id in ("MP-001", "MP-002", "MP-008", "MP-013", "MP-014")
+]
+SOCKET_DUPLICATE_SCENARIOS = [SCENARIO_REGISTRY["MP-004"]]
+SOCKET_REVIEW_FIXUP_SCENARIOS = [SCENARIO_REGISTRY[scenario_id] for scenario_id in ("MP-013", "MP-014")]
 REVIEW_FIXUP_SCENARIOS = [SCENARIO_REGISTRY[scenario_id] for scenario_id in ("MP-013", "MP-014")]
 SCENARIO_SUITES = {
     "smoke": SMOKE_SCENARIOS,
     "socket-smoke": SOCKET_SMOKE_SCENARIOS,
+    "socket-parity": SOCKET_PARITY_SCENARIOS,
+    "socket-duplicate": SOCKET_DUPLICATE_SCENARIOS,
+    "socket-review-fixups": SOCKET_REVIEW_FIXUP_SCENARIOS,
     "review-fixups": REVIEW_FIXUP_SCENARIOS,
     "all": ALL_SCENARIOS,
 }

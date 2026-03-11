@@ -153,11 +153,15 @@ def _mp001() -> ScenarioSkeleton:
 def _mp002() -> ScenarioSkeleton:
     return ScenarioSkeleton(
         scenario_id="MP-002",
-        purpose="One full round completes with deterministic terminal summary and replay artifacts.",
+        purpose="Terminal lifecycle reaches roundEnded/matchEnded/terminalSummary and closes cleanly after the final leaveRoom.",
         steps=[
             command("c01", "Bootstrap deterministic live match", "system", "bootstrapMatch", {"seed": 42}),
-            command("c02", "Drive legal scripted commands until terminal event", "system", "playScriptedRound", {"scriptId": "mp002_terminal_round"}),
+            command("c02", "Drive terminal relay path", "player_a", "recordMatchEndedAndFetchTerminalSummary", {"roundIndex": 1}),
             expect("e01", "Terminal event is emitted", "gameEvent.engineEvent:roundEnded|matchEnded", {}),
+            expect("e02", "terminalSummary is delivered", "terminalSummary", {}),
+            command("c03", "Host leaves the ended room", "player_a", "leaveRoom", {}),
+            command("c04", "Guest leaves the ended room", "player_b", "leaveRoom", {}),
+            expect("e03", "roomClosed is emitted for the final departure", "roomEvent.roomClosed", {}),
             snapshot("s01", "Capture authority terminal snapshot", "terminal", "authority"),
             artifact("a01", "Persist replay stream", "replay/event_stream.ndjson"),
             artifact("a02", "Persist summary", "summary.md"),
@@ -301,7 +305,7 @@ def _mp008() -> ScenarioSkeleton:
                 {"injectedMismatchMode": "staleExpectedStateVersion", "expectedStateVersion": 14},
             ),
             artifact("a01", "Persist injection manifest", "replay/injection_manifest.json"),
-            command("c03", "Send next command with stale expectedStateVersion", "player_a", "playCard", {"expectedStateVersion": 14}),
+            command("c03", "Send next gameplay command with stale expectedStateVersion", "player_a", "playCard|quit", {"expectedStateVersion": 14}),
             expect("e01", "staleStateVersion reject arrives", "gameEvent.engineEvent:actionRejected", {"rejectCode": "staleStateVersion"}),
             expect("e02", "Authoritative resync snapshot arrives", "gameEvent.engineEvent:stateSnapshot", {"reason": "resync"}),
             artifact("a02", "Persist mismatch timeline", "timeline/mismatch.ndjson"),
@@ -321,7 +325,8 @@ def _mp008() -> ScenarioSkeleton:
         notes=[
             "The locked P0 path is stale expectedStateVersion override followed by actionRejected(staleStateVersion) and stateSnapshot(reason=resync).",
             "timeline/mismatch.ndjson and replay/injection_manifest.json are mandatory even on early reject or partial resync.",
-            "Socket mode currently reaches live bootstrap + hook attachment preflight only; the full gameplay resync step waits for room_transport_send to expose gameplay commands with expectedStateVersion.",
+            "Socket mode now executes the live stale-version probe with a deterministic quit command after start_game warmup.",
+            "playCard remains a separate live mapping probe because the projection still exposes authority playerId values.",
         ],
     )
 

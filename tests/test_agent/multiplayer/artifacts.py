@@ -57,6 +57,9 @@ class MultiplayerArtifactStore:
         path.write_text(content, encoding="utf-8")
         return path
 
+    def write_json(self, relative_path: str, payload: dict[str, Any]) -> Path:
+        return self._write_json(self.run_root / relative_path, payload)
+
     def write_checklist(self, lines: list[str]) -> Path:
         path = self.run_root / "checklist_report.md"
         path.write_text("\n".join(lines) + "\n", encoding="utf-8")

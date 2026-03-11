@@ -49,6 +49,7 @@ final class LocalRoomCoordinatorDebugService: ObservableObject {
 
     private let configuration: RoomCoordinatorConfiguration
     private var coordinator: RoomLifecycleCoordinating
+    private var authorityPlayerIdByRoomId: [String: [String: String]] = [:]
 
     init(
         configuration: RoomCoordinatorConfiguration = .phase0,
@@ -68,6 +69,7 @@ final class LocalRoomCoordinatorDebugService: ObservableObject {
         lastTerminalRelayResult = nil
         lastProjectionPreviewPayload = nil
         deterministicFaultHook = nil
+        authorityPlayerIdByRoomId = [:]
     }
 
     @discardableResult
@@ -100,6 +102,16 @@ final class LocalRoomCoordinatorDebugService: ObservableObject {
     @discardableResult
     func disconnect(_ request: DisconnectMemberRequest) throws -> RoomCoordinatorMutation {
         try apply(coordinator.disconnectMember(request))
+    }
+
+    @discardableResult
+    func leaveRoom(_ request: LeaveRoomRequest) throws -> RoomCoordinatorMutation {
+        try apply(coordinator.leaveRoom(request))
+    }
+
+    @discardableResult
+    func closeRoom(_ request: CloseRoomRequest) throws -> RoomCoordinatorMutation {
+        try apply(coordinator.closeRoom(request))
     }
 
     @discardableResult
@@ -169,16 +181,10 @@ final class LocalRoomCoordinatorDebugService: ObservableObject {
         using gameManager: GameManager
     ) throws -> LocalRoomDebugBootstrapRelayResult {
         let flow = try recordGameStartedAndPrepareBootstrap(request)
-        let payloadsByPlayerId = Dictionary(
-            uniqueKeysWithValues: flow.bootstrapPlan.requestsByPlayerId.map { playerId, bootstrapRequest in
-                (
-                    playerId,
-                    TestControlSupport.serializedMultiplayerGameStartedBootstrapPayload(
-                        from: gameManager,
-                        requestData: roomGameStartedBootstrapRequestData(from: bootstrapRequest)
-                    )
-                )
-            }
+        let payloadsByPlayerId = try fetchBootstrapPayloadsByPlayerId(
+            bootstrapPlan: flow.bootstrapPlan,
+            roomSnapshot: flow.mutation.snapshot,
+            using: gameManager
         )
         let result = LocalRoomDebugBootstrapRelayResult(
             mutation: flow.mutation,
@@ -229,11 +235,21 @@ final class LocalRoomCoordinatorDebugService: ObservableObject {
                 actual: snapshot.room.roomState
             )
         }
+        let mappedRequest = try mappedProjectionPreviewRequest(
+            request,
+            roomSnapshot: snapshot,
+            using: gameManager,
+            preferredRoomPlayerId: viewerPlayerId
+        )
 
         let payload = TestControlSupport.serializedMultiplayerProjectionPayload(
             from: gameManager,
-            requestData: roomProjectionPreviewRequestData(from: request)
+            requestData: roomProjectionPreviewRequestData(from: mappedRequest)
         )
+        if let snapshotPayload = payload["snapshot"] as? [String: Any] {
+            let authoritySnapshot = try decodeSnapshot(from: snapshotPayload)
+            try refreshAuthorityPlayerIdMapping(roomSnapshot: snapshot, authoritySnapshot: authoritySnapshot)
+        }
         lastProjectionPreviewPayload = payload
         return payload
     }
@@ -263,14 +279,19 @@ final class LocalRoomCoordinatorDebugService: ObservableObject {
         guard let terminalSummaryRequest = mutation.metadata.terminalSummaryRelayRequest else {
             throw RoomCoordinatorError.invalidRoomState(expected: [.ended], actual: mutation.snapshot.room.roomState)
         }
+        let mappedTerminalSummaryRequest = try mappedTerminalSummaryRequest(
+            terminalSummaryRequest,
+            roomSnapshot: mutation.snapshot,
+            using: gameManager
+        )
 
         let terminalSummaryPayload = TestControlSupport.serializedMultiplayerTerminalSummaryPayload(
             from: gameManager,
-            requestData: roomTerminalSummaryRelayRequestData(from: terminalSummaryRequest)
+            requestData: roomTerminalSummaryRelayRequestData(from: mappedTerminalSummaryRequest)
         )
         let result = LocalRoomDebugTerminalRelayResult(
             mutation: mutation,
-            terminalSummaryRequest: terminalSummaryRequest,
+            terminalSummaryRequest: mappedTerminalSummaryRequest,
             terminalSummaryPayload: terminalSummaryPayload
         )
         lastTerminalRelayResult = result
@@ -419,6 +440,184 @@ final class LocalRoomCoordinatorDebugService: ObservableObject {
             throw RoomCoordinatorError.sessionNotFound(sessionId: member.sessionId)
         }
         return session
+    }
+
+    private func fetchBootstrapPayloadsByPlayerId(
+        bootstrapPlan: RoomGameStartedBootstrapPlan,
+        roomSnapshot: RoomCoordinatorSnapshot,
+        using gameManager: GameManager
+    ) throws -> [String: [String: Any]] {
+        guard let seedRequest = bootstrapPlan.requestsByPlayerId.values.sorted(by: { $0.viewerPlayerId < $1.viewerPlayerId }).first else {
+            return [:]
+        }
+        let mapping = try resolveAuthorityPlayerIdMappingForBootstrap(
+            roomSnapshot: roomSnapshot,
+            bootstrapRequest: seedRequest,
+            using: gameManager
+        )
+
+        return try Dictionary(
+            uniqueKeysWithValues: bootstrapPlan.requestsByPlayerId.values.map { request in
+                var mappedRequest = request
+                mappedRequest.authorityPlayerIdByRoomPlayerId = mapping
+                let payload = TestControlSupport.serializedMultiplayerGameStartedBootstrapPayload(
+                    from: gameManager,
+                    requestData: roomGameStartedBootstrapRequestData(from: mappedRequest)
+                )
+                if let stateSnapshotPayload = payload["stateSnapshot"] as? [String: Any] {
+                    let snapshot = try decodeSnapshot(from: stateSnapshotPayload)
+                    try refreshAuthorityPlayerIdMapping(roomSnapshot: roomSnapshot, authoritySnapshot: snapshot)
+                }
+                return (request.viewerPlayerId, payload)
+            }
+        )
+    }
+
+    private func resolveAuthorityPlayerIdMappingForBootstrap(
+        roomSnapshot: RoomCoordinatorSnapshot,
+        bootstrapRequest: RoomGameStartedBootstrapRequest,
+        using gameManager: GameManager
+    ) throws -> [String: String] {
+        if let existing = authorityPlayerIdByRoomId[roomSnapshot.room.roomId],
+           mapping(existing, covers: roomSnapshot) {
+            return existing
+        }
+
+        let payload = TestControlSupport.serializedMultiplayerGameStartedBootstrapPayload(
+            from: gameManager,
+            requestData: roomGameStartedBootstrapRequestData(from: bootstrapRequest)
+        )
+        guard let stateSnapshotPayload = payload["stateSnapshot"] as? [String: Any] else {
+            throw RoomCoordinatorError.invalidRoomState(expected: [.inGame], actual: roomSnapshot.room.roomState)
+        }
+        let authoritySnapshot = try decodeSnapshot(from: stateSnapshotPayload)
+        return try refreshAuthorityPlayerIdMapping(
+            roomSnapshot: roomSnapshot,
+            authoritySnapshot: authoritySnapshot
+        )
+    }
+
+    private func mappedProjectionPreviewRequest(
+        _ request: RoomProjectionPreviewRequest,
+        roomSnapshot: RoomCoordinatorSnapshot,
+        using gameManager: GameManager,
+        preferredRoomPlayerId: String
+    ) throws -> RoomProjectionPreviewRequest {
+        let mapping = try resolveAuthorityPlayerIdMapping(
+            roomSnapshot: roomSnapshot,
+            using: gameManager,
+            gameId: request.gameId,
+            fallbackStateVersion: request.stateVersion,
+            lastEventId: request.lastEventId,
+            preferredRoomPlayerId: preferredRoomPlayerId
+        )
+        var mappedRequest = request
+        mappedRequest.authorityPlayerIdByRoomPlayerId = mapping
+        return mappedRequest
+    }
+
+    private func mappedTerminalSummaryRequest(
+        _ request: RoomTerminalSummaryRelayRequest,
+        roomSnapshot: RoomCoordinatorSnapshot,
+        using gameManager: GameManager
+    ) throws -> RoomTerminalSummaryRelayRequest {
+        let mapping = try resolveAuthorityPlayerIdMapping(
+            roomSnapshot: roomSnapshot,
+            using: gameManager,
+            gameId: request.gameId,
+            fallbackStateVersion: request.summaryStateVersion,
+            lastEventId: request.lastEventId,
+            preferredRoomPlayerId: request.forfeitingPlayerId ?? roomSnapshot.room.members.first?.playerId
+        )
+        var mappedRequest = request
+        mappedRequest.authorityPlayerIdByRoomPlayerId = mapping
+        return mappedRequest
+    }
+
+    private func resolveAuthorityPlayerIdMapping(
+        roomSnapshot: RoomCoordinatorSnapshot,
+        using gameManager: GameManager,
+        gameId: String,
+        fallbackStateVersion: Int,
+        lastEventId: String?,
+        preferredRoomPlayerId: String?
+    ) throws -> [String: String] {
+        if let existing = authorityPlayerIdByRoomId[roomSnapshot.room.roomId],
+           mapping(existing, covers: roomSnapshot) {
+            return existing
+        }
+
+        let probeMember =
+            roomSnapshot.room.members.first(where: { $0.playerId == preferredRoomPlayerId })
+            ?? roomSnapshot.room.members.sorted(by: { $0.seat < $1.seat }).first
+        guard let probeMember,
+              let probeRequest = makeProjectionPreviewRequest(
+                from: roomSnapshot,
+                viewerPlayerId: probeMember.playerId,
+                gameId: gameId,
+                projectionScope: "player",
+                snapshotReason: MultiplayerSnapshotReason.localPreview.rawValue,
+                stateVersion: fallbackStateVersion,
+                lastEventId: lastEventId
+              ) else {
+            throw RoomCoordinatorError.invalidRoomState(
+                expected: [.starting, .inGame, .ended],
+                actual: roomSnapshot.room.roomState
+            )
+        }
+
+        let payload = TestControlSupport.serializedMultiplayerProjectionPayload(
+            from: gameManager,
+            requestData: roomProjectionPreviewRequestData(from: probeRequest)
+        )
+        guard let snapshotPayload = payload["snapshot"] as? [String: Any] else {
+            throw RoomCoordinatorError.invalidRoomState(
+                expected: [.starting, .inGame, .ended],
+                actual: roomSnapshot.room.roomState
+            )
+        }
+        let authoritySnapshot = try decodeSnapshot(from: snapshotPayload)
+        return try refreshAuthorityPlayerIdMapping(
+            roomSnapshot: roomSnapshot,
+            authoritySnapshot: authoritySnapshot
+        )
+    }
+
+    @discardableResult
+    private func refreshAuthorityPlayerIdMapping(
+        roomSnapshot: RoomCoordinatorSnapshot,
+        authoritySnapshot: MultiplayerSnapshot
+    ) throws -> [String: String] {
+        let roomPlayerIdBySeat = Dictionary(
+            uniqueKeysWithValues: roomSnapshot.room.members.map { ($0.seat, $0.playerId) }
+        )
+        var authorityMapping: [String: String] = [:]
+        for authorityPlayer in authoritySnapshot.state.players {
+            guard let roomPlayerId = roomPlayerIdBySeat[authorityPlayer.seatIndex] else {
+                continue
+            }
+            authorityMapping[roomPlayerId] = authorityPlayer.playerId
+        }
+        guard mapping(authorityMapping, covers: roomSnapshot) else {
+            throw RoomCoordinatorError.invalidRoomState(
+                expected: [.inGame, .ended],
+                actual: roomSnapshot.room.roomState
+            )
+        }
+        authorityPlayerIdByRoomId[roomSnapshot.room.roomId] = authorityMapping
+        return authorityMapping
+    }
+
+    private func mapping(
+        _ authorityPlayerIdByRoomPlayerId: [String: String],
+        covers snapshot: RoomCoordinatorSnapshot
+    ) -> Bool {
+        Set(snapshot.room.members.map(\.playerId)).isSubset(of: Set(authorityPlayerIdByRoomPlayerId.keys))
+    }
+
+    private func decodeSnapshot(from payload: [String: Any]) throws -> MultiplayerSnapshot {
+        let data = try JSONSerialization.data(withJSONObject: payload, options: [])
+        return try JSONDecoder().decode(MultiplayerSnapshot.self, from: data)
     }
 
     private func requireSnapshot(roomId: String) throws -> RoomCoordinatorSnapshot {

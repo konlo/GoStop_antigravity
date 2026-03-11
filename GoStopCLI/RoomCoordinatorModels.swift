@@ -159,10 +159,12 @@ struct RoomGameStartedBootstrapRequest: Codable, Equatable, Sendable {
     var roomId: String
     var gameId: String
     var viewerPlayerId: String
+    var viewerSeatIndex: Int?
     var projectionScope: String
     var snapshotReason: String
     var stateVersionHint: Int
     var participantPresenceByPlayerId: [String: RoomBootstrapParticipantPresence]
+    var authorityPlayerIdByRoomPlayerId: [String: String]?
 }
 
 struct RoomGameStartedBootstrapPlan: Codable, Equatable, Sendable {
@@ -175,11 +177,13 @@ struct RoomProjectionPreviewRequest: Codable, Equatable, Sendable {
     var roomId: String
     var gameId: String
     var viewerPlayerId: String
+    var viewerSeatIndex: Int?
     var projectionScope: String
     var snapshotReason: String
     var stateVersion: Int
     var lastEventId: String?
     var participantPresenceByPlayerId: [String: RoomBootstrapParticipantPresence]
+    var authorityPlayerIdByRoomPlayerId: [String: String]?
 }
 
 struct RoomTerminalSummaryRelayRequest: Codable, Equatable, Sendable {
@@ -191,6 +195,7 @@ struct RoomTerminalSummaryRelayRequest: Codable, Equatable, Sendable {
     var summaryStateVersion: Int
     var lastEventId: String?
     var participantPresenceByPlayerId: [String: RoomBootstrapParticipantPresence]
+    var authorityPlayerIdByRoomPlayerId: [String: String]?
 }
 
 enum RoomDeterministicFaultHookKind: String, Codable, Equatable, Sendable {
@@ -441,10 +446,12 @@ func makeGameStartedBootstrapPlan(
                     roomId: snapshot.room.roomId,
                     gameId: gameId,
                     viewerPlayerId: member.playerId,
+                    viewerSeatIndex: member.seat,
                     projectionScope: "player",
                     snapshotReason: "gameStarted",
                     stateVersionHint: 1,
-                    participantPresenceByPlayerId: participantPresenceByPlayerId
+                    participantPresenceByPlayerId: participantPresenceByPlayerId,
+                    authorityPlayerIdByRoomPlayerId: nil
                 )
             )
         }
@@ -492,11 +499,13 @@ func makeProjectionPreviewRequest(
         roomId: snapshot.room.roomId,
         gameId: resolvedGameId,
         viewerPlayerId: viewerPlayerId,
+        viewerSeatIndex: snapshot.room.members.first(where: { $0.playerId == viewerPlayerId })?.seat,
         projectionScope: projectionScope,
         snapshotReason: snapshotReason,
         stateVersion: stateVersion,
         lastEventId: lastEventId,
-        participantPresenceByPlayerId: makeParticipantPresenceByPlayerId(from: snapshot)
+        participantPresenceByPlayerId: makeParticipantPresenceByPlayerId(from: snapshot),
+        authorityPlayerIdByRoomPlayerId: nil
     )
 }
 
@@ -520,24 +529,34 @@ func makeTerminalSummaryRelayRequest(
         forfeitingPlayerId: forfeitingPlayerId,
         summaryStateVersion: summaryStateVersion,
         lastEventId: lastEventId,
-        participantPresenceByPlayerId: makeParticipantPresenceByPlayerId(from: snapshot)
+        participantPresenceByPlayerId: makeParticipantPresenceByPlayerId(from: snapshot),
+        authorityPlayerIdByRoomPlayerId: nil
     )
 }
 
 func roomGameStartedBootstrapRequestData(
     from request: RoomGameStartedBootstrapRequest
 ) -> [String: Any] {
-    [
+    var payload: [String: Any] = [
         "roomId": request.roomId,
         "gameId": request.gameId,
-        "viewerPlayerId": request.viewerPlayerId,
+        "viewerPlayerId": mappedAuthorityPlayerId(
+            for: request.viewerPlayerId,
+            authorityPlayerIdByRoomPlayerId: request.authorityPlayerIdByRoomPlayerId
+        ),
         "scope": request.projectionScope,
         "snapshotReason": request.snapshotReason,
+        "reason": request.snapshotReason,
         "stateVersion": request.stateVersionHint,
-        "participantPresenceByPlayerId": request.participantPresenceByPlayerId.mapValues {
-            serializeBootstrapParticipantPresence($0)
-        },
+        "participantPresenceByPlayerId": serializeBootstrapParticipantPresenceMap(
+            request.participantPresenceByPlayerId,
+            authorityPlayerIdByRoomPlayerId: request.authorityPlayerIdByRoomPlayerId
+        ),
     ]
+    if let viewerSeatIndex = request.viewerSeatIndex {
+        payload["viewerIndex"] = viewerSeatIndex
+    }
+    return payload
 }
 
 func roomProjectionPreviewRequestData(
@@ -546,14 +565,22 @@ func roomProjectionPreviewRequestData(
     var payload: [String: Any] = [
         "roomId": request.roomId,
         "gameId": request.gameId,
-        "viewerPlayerId": request.viewerPlayerId,
+        "viewerPlayerId": mappedAuthorityPlayerId(
+            for: request.viewerPlayerId,
+            authorityPlayerIdByRoomPlayerId: request.authorityPlayerIdByRoomPlayerId
+        ),
         "scope": request.projectionScope,
         "snapshotReason": request.snapshotReason,
+        "reason": request.snapshotReason,
         "stateVersion": request.stateVersion,
-        "participantPresenceByPlayerId": request.participantPresenceByPlayerId.mapValues {
-            serializeBootstrapParticipantPresence($0)
-        },
+        "participantPresenceByPlayerId": serializeBootstrapParticipantPresenceMap(
+            request.participantPresenceByPlayerId,
+            authorityPlayerIdByRoomPlayerId: request.authorityPlayerIdByRoomPlayerId
+        ),
     ]
+    if let viewerSeatIndex = request.viewerSeatIndex {
+        payload["viewerIndex"] = viewerSeatIndex
+    }
     if let lastEventId = request.lastEventId {
         payload["lastEventId"] = lastEventId
     }
@@ -568,20 +595,48 @@ func roomTerminalSummaryRelayRequestData(
         "gameId": request.gameId,
         "roundIndex": request.roundIndex,
         "stateVersion": request.summaryStateVersion,
-        "participantPresenceByPlayerId": request.participantPresenceByPlayerId.mapValues {
-            serializeBootstrapParticipantPresence($0)
-        },
+        "participantPresenceByPlayerId": serializeBootstrapParticipantPresenceMap(
+            request.participantPresenceByPlayerId,
+            authorityPlayerIdByRoomPlayerId: request.authorityPlayerIdByRoomPlayerId
+        ),
     ]
     if let quitReason = request.quitReason {
         payload["quitReason"] = quitReason
     }
     if let forfeitingPlayerId = request.forfeitingPlayerId {
-        payload["forfeitingPlayerId"] = forfeitingPlayerId
+        payload["forfeitingPlayerId"] = mappedAuthorityPlayerId(
+            for: forfeitingPlayerId,
+            authorityPlayerIdByRoomPlayerId: request.authorityPlayerIdByRoomPlayerId
+        )
     }
     if let lastEventId = request.lastEventId {
         payload["lastEventId"] = lastEventId
     }
     return payload
+}
+
+func mappedAuthorityPlayerId(
+    for roomPlayerId: String,
+    authorityPlayerIdByRoomPlayerId: [String: String]?
+) -> String {
+    authorityPlayerIdByRoomPlayerId?[roomPlayerId] ?? roomPlayerId
+}
+
+func serializeBootstrapParticipantPresenceMap(
+    _ presenceByRoomPlayerId: [String: RoomBootstrapParticipantPresence],
+    authorityPlayerIdByRoomPlayerId: [String: String]?
+) -> [String: [String: Any]] {
+    Dictionary(
+        uniqueKeysWithValues: presenceByRoomPlayerId.map { roomPlayerId, presence in
+            (
+                mappedAuthorityPlayerId(
+                    for: roomPlayerId,
+                    authorityPlayerIdByRoomPlayerId: authorityPlayerIdByRoomPlayerId
+                ),
+                serializeBootstrapParticipantPresence(presence)
+            )
+        }
+    )
 }
 
 private func serializeBootstrapParticipantPresence(

@@ -1946,3 +1946,99 @@
 - **Files Touched**: ["GoStopCLI/RoomCoordinatorModels.swift", "GoStopCLI/InMemoryRoomCoordinator.swift", "GoStopCLI/RoomCoordinatorCLIAdapter.swift", "GoStopCLI/main.swift", "GoStop/Core/LocalRoomCoordinatorDebugService.swift", "room_protocol.md", "agent_sync_board.md", "project_progress.md"]
 - **Validation**: "unrestricted `xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI -configuration Debug -derivedDataPath /tmp/gostop_cli_agent2_round5 build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n 'error:|warning:|BUILD SUCCEEDED|BUILD FAILED'`와 unrestricted `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_agent2_round5 build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n 'error:|warning:|BUILD SUCCEEDED|BUILD FAILED'`가 둘 다 `BUILD SUCCEEDED`였다. 추가로 built `GoStopCLI` binary에 대해 `(1)` actual GameManager player UUID를 room playerId로 맞춘 상태에서 `room_record_game_started_and_prepare_bootstrap`, `room_projection_preview`, `room_record_match_ended_and_fetch_terminal_summary`가 모두 `status=ok`와 presence merge/terminal summary payload를 반환하는 smoke, `(2)` `room_transport_connect -> room_transport_send(hello/setReady/recordGameStartedAndPrepareBootstrap/recordMatchEndedAndFetchTerminalSummary) -> room_transport_receive`에서 queued `gameEvent`와 `terminalSummary` envelope가 양 플레이어 mailbox에 들어오는 smoke, `(3)` `room_transport_send(action=ack)`를 hello 전 상태에서 호출했을 때 `staleConnectionId`가 유지되는 parity smoke를 통과시켰다."
 - **Outcome**: "shared request builder로 `participantPresenceByPlayerId` merge를 bootstrap/projection/terminal relay 전부에 통일했고, `recordMatchEnded` metadata에 `terminalSummaryRelayRequest`를 추가했다. CLI에는 direct relay (`room_projection_preview`, `room_record_match_ended_and_fetch_terminal_summary`)와 websocket-equivalent spike (`room_transport_connect/send/receive`)를 추가해 Agent 4 socket smoke entrypoint를 열었고, DEBUG app facade에도 `recordGameStartedAndFetchBootstrap`, `projectionPreview`, `recordMatchEndedAndFetchTerminalSummary`를 추가해 local debug가 CLI와 같은 semantics를 따르도록 맞췄다."
+
+### [2026-03-10 23:17:14 KST] User Request: 모든 agent 완료 후 다음 해야 할 일 정리
+- **Skills Planned**: ["basic-code-review", "gostop-game-builder", "project_logger"]
+- **Skills Used**: ["basic-code-review", "gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 4개 agent의 최신 완료 상태를 다시 검증하고, 현재 기준으로 남은 일을 다음 라운드 작업으로 정리해달라고 요청했다."
+- **Files Touched**: ["agent_code_tasks_round6.md", "project_progress.md"]
+- **Validation**: "`sed -n '1,320p' agent_sync_board.md`, `git status --short`, `rg -n 'room_transport_|expectedStateVersion|recordMatchEndedAndFetchTerminalSummary|roomClosed|leaveRoom|actorOnly' GoStop GoStopCLI tests/test_agent multiplayer_*.md room_protocol.md`, `nl -ba GoStopCLI/RoomCoordinatorCLIAdapter.swift | sed -n '560,680p'`, `nl -ba tests/test_agent/multiplayer/socket_transport.py | sed -n '620,715p'`, `rg -n 'Apply matchEnded|showResult|roomClosed' GoStop/Views/MultiplayerShellState.swift GoStop/Views/MultiplayerShellViews.swift`로 남은 gap을 확인했다. 추가로 unrestricted `xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI -configuration Debug -derivedDataPath /tmp/gostop_cli_round6_review build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n 'error:|warning:|BUILD SUCCEEDED|BUILD FAILED'`와 unrestricted `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_round6_review build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n 'error:|warning:|BUILD SUCCEEDED|BUILD FAILED'`가 모두 `BUILD SUCCEEDED`였다. `python3 scripts/run_multiplayer_cli_two_player_smoke.py --binary /tmp/gostop_cli_round6_review/Build/Products/Debug/GoStopCLI --scenario all`은 전체 PASS, `PYTHONDONTWRITEBYTECODE=1 python3 tests/test_agent/multiplayer_runner.py --all-p0 --mode fixture`는 `MP-001 ~ MP-008` PASS, `PYTHONDONTWRITEBYTECODE=1 python3 tests/test_agent/multiplayer_runner.py --suite socket-smoke --mode socket --binary /tmp/gostop_cli_round6_review/Build/Products/Debug/GoStopCLI --skip-build`는 `MP-001`, `MP-014` PASS였다. 기본 `--mode socket` self-build 경로는 네트워크 제한 환경에서 Yams fetch로 실패함도 함께 확인했다."
+- **Outcome**: "새 문서 `agent_code_tasks_round6.md`를 추가했다. 현재 남은 일은 `room_transport_send`의 gameplay command surface, actual websocket/server binding, `matchEnded -> roomClosed/leave ack` result completion, socket runner의 offline-friendly build reuse로 수렴한다고 정리했고, Agent 1~4의 다음 라운드 역할을 다시 배분했다."
+
+### [2026-03-10 23:19:57 KST] User Request: 각 agent 별로 해야 할 일 prompt로 정리
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 Round 6 기준으로 각 agent 세션에 바로 붙여넣을 수 있는 실행 프롬프트를 요청했다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`agent_code_tasks_round6.md`와 직전 검증 결과를 기준으로 Agent 1~4 각각의 남은 목표, 수정 범위, 금지사항, 보고 형식을 복붙용 메시지로 압축했다."
+- **Outcome**: "현재 상태를 반영한 Round 6 agent 실행 프롬프트를 Agent 1~4별로 바로 붙여넣을 수 있는 형태로 정리해 전달했다."
+
+### [2026-03-10 23:21:17 KST] User Request: agent 작업을 동시에 진행할 수 있는지, 순서를 정해야 하는지 확인
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 Round 6 작업을 병렬로 돌려도 되는지, 아니면 의존성 순서를 가져가야 하는지 운영 가이드를 요청했다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "직전 Round 6 상태 점검 결과를 기준으로 남은 주요 gap을 다시 대조했다. 핵심은 Agent 2의 gameplay transport surface가 Agent 4의 MP-008 live smoke와 Agent 3의 authoritative result dismissal path를 동시에 block하고 있다는 점이었다."
+- **Outcome**: "현재 라운드는 완전 독립 병렬이 아니라 `Agent 2 선행 + Agent 1 병렬 지원 + Agent 4 부분 병렬/후행 + Agent 3 후행` 구조가 가장 안전하다고 정리했다."
+
+### [2026-03-11 21:26:34 KST] User Request: 현재 상황과 어제 token 부족으로 못 끝난 항목까지 포함해 다음 round 할 일을 agent별로 확인
+- **Skills Planned**: ["basic-code-review", "gostop-game-builder", "project_logger"]
+- **Skills Used**: ["basic-code-review", "gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 최신 멀티플레이 상태를 다시 점검하고, 전날 token 부족으로 끊긴 미완료 항목까지 포함해서 다음 라운드 작업을 agent별로 정리해달라고 요청했다."
+- **Files Touched**: ["agent_code_tasks_round7.md", "project_progress.md"]
+- **Validation**: "`git status --short`, `sed -n '1,340p' agent_sync_board.md`, `tail -n 120 project_progress.md`, `rg -n 'token|unfinished|Remaining|Ready For Merge|Current Task|Latest Update|BLOCKED|Open' agent_sync_board.md project_progress.md agent_code_tasks_round*.md`, `rg -n 'TODO|FIXME|BLOCKED|token|pending|future extension|not yet|still' ...`, `rg -n 'localPreview|invalidAuthorityPayload\\(roundEnded\\)|terminalSummary' GoStop GoStopCLI tests/test_agent/multiplayer/*.py`, `nl -ba tests/test_agent/multiplayer/socket_transport.py | sed -n '740,830p'`, `nl -ba tests/test_agent/multiplayer/socket_transport.py | sed -n '980,1055p'`로 미완료 항목을 재확인했다. 추가로 unrestricted `xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI -configuration Debug -derivedDataPath /tmp/gostop_cli_round7_review build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n 'error:|warning:|BUILD SUCCEEDED|BUILD FAILED'`와 unrestricted `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_round7_review build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n 'error:|warning:|BUILD SUCCEEDED|BUILD FAILED'`가 둘 다 `BUILD SUCCEEDED`였다. `python3 scripts/run_multiplayer_cli_two_player_smoke.py --binary /tmp/gostop_cli_round7_review/Build/Products/Debug/GoStopCLI --scenario all`은 PASS, `PYTHONDONTWRITEBYTECODE=1 python3 tests/test_agent/multiplayer_runner.py --all-p0 --mode fixture`는 `MP-001 ~ MP-008` PASS, escalated `PYTHONDONTWRITEBYTECODE=1 python3 tests/test_agent/multiplayer_runner.py --suite socket-smoke --mode socket --binary /tmp/gostop_cli_round7_review/Build/Products/Debug/GoStopCLI --skip-build`는 `MP-001`, `MP-014` PASS였다."
+- **Outcome**: "새 문서 `agent_code_tasks_round7.md`를 추가했다. 어제 끊긴 carry-over를 포함해 현재 남은 핵심은 1) transport terminal relay의 `invalidAuthorityPayload(roundEnded)` 해소, 2) live recovery snapshot reason을 `resync`로 잠그기, 3) authority `playerId` ↔ room `playerId` mapping 결정, 4) TCP facade를 actual websocket binding으로 교체하는 것이라고 정리했고, 이를 agent별 다음 round 작업으로 배분했다."
+
+### [2026-03-11 21:27:41 KST] User Request: 각 agent별 할 일 프롬프트와 우선순위 정리
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 Round 7 기준으로 agent별 실행 프롬프트와 우선순위를 한 번에 확인하고 싶어 했다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`agent_code_tasks_round7.md`와 최신 `agent_sync_board.md`의 carry-over blocker를 기준으로 Agent 1~4 각각의 목표/범위/금지사항/보고 형식을 복붙용 메시지로 압축하고, 의존성 기반 우선순위를 함께 정리했다."
+- **Outcome**: "Round 7 agent 실행 프롬프트와 우선순위(`Agent 2 -> Agent 1 병렬 -> Agent 4 -> Agent 3`)를 사용자에게 바로 전달할 수 있게 정리했다."
+
+### [2026-03-11 22:06:02 KST] User Request: 현재 agent 작업 완료 후 몇 턴이나 더 진행해야 하는지 추정
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 현재 멀티플레이 진행 상태를 기준으로 남은 agent 라운드 수를 대략적으로 알고 싶어 했다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "직전 Round 7 상태를 기준으로 남은 blocker를 다시 요약했다. 핵심은 transport terminal relay, live resync reason, authority↔room playerId mapping, real websocket binding, app adapter/persistence wiring이었다."
+- **Outcome**: "현재 라운드가 정상적으로 끝난다는 가정 하에, 로컬/개발용 end-to-end 멀티플레이는 대략 2라운드, 실제 외부 사용자 접속 가능한 alpha 수준은 대략 3~4라운드 추가가 필요하다고 추정해 전달했다."
+
+### [2026-03-11 22:24:05 KST] User Request: 다음 round를 위한 agent별 prompt 작성
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 현재 Round 7 carry-over blocker 기준으로 다음 라운드의 agent 실행 프롬프트를 요청했다."
+- **Files Touched**: ["agent_code_tasks_round8.md", "project_progress.md"]
+- **Validation**: "직전 상태 점검 결과와 `agent_code_tasks_round7.md`를 기준으로 Round 8 목표를 `transport terminal/resync blocker 해소 + production adapter 진입`으로 재정의하고, Agent 1~4의 목표/범위/금지사항/보고 형식을 새 문서에 정리했다."
+- **Outcome**: "`agent_code_tasks_round8.md`를 새로 추가했다. Agent 2는 terminalSummary/resync/websocket binding, Agent 1은 mapping/resync contract, Agent 3는 production adapter boundary, Agent 4는 `MP-002`/`MP-008` live smoke closure를 각각 담당하는 Round 8 프롬프트를 정리했다."
+
+### [2026-03-11 22:25:46 KST] User Request: Round 8 agent 작업을 동시에 진행해도 되는지 확인
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 Round 8 작업을 완전 병렬로 돌려도 되는지, 아니면 의존성 순서를 가져가야 하는지 운영 기준을 요청했다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "Round 8 carry-over blocker를 기준으로 의존성을 다시 확인했다. 핵심은 Agent 2의 transport terminal/resync 수정이 Agent 4의 `MP-002`/`MP-008` live smoke와 Agent 3의 production adapter/result dismissal을 동시에 block하고 있다는 점이었다."
+- **Outcome**: "Round 8은 완전 독립 병렬보다 `Agent 2 선행 + Agent 1 병렬 지원 + Agent 4 후행 검증 + Agent 3 마지막 통합` 구조가 가장 안전하다고 정리했다."
+
+### [2026-03-11 23:06:29 KST] User Request: 현재 진행 완료 기준으로 다음 round agent 프롬프트 작성
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 Round 8 작업이 끝난 뒤 최신 board 상태를 반영한 다음 round agent 프롬프트를 요청했다."
+- **Files Touched**: ["agent_code_tasks_round9.md", "project_progress.md"]
+- **Validation**: "`git status --short`, `sed -n '1,360p' agent_sync_board.md`, `tail -n 120 project_progress.md`를 읽어 현재 Phase 7 상태와 open blocker를 확인했다. 그 기준으로 다음 round 목표를 `websocket parity + production app attach`로 재정의하고, Agent 1~4의 목표/범위/금지사항/보고 형식을 새 문서에 정리했다."
+- **Outcome**: "`agent_code_tasks_round9.md`를 새로 추가했다. Agent 2는 websocket parity와 duplicate actionId transport, Agent 4는 TCP vs websocket parity smoke, Agent 3는 real transport source mount, Agent 1은 contract drift support를 담당하는 Round 9 프롬프트를 정리했다."
+
+### [2026-03-11 23:08:55 KST] User Request: Round 9 agent 우선순위 정리
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 Round 9 프롬프트에 이어 agent별 우선순위를 더 명확히 알고 싶어 했다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "최신 `agent_sync_board.md` 기준 open blocker를 다시 기준으로 삼았다. 남은 핵심은 websocket parity와 duplicate actionId live regression, production app transport attach였다."
+- **Outcome**: "Round 9 우선순위를 `Agent 2 최우선`, `Agent 4 그다음`, `Agent 3 후행`, `Agent 1 지원`으로 정리해 전달했다."
+
+### [2026-03-11 23:55:18 KST] User Request: 오늘 내용 정리와 commit message 생성
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 오늘 진행된 멀티플레이 작업을 한 번에 요약하고, 현재 변경 범위에 맞는 커밋 메시지를 원했다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`rg -n '^### \\[2026-03-11' project_progress.md`, `git diff --stat`, `git diff --name-only`로 오늘자 작업 로그와 현재 변경 범위를 요약했다."
+- **Outcome**: "오늘 작업 요약과 현재 diff 전체를 기준으로 한 권장 커밋 메시지(subject/body)를 정리해 전달했다."
+
+### [2026-03-11 21:44:17 KST] User Request: Agent 2 transport terminal blocker와 live resync reason을 고치고 websocket/server skeleton 시작
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 Agent 2 범위에서 `invalidAuthorityPayload(roundEnded)`와 live `stateSnapshot(reason=resync)` blocker를 닫고, authority/room player mapping layer와 websocket/server skeleton까지 같은 transport semantics 위에 올리라고 요청했다."
+- **Files Touched**: ["GoStopCLI/RoomCoordinatorModels.swift", "GoStopCLI/RoomCoordinatorCLIAdapter.swift", "GoStopCLI/main.swift", "GoStop/Core/LocalRoomCoordinatorDebugService.swift", "room_protocol.md", "agent_sync_board.md", "project_progress.md"]
+- **Validation**: "cached SourcePackages를 재사용한 unrestricted `xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI -configuration Debug -derivedDataPath /tmp/gostop_cli_round7_agent2 build CODE_SIGNING_ALLOWED=NO -disableAutomaticPackageResolution -clonedSourcePackagesDirPath /tmp/gostop_cli_round7_review/SourcePackages`와 unrestricted `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_round7_agent2 build CODE_SIGNING_ALLOWED=NO -disableAutomaticPackageResolution -clonedSourcePackagesDirPath /tmp/gostop_ios_round7_review/SourcePackages`가 모두 `BUILD SUCCEEDED`였다. escalated `PYTHONDONTWRITEBYTECODE=1 python3 tests/test_agent/multiplayer_runner.py --scenario MP-002 --scenario MP-008 --mode socket --binary /tmp/gostop_cli_round7_agent2/Build/Products/Debug/GoStopCLI --skip-build`는 `MP-002 PASS`, `MP-008 PASS`를 반환했고, `/tmp/gostop_cli_round7_agent2/Build/Products/Debug/GoStopCLI --room-transport-websocket-server --port 19092` startup에서 `RoomTransportWebSocketServer ready`를 확인했다."
+- **Outcome**: "transport relay가 room seat/session lookup으로 room `playerId -> authority playerId`를 internal mapping한 뒤 projection/bootstrap/gameplay/terminal helper를 호출하도록 정리했다. 이로써 live terminal probe의 `invalidAuthorityPayload(roundEnded)`를 닫았고, live stale-version recovery snapshot reason도 `resync`로 고정했다. DEBUG local service도 같은 mapping/request builder를 타게 맞췄고, 기존 TCP fallback을 유지한 채 same adapter 기반 websocket listener skeleton `--room-transport-websocket-server`를 추가했다."

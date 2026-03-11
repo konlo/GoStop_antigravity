@@ -20,7 +20,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--suite",
         choices=sorted(SCENARIO_SUITES),
-        help="Run a predefined suite (`smoke`, `socket-smoke`, `review-fixups`, `all`).",
+        help="Run a predefined suite (`smoke`, `socket-smoke`, `socket-parity`, `socket-duplicate`, `socket-review-fixups`, `review-fixups`, `all`).",
     )
     parser.add_argument(
         "--scenario",
@@ -38,7 +38,13 @@ def _parse_args() -> argparse.Namespace:
         "--mode",
         default="scaffold",
         choices=["scaffold", "fixture", "socket"],
-        help="Execution mode. scaffold creates empty skeletons, fixture validates synthetic transcripts, socket drives the room_transport_* live spike.",
+        help="Execution mode. scaffold creates empty skeletons, fixture validates synthetic transcripts, socket drives the GoStopCLI room transport facades.",
+    )
+    parser.add_argument(
+        "--transport",
+        default="tcp",
+        choices=["tcp", "websocket", "compare"],
+        help="Socket mode transport backend. `compare` runs TCP fallback and websocket path under one artifact root.",
     )
     parser.add_argument(
         "--output-root",
@@ -61,7 +67,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--skip-build",
         action="store_true",
-        help="Reuse an existing GoStopCLI binary under --derived-data instead of rebuilding for socket mode.",
+        help="Disable fresh builds and require --binary or a cached GoStopCLI build for socket mode.",
     )
     return parser.parse_args()
 
@@ -94,6 +100,7 @@ def main() -> int:
         binary_path=Path(args.binary) if args.binary else None,
         derived_data=Path(args.derived_data) if args.derived_data else None,
         skip_build=args.skip_build,
+        socket_transport=args.transport,
     )
     results = runner.run(scenarios)
     for result in results:

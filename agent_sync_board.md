@@ -23,16 +23,17 @@
   - Agent 1/2 contract는 window 외 변경 금지
 
 ## Global Status
-- **Date**: 2026-03-10
-- **Current Phase**: Phase 5 / Result Route + Transport Spike
+- **Date**: 2026-03-11
+- **Current Phase**: Phase 7 / Identity Mapping + Live Resync Lock
 - **Integration Branch**: `codex/multiplayer-integration`
-- **Top Goal**: local debug bootstrap/resync baseline은 잠겼으므로, merge 전에 app compile 회귀를 제거하고 result route + transport spike로 넘어간다
+- **Top Goal**: authority-vs-room identity ownership, live stale recovery reason, terminal minimum relay shape를 잠가 Agent 2/4가 live transport blocker를 줄이게 한다
 - **Critical Risks**:
   - shake choice payload가 상대에게 숨겨야 할 hand 정보를 노출하면 multiplayer contract가 바로 깨짐
   - engine projection이 `isConnected/isReady`를 항상 true로 채우면 room/session truth와 UI가 어긋남
   - replaced/expired session heartbeat를 허용하면 newest-wins session 정책이 깨짐
   - `dealerPlayerId`가 실제 starter 결과가 아니라 seat 0으로 고정되면 bootstrap payload 신뢰도가 떨어짐
   - `MP-008` stale-version hook이 live ingress에 노출되지 않으면 fixture PASS가 live regression으로 이어지지 못함
+  - authority `playerId`와 room `playerId`가 다를 때 mapping layer가 없으면 bootstrap/result/transport payload 해석이 흔들림
 
 ## Shared IDs
 - `traceId`
@@ -53,13 +54,13 @@
 | `F-002` | Agent 1 | engine projection이 `isConnected/isReady`를 항상 `true`로 채움 | Closed | room truth merge-aware optional fields와 `presenceSource` contract 반영 완료 |
 | `F-003` | Agent 2 | `recordHeartbeat`가 replaced/expired/mismatched connection을 검증하지 않음 | Closed | coordinator guard + CLI `room_transport_send(action=ack|pong)` parity로 `staleConnectionId` / `invalidResumeState` 유지 확인 완료 |
 | `F-004` | Agent 1 | `dealerPlayerId`가 실제 starter/dealer가 아니라 seat 0으로 고정됨 | Closed | actual starter selection result를 `starterPlayerId`/`dealerPlayerId`에 반영 완료 |
-| `F-005` | Agent 4 | `MP-008` deterministic fault path는 계약이 잠겼고 fixture PASS다. 남은 일은 live gameplay resync smoke 연결이다 | Open | `room_transport_*` preflight는 붙었고, 이제 gameplay command + `expectedStateVersion` transport surface가 필요하다 |
+| `F-005` | Agent 4 | `MP-008` deterministic fault path는 계약이 잠겼고 fixture PASS다. 남은 일은 live gameplay resync smoke 연결이다 | Closed | latest `GoStopCLI` rebuild 기준 TCP socket smoke가 live `stale expectedStateVersion -> actionRejected -> stateSnapshot(reason=resync)` probe까지 PASS로 닫혔다 |
 | `F-006` | Agent 3 | `GoStop` iOS target이 `MultiplayerShellViews.swift` top-level brace mismatch로 컴파일되지 않음 | Closed | result view 구조 hotfix와 함께 iOS build green 재검증 완료 |
 
 ## Contract Questions
 
 ### Open
-- [ ] actual websocket server binding이 CLI `room_transport_connect/send/receive`와 같은 envelope ordering(`helloAck -> roomSnapshot -> roomEvent/gameEvent*`)과 `terminalSummary` fan-out을 유지할지 최종 확인 필요
+- [ ] live duplicate `actionId` path가 TCP fallback / websocket 모두에서 exact same resend를 `duplicateActionIdDisposition=exactReplay`, conflicting reuse를 `duplicateActionIdDisposition=conflictReject` + `actionRejected(code=actionIdConflict)`로 잠그는지 Agent 2/4가 재확인 필요
 
 ### Resolved
 - [x] `stateVersion`은 accepted command transaction 중 game state mutation이 발생할 때만 1 증가한다
@@ -83,10 +84,14 @@
 - [x] command stale reject path의 recovery snapshot reason은 `resync`, patch/event gap path의 recovery snapshot reason은 `gapDetected`다
 - [x] authority replay artifact retention policy는 `privilegedDebugOnly`이며 fixture/CLI/socket/manual-debug 실패 또는 explicit export에서만 authority baseline/full stream을 저장한다
 - [x] websocket-equivalent transport spike는 `room_transport_connect/send/receive`로 두고, stale heartbeat reject는 `staleConnectionId` / `invalidResumeState` parity를 유지한다
+- [x] `dropGameEvents`는 다음 phase smoke hook으로 올리지 않고, stale gameplay transport resync smoke가 안정화될 때까지 future extension으로 유지한다
+- [x] authority `playerId`와 room `playerId` mapping owner는 room/session layer이며, engine payload는 authority `playerId`만 유지한다
+- [x] live stale `expectedStateVersion` recovery snapshot reason은 `resync` only이며 `localPreview`는 local preview helper 전용이다
+- [x] duplicate `actionId` resolution은 `staleStateVersion`보다 우선하며, exact resend는 `exactReplay`, conflicting reuse는 `actionIdConflict` reject가 source-of-truth다
 
 ## Agent 1: Core Engine / Game Authority
 - **Owner**: Agent 1
-- **Current Task**: terminal/result route와 transport relay가 흔들리지 않도록 terminal summary / replay retention / relay-ready resync envelope contract를 잠근다
+- **Current Task**: authority `playerId` vs room `playerId` mapping owner, live stale recovery `resync` rule, terminal minimum relay shape를 잠근다
 - **Files In Scope**:
   - `GoStop/Core/`
   - `GoStopCLI/`
@@ -111,11 +116,11 @@
   - [x] MP-008 `staleStateVersion -> resync` typed detail contract 추가
   - [x] `MultiplayerTerminalSummaryPayload` 및 enriched `get_multiplayer_terminal_summary` metadata 추가
   - [x] authority replay retention policy `privilegedDebugOnly` 결정
-- **Latest Update**: terminal/result consumer가 `roundEnded`와 `matchEnded`를 별도 추정 없이 쓰도록 `MultiplayerTerminalSummaryPayload { roomId, gameId, summaryStateVersion, lastEventId, roundEnded, matchEnded }`를 추가했고, `matchEnded.roundIndex`도 required field로 올렸다. `get_multiplayer_terminal_summary`는 같은 metadata를 함께 반환하고, replay retention policy는 `privilegedDebugOnly`로 잠갔다. websocket relay에서는 stale reject / `stateSnapshot(reason=resync|gapDetected)` engine envelope를 그대로 nested해 쓰면 된다.
+- **Latest Update**: websocket parity 단계에서 contract drift는 없다고 판단했다. duplicate `actionId`는 여전히 source-of-truth contract상 exact resend면 `exactReplay`, conflicting reuse면 `actionRejected(code=actionIdConflict)`다. 이 resolution은 `staleStateVersion`보다 먼저 일어나야 하며, live probe가 stale reject/resync로 빠지면 구현 drift다. 문서에는 websocket parity sample과 authority-vs-room identity note를 추가해 nested engine `playerId`는 authority identity를 유지하고 room identity는 `playerIdentityBindings`로만 lookup 한다는 점을 다시 명시했다.
 
 ## Agent 2: Backend / Lobby / Reconnect
 - **Owner**: Agent 2
-- **Current Task**: CLI/local debug에서 validated room semantics를 actual transport spike와 terminal/result relay까지 끌어올린다
+- **Current Task**: websocket path를 parity-ready transport로 올리고 Agent 4 live parity smoke를 받는다
 - **Files In Scope**:
   - `GoStopCLI/`
   - `room_protocol.md`
@@ -123,8 +128,7 @@
 - **Depends On**:
   - Agent 1 `stateSnapshot` / `gameStarted` / `matchEnded` contract
 - **Blocks**:
-  - actual websocket/server ingress는 아직 `room_transport_*` spike를 production socket layer로 치환하지 못했다
-  - authority playerId와 room playerId를 다르게 두면 terminal/bootstrap preview payload가 viewer/presence merge를 의미 있게 못 쓴다
+  - live duplicate `actionId` exactReplay / conflictReject semantics가 actual gameplay transport probe에서 아직 닫히지 않았다
 - **Ready For Merge**: `NO`
 - **Validation**:
   - [x] room/session Swift model 타입 추가
@@ -146,11 +150,23 @@
   - [x] CLI `room_transport_connect/send/receive` websocket-equivalent spike 추가
   - [x] DEBUG facade에 `recordGameStartedAndFetchBootstrap`, `projectionPreview`, `recordMatchEndedAndFetchTerminalSummary` 추가
   - [x] transport spike smoke에서 queued `gameEvent` / `terminalSummary` 확인
-- **Latest Update**: terminal/result route는 이제 room metadata plan에서 멈추지 않는다. `recordMatchEnded`는 `terminalSummaryRelayRequest`를 만들고, CLI direct relay와 `room_transport_send(action=recordMatchEndedAndFetchTerminalSummary)`가 실제 `get_multiplayer_terminal_summary` payload를 consumer mailbox까지 전달한다. bootstrap/projection/terminal preview는 모두 shared `participantPresenceByPlayerId` builder를 쓰도록 맞췄고, Agent 4는 `room_transport_connect -> room_transport_send(hello/setReady/recordGameStartedAndPrepareBootstrap/recordMatchEndedAndFetchTerminalSummary) -> room_transport_receive` 순서로 socket smoke를 붙이면 된다.
+  - [x] `room_transport_send` gameplay action `playCard`, `submitChoice`, `quit`, `leaveRoom` 추가
+  - [x] stale `expectedStateVersion` path에서 `actionRejected -> stateSnapshot(reason=resync)` queue 확인
+  - [x] `quit` path에서 `actionAccepted`, `roundEnded`, `matchEnded`, `terminalSummary` fan-out 확인
+  - [x] `leaveRoom` result dismissal path에서 final `roomClosed` room event 확인
+  - [x] `GoStopCLI --room-transport-server` TCP binding skeleton 추가 및 localhost smoke 확인
+  - [x] room seat/session lookup 기반 room `playerId -> authority playerId` mapping을 gameplay/bootstrap/projection/terminal relay에 적용
+  - [x] direct/transport terminal relay에서 `roundEnded`, `matchEnded`, `terminalSummary` socket probe PASS
+  - [x] socket mode `MP-008` live `stateSnapshot(reason=resync)` PASS
+  - [x] `GoStopCLI --room-transport-websocket-server` websocket listener skeleton 추가 및 startup 확인
+  - [x] websocket/TCP startup을 shared `RoomTransportServer` boundary로 공용화
+  - [x] transport gameplay path에 duplicate `actionId` exact replay / conflict reject 노출
+  - [x] websocket path에 per-connection serial frame send queue 추가
+- **Latest Update**: websocket path는 same `RoomCoordinatorCLIAdapter`를 그대로 재사용하면서 per-connection serial frame send queue를 추가해 request/response ordering을 고정했다. Agent 4 compare smoke 기준 `MP-001`, `MP-002`, `MP-008`, `MP-013`, `MP-014`는 websocket/TCP parity PASS고, stale heartbeat reject와 resume reject도 `staleConnectionId` / `invalidResumeState`로 유지된다. 남은 transport blocker는 `MP-004` live duplicate probe에서 exact resend가 `exactReplay`가 아니라 stale reject/resync로 빠지고 conflicting reuse도 `actionIdConflict` 대신 same stale reject로 귀결되는 점이다.
 
 ## Agent 3: iOS Multiplayer Client / UX
 - **Owner**: Agent 3
-- **Current Task**: DEBUG `MP Lab`의 live/result route를 authoritative helper 기반으로 유지하면서, 실제 room/websocket relay 전 blocker를 줄이기
+- **Current Task**: first real websocket transport source를 app shell boundary 위에 mount하고, create/resume/result dismissal을 authoritative room lifecycle 기준으로 유지하기
 - **Files In Scope**:
   - `GoStop/Views/`
   - `GoStop/ViewModels/`
@@ -161,10 +177,10 @@
   - Agent 2 room/websocket envelope
 - **Blocks**:
   - Agent 2: invite flow가 human-readable share code를 요구하면 `inviteCode` 또는 equivalent join identifier shape 확정 필요
-  - networking adapter와 persisted session storage가 아직 `Multiplayer*ShellState`로 연결되지 않음
-  - `match.end.*` localization key와 leave completion 정책이 result shell/navigation에 아직 연결되지 않음
-  - coordinator tab result는 authoritative terminal helper까지 연결됐지만, actual room/websocket `matchEnded` relay와 `roomClosed` completion path는 아직 미연결
-  - product `Leave Room`은 아직 lab reset으로 대체되어 있고 실제 `leaveRoom`/`roomClosed` UX policy가 잠기지 않음
+  - final REST bootstrap split은 아직 안 붙었다. 현재 first real source는 Agent 2 websocket command boundary(`room_create`, `room_join`, `room_transport_*`)를 사용한다
+  - `match.end.*`, `match.result.leave.*`, `room.closed.*`, `match.choice.shake.actor_only_waiting` key 중 일부는 message catalog entry가 아직 없어 raw key/detail fallback이 남는다
+  - product navigation mount는 아직 `MP Lab` 밖으로 올라오지 않았다
+  - production source의 gameplay card / choice command send path는 아직 안 붙었다
 - **Ready For Merge**: `NO`
 - **Validation**:
   - [x] room 진입 흐름 문서화
@@ -184,23 +200,32 @@
   - [x] `GoStop` iOS target build에서 shell/state 변경 컴파일 확인
   - [x] authoritative `stateSnapshot(reason=gameStarted)` -> live shell 연결
   - [x] local debug `Apply matchEnded` -> authoritative terminal payload -> result shell 바인딩
-  - [ ] shake `actorOnly` redaction UI policy 최종 검증
-- **Latest Update**: DEBUG `MP Lab`은 여전히 `create -> host hello -> guest join -> guest hello -> host ready -> guest ready -> gameStarted -> live -> disconnect -> resume`를 실제 room/session mutation 기준으로 보여준다. 이번 턴에서는 `MultiplayerShellViews.swift` result 섹션 brace hotfix로 iOS compile regression을 닫았고, `MultiplayerLocalDebugShellSource`가 stable transient `GameManager`를 재사용하면서 `Apply matchEnded` control에서 `TestControlSupport.multiplayerTerminalSummaryPayload`를 생성해 `showResult`로 진입하도록 연결했다. result CTA는 actual `roomClosed`/leave ack 전까지 disabled `Leave Room Pending` 정책으로 표시한다.
+  - [x] result dismissal이 local debug `leaveRoom -> explicit leave ack or roomClosed` authoritative signal에 맞춰 entry로 종료되는지 확인
+  - [x] shake `actorOnly` redaction UI policy 최종 검증
+  - [x] `MultiplayerTransportShellSource`로 persisted resume `hello resume` attach와 result `leaveRoom`의 future production entrypoint 고정
+  - [x] `MultiplayerBufferedTransportAdapter`가 Agent 2 envelope(`helloAck`, `roomSnapshot`, `gameEvent`, `roomEvent`, `terminalSummary`)를 `MultiplayerShellInboundEvent`로 decode
+  - [x] app shell direct entrypoint `activateTransportSource()` / `persistedResumeAttachRequest()` / `resumePersistedSessionOverTransport()` / `ingestTransportEnvelope(data,jsonObject)` / `sendAuthoritativeLeaveFromResult()` 추가
+  - [x] `MultiplayerWebSocketCommandNetworkingAdapter`를 `MultiplayerShellNetworkingAdapter` concrete 구현으로 연결
+  - [x] `MP Lab > Transport` 탭에서 real websocket command source mount 확인
+  - [x] transport source가 actual `Create Room -> Join Guest -> Ready -> Guest Ready -> Apply gameStarted -> Apply matchEnded` flow를 Agent 2 websocket command boundary로 보냄
+  - [x] result dismissal이 transport `memberLeft(local)` 또는 `roomClosed` authoritative signal에만 반응하도록 유지
+  - [x] shell rendering path가 `gameText(...)`를 통해 `match.end.*`, `match.result.leave.*`, `room.closed.*`, shake actor-only waiting copy를 우선 resolve
+- **Latest Update**: `MP Lab > Transport`는 now `MultiplayerWebSocketCommandNetworkingAdapter`를 통해 Agent 2 websocket command server를 실제로 소비한다. local host create는 `room_create + room_transport_connect/send(action=hello)`를 타고, peer join/ready는 secondary guest websocket client가 `room_join + room_transport_*`를 사용해 room truth를 바꾼 뒤 host store가 authoritative `roomSnapshot`/`gameEvent`만 다시 그린다. persisted resume는 real `hello resume` attach로 이어지고, result route는 transport `memberLeft(local)`를 leave completion으로 매핑하거나 final `roomClosed`를 받을 때만 entry로 닫힌다. create/join은 아직 REST split이 아니라 websocket command boundary 위에 있고, main app product route mount는 여전히 후속 작업이다.
 
 ## Agent 4: Debugging / Test Scenarios / Observability
 - **Owner**: Agent 4
-- **Current Task**: fixture/CLI green 상태를 유지하면서 `--mode socket` live spike를 키우고, MP-008을 gameplay resync smoke로 올릴 준비를 계속한다
+- **Current Task**: fixture/CLI/socket green 상태를 유지하면서 TCP fallback vs websocket parity smoke를 계속 돌리고, live duplicate `actionId` blocker를 artifact로 좁힌다
 - **Files In Scope**:
   - `tests/test_agent/multiplayer_runner.py`
   - `tests/test_agent/multiplayer/`
   - `multiplayer_test_scenarios.md`
   - `agent_sync_board.md`
 - **Depends On**:
-  - Agent 2가 `room_transport_send` 또는 equivalent live surface에 gameplay command + `expectedStateVersion`를 실어 보낼 수 있어야 MP-008 end-to-end smoke가 닫힌다
+  - Agent 2 duplicate `actionId` gameplay semantics가 actual transport에서 `exactReplay` / `conflictReject`로 잠겨야 live duplicate smoke가 닫힌다
 - **Blocks**:
   - websocket debug connect 경로의 stale heartbeat error envelope가 CLI ingress와 같은 code를 유지하는지 확인 필요
-  - `room_transport_*` spike 기반 socket smoke는 붙었지만, actual websocket room->engine relay smoke는 아직 없다
-  - `room_transport_send`가 gameplay command + `expectedStateVersion`를 아직 지원하지 않아 MP-008 live resync는 preflight BLOCKED다
+  - `MP-004` live duplicate probe가 TCP fallback / websocket 공통으로 `exactReplay` 대신 stale reject/resync를 받고 있다
+  - dropped-event gap 기반 MP-008 future extension은 아직 live transport에 연결되지 않았다
 - **Ready For Merge**: `NO`
 - **Validation**:
   - [x] `MP-001 ~ MP-008` 상세 draft 작성
@@ -226,10 +251,21 @@
   - [x] `--mode socket` runner entry와 `socket-smoke` suite 추가
   - [x] socket mode에서 `MP-001` paired bootstrap PASS
   - [x] socket mode에서 `MP-014` stale heartbeat reject parity PASS
-  - [x] socket mode에서 `MP-008` hook attachment preflight + mismatch artifact generation
-  - [ ] stale `expectedStateVersion` override를 실제 gameplay resync smoke로 연결
-  - [ ] actual websocket room->engine relay smoke
-- **Latest Update**: multiplayer harness는 `MP-001/002/003/004/005/006/007/008/013/014` fixture PASS 상태를 유지한다. CLI smoke `ready-start`는 explicit `room_record_game_started -> room_snapshot(inGame) -> get_multiplayer_game_started_bootstrap` 순서로 paired bootstrap을 assert하고, `mp008-gameplay-resync`는 현재 hook attachment preflight까지 유지한다. 새 `--mode socket` runner는 GoStopCLI `room_transport_connect/send/receive` spike에 붙어 `MP-001` bootstrap PASS와 `MP-014` stale heartbeat parity PASS를 확인한다. `MP-008`은 stale `expectedStateVersion` override hook을 live bootstrap 뒤에 부착하는 preflight artifact까지는 올라왔고, gameplay command transport surface가 없어 end-to-end resync는 아직 BLOCKED다.
+  - [x] socket mode를 actual GoStopCLI `--room-transport-server` TCP facade로 승격
+  - [x] stale `expectedStateVersion` override를 실제 gameplay resync probe로 연결
+  - [x] socket mode에서 `MP-008` live `actionRejected(staleStateVersion)` + recovery snapshot delivery 확인
+  - [x] socket runner에 `--binary` / cached derived data 우선 reuse 경로 추가
+  - [x] socket terminal lifecycle probe(`MP-002`) 추가
+  - [x] socket mode에서 `MP-008` live `stateSnapshot(reason=resync)` PASS
+  - [x] socket mode에서 `MP-002` live `roundEnded`, `matchEnded`, `terminalSummary`, `roomClosed` PASS
+  - [x] socket mode에서 `MP-013` actor/peer shake redaction PASS
+  - [x] `socket-review-fixups` suite로 `MP-013/014` actual TCP facade 재검증
+  - [x] GoStopCLI websocket transport parity smoke (`MP-001`, `MP-002`, `MP-008`, `MP-013`, `MP-014`) PASS
+  - [x] socket runner `--transport tcp|websocket|compare`와 `transport_parity.json` compare artifact 추가
+  - [x] `socket-duplicate` suite + `duplicate_probe.json` artifact 추가
+  - [ ] `MP-004` live duplicate exactReplay / conflictReject PASS
+- **Latest Update**: latest cached binary를 재사용한 compare smoke 기준 websocket/TCP parity는 `MP-001`, `MP-002`, `MP-008`, `MP-013`, `MP-014`에서 PASS다. `tests/test_agent/multiplayer_runner.py --suite socket-parity --mode socket --transport compare --skip-build`가 ordering/terminal/resync/privacy/heartbeat semantics를 같은 artifact layout으로 잠근다. 남은 live blocker는 `MP-004`: `tests/test_agent/multiplayer_runner.py --suite socket-duplicate --mode socket --transport compare --skip-build`에서 exact duplicate resend가 `duplicateActionIdDisposition=exactReplay`를 돌려주지 않고, conflicting reuse도 `actionIdConflict` 대신 `staleStateVersion` reject + `stateSnapshot(reason=resync)`로 떨어진다. offline-friendly 실행을 위해 socket runner와 CLI smoke는 계속 `--binary`와 known cached derived data reuse를 fresh build보다 우선한다.
+  - latest cached root priority는 `/tmp/gostop_cli_agent4_round7_recheck`, `/tmp/gostop_cli_round7_review`를 우선 사용하도록 정리했다.
 
 ## Handoff Notes
 
@@ -253,12 +289,21 @@
   - `MultiplayerResyncDirective` / `MultiplayerStaleStateVersionRejectDetails` / `MultiplayerPatchGapResyncDetails` 추가
   - `MultiplayerTerminalSummaryPayload`, `matchEnded.roundIndex`, enriched `get_multiplayer_terminal_summary` metadata 추가
   - authority replay retention policy를 `privilegedDebugOnly`로 고정
+  - `playCard` / `submitChoice` / `quit` `room_transport_send` relay-ready sample과 success/failure envelope sequence를 고정
+  - stale `expectedStateVersion` reject 뒤 `stateSnapshot(reason=resync)` websocket recovery pair ordering을 고정
+  - `dropGameEvents`를 Phase 6 smoke hook으로 올리지 않고 future extension으로 유지한다고 결정
+  - authority `playerId`와 room `playerId` mapping owner를 room/session layer로 고정하고 `playerIdentityBindings { roomPlayerId, authorityPlayerId }` binding shape를 추가
+  - `MultiplayerResyncDirective.snapshotReason`을 recovery-only enum으로 좁혀 live stale recovery에서 `localPreview`를 배제
+  - transport terminal minimum required fields를 `roundEnded`, `matchEnded`, `terminalSummary`별로 다시 좁혀 sample payload로 고정
+  - authority identity field matrix와 terminal validator mutual-condition rule(`settlementSummary` vs `forfeitingPlayerId`)를 추가
+  - duplicate `actionId` precedence rule을 고정: duplicate resolution은 `staleStateVersion`보다 먼저 일어나고, exact resend는 `exactReplay`, conflicting reuse는 `actionIdConflict` reject여야 한다
 - 미완료 항목:
-  - dropped game event 기반 gap injection을 P1 future extension으로 둘지 별도 smoke hook으로 올릴지 후속 합의
+  - actual websocket/server binding이 same `playerIdentityBindings`와 `resync` rule을 유지하는지 live parity 확인
 - 리스크:
   - room layer가 `participantPresenceByPlayerId` merge를 누락하면 projection에는 `presenceSource=unknown`이 남는다
   - Agent 3는 local debug `showLive` 전환 시 Agent 2 `recordGameStarted`와 Agent 1 bootstrap payload를 같은 버튼/flow에 묶되, visible state source of truth를 항상 `stateSnapshot(reason=gameStarted)`에 두어야 한다
   - MP-008 P0는 stale command override path만 잠겼고, dropped game event 기반 gap injection은 아직 future extension이다
+  - room/player identity가 분리되면 `winnerPlayerId` / `forfeitingPlayerId` / `choiceRequested.actorPlayerId` 같은 authority 필드를 room identity로 오해하지 않도록 transport mapper가 필요하다
 
 ### Agent 2
 - 완료 항목:
@@ -310,15 +355,19 @@
   - fixture mode로 `MP-001..MP-008`, `MP-013`, `MP-014` PASS 확인
   - `scripts/run_multiplayer_cli_two_player_smoke.py --scenario all`로 `ready-start`, `disconnect-resume`, `heartbeat-guard`, `mp008-hook-surface`, `mp008-gameplay-resync` preflight smoke 묶음 추가
   - `ready-start` smoke에 explicit `room_record_game_started` + paired `get_multiplayer_game_started_bootstrap` assert 추가
-  - `tests/test_agent/multiplayer_runner.py --mode socket`와 `tests/test_agent/multiplayer/socket_transport.py`로 live transport spike smoke 경로 추가
-  - socket mode `MP-001` bootstrap PASS, `MP-014` stale heartbeat parity PASS 확인
+  - `tests/test_agent/multiplayer_runner.py --mode socket`와 `tests/test_agent/multiplayer/socket_transport.py`로 actual GoStopCLI `--room-transport-server` TCP smoke 경로 추가
+  - socket mode `MP-001`, `MP-002`, `MP-008`, `MP-014` green smoke 유지
+  - socket mode `MP-013` actor/peer shake redaction PASS 및 `socket-review-fixups` suite 추가
+  - socket runner / CLI smoke에 cached binary reuse 우선 경로 추가
   - local debug manual checklist를 `create/join/ready/start/live/disconnect/resume` 단계로 재정리
   - `Join Invite` unsupported/error path를 explicit validation point로 추가
 - 미완료 항목:
-  - stale `expectedStateVersion` override를 actual gameplay resync smoke로 연결
   - actual websocket binding으로 `room_transport_*` spike smoke를 치환
+  - websocket debug connect 경로에서 `MP-013/014` parity를 다시 잠금
+  - dropped-event gap 기반 MP-008 future extension live smoke 추가
 - 리스크:
   - websocket debug connect 경로가 CLI ingress와 다른 stale heartbeat error envelope를 쓰면 `MP-014` 실제 transport smoke가 다시 어긋날 수 있음
   - shake privacy 회귀는 hidden-info leak이므로 actor/non-actor projection pair artifact를 항상 남겨야 안전함
-  - current socket smoke는 GoStopCLI `room_transport_*` spike 기준이므로, future external websocket room->engine relay path가 끼어들면 별도 transport smoke가 필요함
+  - current socket smoke는 GoStopCLI TCP facade 기준이므로, future external websocket room->engine relay path가 끼어들면 별도 parity smoke가 필요함
+  - live projection이 authority `playerId`를 사용해 `playCard` path가 아직 room `playerId`와 직접 맞지 않는다
   - `Join Invite`가 unsupported인지 intended error path인지 UI/source contract가 모호하면 RF-002가 다시 숨어들 수 있음

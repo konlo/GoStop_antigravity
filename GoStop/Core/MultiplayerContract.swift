@@ -59,6 +59,11 @@ enum MultiplayerRejectCode: String, Codable {
     case invalidState
 }
 
+enum MultiplayerDuplicateActionIdDisposition: String, Codable {
+    case exactReplay
+    case conflictReject
+}
+
 enum MultiplayerProjectionScope: String, Codable {
     case player
     case authority
@@ -76,6 +81,11 @@ enum MultiplayerSnapshotReason: String, Codable {
     case resync
     case gapDetected
     case localPreview
+}
+
+enum MultiplayerRecoverySnapshotReason: String, Codable {
+    case resync
+    case gapDetected
 }
 
 enum MultiplayerResyncTrigger: String, Codable {
@@ -215,7 +225,7 @@ struct MultiplayerRejectReason: Codable {
 
 struct MultiplayerResyncDirective: Codable {
     let trigger: MultiplayerResyncTrigger
-    let snapshotReason: MultiplayerSnapshotReason
+    let snapshotReason: MultiplayerRecoverySnapshotReason
     let clientStateVersion: Int?
     let expectedStateVersion: Int?
     let authoritativeStateVersion: Int
@@ -430,6 +440,11 @@ struct MultiplayerParticipantPresence: Codable {
     let source: MultiplayerPresenceSource
     let isConnected: Bool?
     let isReady: Bool?
+}
+
+struct MultiplayerPlayerIdentityBinding: Codable {
+    let roomPlayerId: String
+    let authorityPlayerId: String
 }
 
 struct MultiplayerProjectionContext: Codable {
