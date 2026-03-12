@@ -251,18 +251,21 @@ def _p0_scenarios() -> list[ScenarioDefinition]:
             scenario_id="MP-007",
             name="Reconnect expiry triggers forfeit path",
             priority="P0",
-            automation="Scaffolded",
-            focus="resumeExpired + terminal forfeit ordering",
-            description="Let reconnect grace expire and verify resume rejection plus terminal forfeit handling.",
+            automation="Scaffolded + fixture + socket passive-close timeout parity smoke",
+            focus="passive disconnect binding + resumeExpired + terminal forfeit ordering",
+            description="Close the live transport connection, let reconnect grace expire, and verify resume rejection plus terminal forfeit handling.",
             steps=[
-                "Disconnect a player in starting or inGame.",
+                "Close one player's actual transport connection in starting or inGame.",
                 "Advance beyond the 30 second reconnect grace.",
                 "Attempt resume with the last valid session credentials.",
-                "Persist resumeExpired and terminal room/game outcome.",
+                "Persist resumeExpired plus synthetic quit(reason=disconnectTimeout) terminal room/game outcome.",
+                "Reap result retention later and verify roomClosed completion.",
             ],
             assertions=[
+                "Passive close emits roomEvent(playerDisconnected) before timeout fan-out.",
                 "Resume attempt is rejected after grace expiry.",
                 "starting/inGame expiry leads to a forfeit path instead of silent closure.",
+                "Terminal path emits actionAccepted, roundEnded, matchEnded, terminalSummary, and later roomClosed.",
                 "Terminal summary captures timeout/forfeit reason and affected actor.",
             ],
             observability=[
@@ -273,14 +276,23 @@ def _p0_scenarios() -> list[ScenarioDefinition]:
             required_events=[
                 "roomEvent:playerDisconnected",
                 "error:resumeExpired",
-                "roomEvent:playerForfeited|roomEvent:roomClosed",
+                "gameEvent:actionAccepted",
+                "gameEvent:roundEnded",
                 "gameEvent:matchEnded",
+                "terminalSummary",
+                "roomEvent:playerForfeited",
+                "roomEvent:roomClosed",
             ],
             required_artifacts=[
                 "manifest.json",
                 "timeline/events.ndjson",
                 "snapshots/latest_server.json",
+                "timeout_probe.json",
                 "anomaly_report.md",
+            ],
+            notes=[
+                "Socket mode now binds actual passive socket close to the same timeout path and records the resulting disconnect/terminal/roomClosed ordering in timeout_probe.json.",
+                "Expected live ordering is playerDisconnected after passive close, then synthetic quit(reason=disconnectTimeout) -> actionAccepted -> roundEnded -> matchEnded -> terminalSummary, and a later reap closes the room.",
             ],
         ),
         ScenarioDefinition(
@@ -320,6 +332,7 @@ def _p0_scenarios() -> list[ScenarioDefinition]:
                 "snapshots/latest_server.json",
                 "replay/replay_manifest.json",
                 "replay/injection_manifest.json",
+                "replay/gap_injection_plan.json",
             ],
             notes=[
                 "The locked deterministic path is stale expectedStateVersion override; dropped event gap remains a future extension.",
@@ -327,6 +340,7 @@ def _p0_scenarios() -> list[ScenarioDefinition]:
                 "Socket mode now executes the live stale-version probe over TCP using a deterministic quit command after start_game warmup.",
                 "Current live socket smoke asserts actionRejected(staleStateVersion) plus stateSnapshot(reason=resync) on the same transport run.",
                 "playCard mapping drift is no longer a blocker for the locked P0 quit-based resync path.",
+                "The tighter future-extension plan is a per-session dropGameEvents preflight that records targetClientId, droppedEnvelopeCount, lastDeliveredEventId, and expected gapDetected recovery snapshot fields before any live transport probe is attempted.",
             ],
         ),
     ]
@@ -404,6 +418,11 @@ def _review_regression_scenarios() -> list[ScenarioDefinition]:
                 "timeline/commands.ndjson",
                 "timeline/events.ndjson",
                 "snapshots/latest_server.json",
+                "heartbeat_probe.json",
+            ],
+            notes=[
+                "Agent 2 locked Phase 0 heartbeat handling to explicit reject, not audit-only ignore.",
+                "Socket compare smoke keeps invalidResumeState and staleConnectionId parity on both TCP fallback and websocket transports.",
             ],
         ),
     ]
@@ -414,9 +433,12 @@ REVIEW_REGRESSION_SCENARIOS = _review_regression_scenarios()
 ALL_SCENARIOS = [*P0_SCENARIOS, *REVIEW_REGRESSION_SCENARIOS]
 SCENARIO_REGISTRY = {scenario.scenario_id: scenario for scenario in ALL_SCENARIOS}
 SMOKE_SCENARIOS = [SCENARIO_REGISTRY[scenario_id] for scenario_id in ("MP-001", "MP-006")]
-SOCKET_SMOKE_SCENARIOS = [SCENARIO_REGISTRY[scenario_id] for scenario_id in ("MP-001", "MP-002", "MP-008", "MP-014")]
+SOCKET_SMOKE_SCENARIOS = [
+    SCENARIO_REGISTRY[scenario_id] for scenario_id in ("MP-001", "MP-002", "MP-007", "MP-008", "MP-014")
+]
 SOCKET_PARITY_SCENARIOS = [
-    SCENARIO_REGISTRY[scenario_id] for scenario_id in ("MP-001", "MP-002", "MP-008", "MP-013", "MP-014")
+    SCENARIO_REGISTRY[scenario_id]
+    for scenario_id in ("MP-001", "MP-002", "MP-004", "MP-007", "MP-008", "MP-013", "MP-014")
 ]
 SOCKET_DUPLICATE_SCENARIOS = [SCENARIO_REGISTRY["MP-004"]]
 SOCKET_REVIEW_FIXUP_SCENARIOS = [SCENARIO_REGISTRY[scenario_id] for scenario_id in ("MP-013", "MP-014")]

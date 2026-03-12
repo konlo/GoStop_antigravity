@@ -74,6 +74,7 @@ private struct RoomTransportSendCLIRequest: Codable {
     var summaryStateVersion: Int?
     var lastEventId: String?
     var lastSeen: RoomHelloCursor?
+    var asOf: Date?
 }
 
 private struct RoomTransportReceiveCLIRequest: Codable {
@@ -131,6 +132,11 @@ private struct RoomTransportResolvedGameplayCommand {
     var expectedStateVersion: Int
     var commandName: MultiplayerCommandName
     var commandPayload: [String: Any]
+}
+
+private struct RoomTransportDisconnectResolution {
+    var client: RoomTransportClientState
+    var mutation: RoomCoordinatorMutation
 }
 
 struct RoomAuthorityGameplayExecutionRequest {
@@ -614,6 +620,21 @@ final class RoomCoordinatorCLIAdapter {
                     "queuedEnvelopeCount": transportMailboxes[payload.clientId]?.count ?? 0,
                 ]
             )
+        case "disconnect":
+            let resolution = try disconnectTransportClient(
+                clientId: payload.clientId,
+                expectedConnectionId: client.connectionId,
+                requireExpectedConnectionId: false
+            )
+            return success(
+                action: action,
+                data: [
+                    "transportAction": payload.action,
+                    "mutation": resolution.map { mutationResponse($0.mutation) } ?? NSNull(),
+                    "noop": resolution == nil,
+                    "queuedEnvelopeCount": transportMailboxes[payload.clientId]?.count ?? 0,
+                ]
+            )
         case "leaveRoom":
             let mutation = try coordinator.leaveRoom(
                 LeaveRoomRequest(
@@ -648,6 +669,23 @@ final class RoomCoordinatorCLIAdapter {
                 action: action,
                 data: [
                     "transportAction": payload.action,
+                    "queuedEnvelopeCount": transportMailboxes[payload.clientId]?.count ?? 0,
+                ]
+            )
+        case "reapExpiredState":
+            let mutations = try coordinator.reapExpiredState(asOf: payload.asOf ?? Date())
+            try relayExpiredTransportMutations(
+                mutations,
+                initiatedByClientId: payload.clientId,
+                traceId: payload.traceId
+            )
+            return success(
+                action: action,
+                data: [
+                    "transportAction": payload.action,
+                    "mutations": mutations.map(mutationResponse),
+                    "authoritativeStateVersion": transportGameStates[client.roomId]?.stateVersion ?? NSNull(),
+                    "authoritativeEventId": transportGameStates[client.roomId]?.lastEventId ?? NSNull(),
                     "queuedEnvelopeCount": transportMailboxes[payload.clientId]?.count ?? 0,
                 ]
             )
@@ -722,6 +760,24 @@ final class RoomCoordinatorCLIAdapter {
         default:
             throw RoomCLIAdapterError.unsupportedTransportAction(payload.action)
         }
+    }
+
+    @discardableResult
+    func handlePassiveTransportTeardown(
+        clientId: String,
+        expectedConnectionId: String?
+    ) -> [String: Any]? {
+        guard let resolution = try? disconnectTransportClient(
+            clientId: clientId,
+            expectedConnectionId: expectedConnectionId,
+            requireExpectedConnectionId: true
+        ) else {
+            return nil
+        }
+        return [
+            "client": serializeTransportClient(resolution.client),
+            "mutation": mutationResponse(resolution.mutation),
+        ]
     }
 
     private func enqueueResumeSnapshotIfNeeded(
@@ -1317,12 +1373,6 @@ final class RoomCoordinatorCLIAdapter {
         authorityRelay: RoomAuthorityRelay,
         action: String
     ) throws -> [String: Any] {
-        let gameId = roomSnapshot.room.activeGameId ?? currentGameState.gameId
-        let nextStateVersion = currentGameState.stateVersion + 1
-        let actionAcceptedEventId = nextGameEventID(for: client.roomId)
-        let roundEndedEventId = nextGameEventID(for: client.roomId)
-        let matchEndedEventId = nextGameEventID(for: client.roomId)
-
         let quitReasonRaw = (resolvedCommand.commandPayload["reason"] as? String) ?? MultiplayerQuitReason.voluntaryExit.rawValue
         let mutation = try coordinator.recordMatchEnded(
             RecordMatchEndedRequest(
@@ -1330,9 +1380,141 @@ final class RoomCoordinatorCLIAdapter {
                 roundIndex: 1,
                 quitReason: quitReasonRaw,
                 forfeitingPlayerId: client.playerId,
-                summaryStateVersion: nextStateVersion,
-                lastEventId: matchEndedEventId,
+                summaryStateVersion: currentGameState.stateVersion + 1,
+                lastEventId: currentGameState.lastEventId,
                 resultRetentionAt: nil
+            )
+        )
+        let relayResult = try relayTransportQuitCommand(
+            resolvedCommand: resolvedCommand,
+            currentGameState: currentGameState,
+            authorityRelay: authorityRelay,
+            mutation: mutation
+        )
+
+        return success(
+            action: action,
+            data: [
+                "transportAction": "quit",
+                "requestId": resolvedCommand.requestId,
+                "actionId": resolvedCommand.actionId,
+                "commandName": MultiplayerCommandName.quit.rawValue,
+                "mutation": mutationResponse(relayResult.mutation),
+                "authoritativeStateVersion": relayResult.nextGameState.stateVersion,
+                "authoritativeEventId": relayResult.nextGameState.lastEventId ?? NSNull(),
+                "queuedEnvelopeCount": transportMailboxes[client.clientId]?.count ?? 0,
+            ]
+        )
+    }
+
+    private func relayExpiredTransportMutations(
+        _ mutations: [RoomCoordinatorMutation],
+        initiatedByClientId: String,
+        traceId: String?
+    ) throws {
+        let authorityRelay = self.authorityRelay
+        for mutation in mutations {
+            if let timedOutPlayerId = disconnectTimeoutForfeitingPlayerId(in: mutation),
+               let authorityRelay {
+                try relayDisconnectTimeoutMutation(
+                    mutation,
+                    forfeitingPlayerId: timedOutPlayerId,
+                    traceId: traceId,
+                    authorityRelay: authorityRelay
+                )
+                continue
+            }
+            broadcastRoomEvents(mutation.events, in: mutation.snapshot.room.roomId)
+        }
+        if transportMailboxes[initiatedByClientId] == nil {
+            transportMailboxes[initiatedByClientId] = []
+        }
+    }
+
+    private func disconnectTimeoutForfeitingPlayerId(
+        in mutation: RoomCoordinatorMutation
+    ) -> String? {
+        for event in mutation.events {
+            if case let .playerForfeited(playerId, reason) = event.payload,
+               reason == .disconnectTimeout {
+                return playerId
+            }
+        }
+        return nil
+    }
+
+    private func relayDisconnectTimeoutMutation(
+        _ mutation: RoomCoordinatorMutation,
+        forfeitingPlayerId: String,
+        traceId: String?,
+        authorityRelay: RoomAuthorityRelay
+    ) throws {
+        guard let gameId = mutation.snapshot.room.activeGameId ?? transportGameStates[mutation.snapshot.room.roomId]?.gameId else {
+            broadcastRoomEvents(mutation.events, in: mutation.snapshot.room.roomId)
+            return
+        }
+
+        let currentGameState = resolveTransportGameState(
+            roomId: mutation.snapshot.room.roomId,
+            gameId: gameId,
+            fallbackStateVersion: transportGameStates[mutation.snapshot.room.roomId]?.stateVersion ?? 0
+        )
+        let mapping = try resolveAuthorityPlayerIdMapping(
+            roomSnapshot: mutation.snapshot,
+            authorityRelay: authorityRelay,
+            gameId: gameId,
+            fallbackStateVersion: currentGameState.stateVersion,
+            lastEventId: currentGameState.lastEventId,
+            preferredRoomPlayerId: forfeitingPlayerId
+        )
+        let authorityPlayerId = mappedAuthorityPlayerId(
+            for: forfeitingPlayerId,
+            authorityPlayerIdByRoomPlayerId: mapping
+        )
+        let nextOrdinal = currentGameState.lastEventOrdinal + 1
+        let resolvedCommand = RoomTransportResolvedGameplayCommand(
+            requestId: "req_timeout_\(mutation.snapshot.room.roomId)_\(forfeitingPlayerId)_\(nextOrdinal)",
+            traceId: traceId,
+            actionId: "act_timeout_\(mutation.snapshot.room.roomId)_\(forfeitingPlayerId)_\(nextOrdinal)",
+            roomPlayerId: forfeitingPlayerId,
+            authorityPlayerId: authorityPlayerId,
+            expectedStateVersion: currentGameState.stateVersion,
+            commandName: .quit,
+            commandPayload: ["reason": MultiplayerQuitReason.disconnectTimeout.rawValue]
+        )
+        _ = try relayTransportQuitCommand(
+            resolvedCommand: resolvedCommand,
+            currentGameState: currentGameState,
+            authorityRelay: authorityRelay,
+            mutation: mutation
+        )
+    }
+
+    private struct RelayedTransportQuitResult {
+        var mutation: RoomCoordinatorMutation
+        var nextGameState: RoomTransportGameState
+        var executionResult: [String: Any]
+    }
+
+    private func relayTransportQuitCommand(
+        resolvedCommand: RoomTransportResolvedGameplayCommand,
+        currentGameState: RoomTransportGameState,
+        authorityRelay: RoomAuthorityRelay,
+        mutation: RoomCoordinatorMutation
+    ) throws -> RelayedTransportQuitResult {
+        let roomId = mutation.snapshot.room.roomId
+        let gameId = mutation.snapshot.room.activeGameId ?? currentGameState.gameId
+        let nextStateVersion = currentGameState.stateVersion + 1
+        let actionAcceptedEventId = nextGameEventID(for: roomId)
+        let roundEndedEventId = nextGameEventID(for: roomId)
+        let matchEndedEventId = nextGameEventID(for: roomId)
+        let quitReasonRaw = (resolvedCommand.commandPayload["reason"] as? String) ?? MultiplayerQuitReason.voluntaryExit.rawValue
+
+        let execution = try authorityRelay.executeGameplayCommand(
+            RoomAuthorityGameplayExecutionRequest(
+                playerId: resolvedCommand.authorityPlayerId,
+                commandName: .quit,
+                commandPayload: resolvedCommand.commandPayload
             )
         )
 
@@ -1342,7 +1524,7 @@ final class RoomCoordinatorCLIAdapter {
                 from: mutation.snapshot,
                 roundIndex: 1,
                 quitReason: quitReasonRaw,
-                forfeitingPlayerId: client.playerId,
+                forfeitingPlayerId: resolvedCommand.roomPlayerId,
                 summaryStateVersion: nextStateVersion,
                 lastEventId: matchEndedEventId
             )
@@ -1360,29 +1542,29 @@ final class RoomCoordinatorCLIAdapter {
         broadcastGameEvent(
             engineEvent: makeEngineEventEnvelope(
                 traceId: resolvedCommand.traceId,
-                roomId: client.roomId,
+                roomId: roomId,
                 gameId: gameId,
                 eventId: actionAcceptedEventId,
                 stateVersion: nextStateVersion,
                 causedByActionId: resolvedCommand.actionId,
                 eventName: .actionAccepted,
                 payload: try requireJSONObject(
-                        from: MultiplayerActionAcceptedPayload(
-                            requestId: resolvedCommand.requestId,
-                            actionId: resolvedCommand.actionId,
-                            playerId: resolvedCommand.authorityPlayerId,
-                            commandName: .quit,
-                            result: ["quitReason": AnyCodable(quitReasonRaw)]
-                        )
+                    from: MultiplayerActionAcceptedPayload(
+                        requestId: resolvedCommand.requestId,
+                        actionId: resolvedCommand.actionId,
+                        playerId: resolvedCommand.authorityPlayerId,
+                        commandName: .quit,
+                        result: execution.result.mapValues(AnyCodable.init)
                     )
-                ),
-            roomId: client.roomId,
+                )
+            ),
+            roomId: roomId,
             roomSequence: mutation.snapshot.room.lastRoomSequence
         )
         broadcastGameEvent(
             engineEvent: makeEngineEventEnvelope(
                 traceId: resolvedCommand.traceId,
-                roomId: client.roomId,
+                roomId: roomId,
                 gameId: gameId,
                 eventId: roundEndedEventId,
                 stateVersion: nextStateVersion,
@@ -1390,13 +1572,13 @@ final class RoomCoordinatorCLIAdapter {
                 eventName: .roundEnded,
                 payload: roundEndedPayload
             ),
-            roomId: client.roomId,
+            roomId: roomId,
             roomSequence: mutation.snapshot.room.lastRoomSequence
         )
         broadcastGameEvent(
             engineEvent: makeEngineEventEnvelope(
                 traceId: resolvedCommand.traceId,
-                roomId: client.roomId,
+                roomId: roomId,
                 gameId: gameId,
                 eventId: matchEndedEventId,
                 stateVersion: nextStateVersion,
@@ -1404,42 +1586,34 @@ final class RoomCoordinatorCLIAdapter {
                 eventName: .matchEnded,
                 payload: matchEndedPayload
             ),
-            roomId: client.roomId,
+            roomId: roomId,
             roomSequence: mutation.snapshot.room.lastRoomSequence
         )
-        broadcastRoomEvents(mutation.events, in: client.roomId)
+        broadcastRoomEvents(mutation.events, in: roomId)
         broadcast(
             envelope: makeTransportEnvelope(
                 type: "terminalSummary",
-                roomId: client.roomId,
+                roomId: roomId,
                 sessionId: nil,
                 roomSequence: mutation.snapshot.room.lastRoomSequence,
                 payload: terminalPayload
             ),
-            in: client.roomId
+            in: roomId
         )
 
-        transportGameStates[client.roomId] = RoomTransportGameState(
-            roomId: client.roomId,
+        let nextGameState = RoomTransportGameState(
+            roomId: roomId,
             gameId: gameId,
             stateVersion: nextStateVersion,
             lastEventOrdinal: parseEventOrdinal(from: matchEndedEventId),
             lastEventId: matchEndedEventId,
             lastTurnId: currentGameState.lastTurnId
         )
-
-        return success(
-            action: action,
-            data: [
-                "transportAction": "quit",
-                "requestId": resolvedCommand.requestId,
-                "actionId": resolvedCommand.actionId,
-                "commandName": MultiplayerCommandName.quit.rawValue,
-                "mutation": mutationResponse(mutation),
-                "authoritativeStateVersion": nextStateVersion,
-                "authoritativeEventId": matchEndedEventId,
-                "queuedEnvelopeCount": transportMailboxes[client.clientId]?.count ?? 0,
-            ]
+        transportGameStates[roomId] = nextGameState
+        return RelayedTransportQuitResult(
+            mutation: mutation,
+            nextGameState: nextGameState,
+            executionResult: execution.result
         )
     }
 
@@ -2452,6 +2626,42 @@ final class RoomCoordinatorCLIAdapter {
         ]
     }
 
+    private func disconnectTransportClient(
+        clientId: String,
+        expectedConnectionId: String?,
+        requireExpectedConnectionId: Bool
+    ) throws -> RoomTransportDisconnectResolution? {
+        guard var client = transportClients[clientId],
+              let snapshot = coordinator.snapshot(for: client.roomId),
+              let session = snapshot.sessions.first(where: { $0.sessionId == client.sessionId }),
+              session.connectionState == .connected else {
+            return nil
+        }
+
+        if requireExpectedConnectionId {
+            guard let expectedConnectionId,
+                  let currentConnectionId = client.connectionId,
+                  session.connectionId == expectedConnectionId,
+                  currentConnectionId == expectedConnectionId else {
+                return nil
+            }
+        }
+
+        let mutation = try coordinator.disconnectMember(
+            DisconnectMemberRequest(
+                roomId: client.roomId,
+                playerId: client.playerId
+            )
+        )
+        client.connectionId = nil
+        transportClients[clientId] = client
+        broadcastRoomEvents(mutation.events, in: client.roomId)
+        return RoomTransportDisconnectResolution(
+            client: client,
+            mutation: mutation
+        )
+    }
+
     private func requireAuthorityRelay() throws -> RoomAuthorityRelay {
         guard let authorityRelay else {
             throw RoomCLIAdapterError.authorityRelayUnavailable
@@ -2592,6 +2802,7 @@ final class RoomCoordinatorCLIAdapter {
     private func serializeRoom(_ room: Room) -> [String: Any] {
         [
             "roomId": room.roomId,
+            "inviteCode": serializedInviteCode(for: room) ?? NSNull(),
             "roomType": room.roomType.rawValue,
             "joinPolicy": room.joinPolicy.rawValue,
             "roomState": room.roomState.rawValue,
@@ -2603,6 +2814,13 @@ final class RoomCoordinatorCLIAdapter {
             "createdAt": dateString(room.createdAt),
             "closedAt": nullableDate(room.closedAt),
         ]
+    }
+
+    private func serializedInviteCode(for room: Room) -> String? {
+        guard room.joinPolicy == .inviteCode else {
+            return nil
+        }
+        return room.roomId
     }
 
     private func serializeMember(_ member: RoomMember) -> [String: Any] {

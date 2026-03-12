@@ -13,6 +13,9 @@ from typing import Any, Dict, Optional
 
 
 KNOWN_CLI_BINARY_ROOTS = [
+    Path("/tmp/gostop_cli_round12_agent2"),
+    Path("/tmp/gostop_cli_round11_agent4"),
+    Path("/tmp/gostop_cli_round10_agent4"),
     Path("/tmp/gostop_cli_two_player_smoke"),
     Path("/tmp/gostop_cli_agent4_round7_recheck"),
     Path("/tmp/gostop_cli_round7_review"),

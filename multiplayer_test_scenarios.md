@@ -4,7 +4,7 @@
 - **Owner**: Agent 4
 - **Primary Consumers**: Agent 1, Agent 2, Agent 3
 - **Status**: Draft
-- **Last Updated**: 2026-03-11
+- **Last Updated**: 2026-03-12
 - **Related Docs**:
   - `multiplayer_contract.md`
   - `room_protocol.md`
@@ -48,14 +48,14 @@
 - `python3 tests/test_agent/multiplayer_runner.py --list`
 - `python3 tests/test_agent/multiplayer_runner.py --all-p0`
 - `python3 tests/test_agent/multiplayer_runner.py --suite smoke --mode fixture`
-- `python3 tests/test_agent/multiplayer_runner.py --suite socket-smoke --mode socket --binary /tmp/gostop_cli_agent4_round7_recheck/Build/Products/Debug/GoStopCLI --skip-build`
+- `python3 tests/test_agent/multiplayer_runner.py --suite socket-smoke --mode socket --binary /tmp/gostop_cli_round12_agent2/Build/Products/Debug/GoStopCLI --skip-build`
 - `python3 tests/test_agent/multiplayer_runner.py --suite socket-parity --mode socket --transport compare --skip-build`
 - `python3 tests/test_agent/multiplayer_runner.py --suite socket-duplicate --mode socket --transport compare --skip-build`
-- `python3 tests/test_agent/multiplayer_runner.py --suite socket-review-fixups --mode socket --binary /tmp/gostop_cli_agent4_round7_recheck/Build/Products/Debug/GoStopCLI --skip-build`
+- `python3 tests/test_agent/multiplayer_runner.py --suite socket-review-fixups --mode socket --binary /tmp/gostop_cli_round12_agent2/Build/Products/Debug/GoStopCLI --skip-build`
 - `python3 tests/test_agent/multiplayer_runner.py --suite review-fixups --mode fixture`
 - `python3 tests/test_agent/multiplayer_runner.py --scenario MP-001 --output-root /tmp/gostop_multiplayer_scaffold`
 - `python3 tests/test_agent/multiplayer_runner.py --all-p0 --mode fixture --output-root /tmp/gostop_multiplayer_fixture`
-- `python3 tests/test_agent/multiplayer_runner.py --scenario MP-008 --mode socket --binary /tmp/gostop_cli_agent4_round7_recheck/Build/Products/Debug/GoStopCLI --skip-build --output-root /tmp/gostop_multiplayer_socket`
+- `python3 tests/test_agent/multiplayer_runner.py --scenario MP-008 --mode socket --binary /tmp/gostop_cli_round12_agent2/Build/Products/Debug/GoStopCLI --skip-build --output-root /tmp/gostop_multiplayer_socket`
 - `python3 scripts/run_multiplayer_cli_two_player_smoke.py --scenario all --output-root /tmp/gostop_multiplayer_cli_smoke`
 
 ### Files
@@ -72,7 +72,7 @@
 - `tests/test_agent/multiplayer/runner.py`
   - scaffold / fixture / socket runner that materializes artifacts without touching single-player harness
 - `tests/test_agent/multiplayer/socket_transport.py`
-  - actual GoStopCLI `--room-transport-server` TCP fallback + `--room-transport-websocket-server` websocket binding for socket mode, with live parity smoke for `MP-001`, `MP-002`, `MP-008`, `MP-013`, `MP-014` and live duplicate blocker capture for `MP-004`
+  - actual GoStopCLI `--room-transport-server` TCP fallback + `--room-transport-websocket-server` websocket binding for socket mode, with live parity smoke for `MP-001`, `MP-002`, `MP-004`, `MP-007`, `MP-008`, `MP-013`, `MP-014`
 - `tests/test_agent/multiplayer/fixtures.py`
   - synthetic room/game transcript fixtures for `MP-001 ~ MP-008`, `MP-013`, `MP-014`
 - `tests/test_agent/multiplayer/validators.py`
@@ -104,10 +104,10 @@
 | MP-001 | room 생성부터 `gameStarted` 수신까지 bootstrap 성공 | P0 | Scaffolded runner + fixture + CLI smoke + socket parity smoke | room lifecycle + initial snapshot + ID continuity | Fixture PASS / CLI PASS / TCP=websocket PASS |
 | MP-002 | 정상 1판 종료 및 결과 정산 일관성 | P0 | Scaffolded runner + fixture + socket terminal parity smoke | deterministic end-of-round + final summary + roomClosed completion | Fixture PASS / TCP=websocket PASS |
 | MP-003 | 현재 턴이 아닌 플레이어 action reject | P0 | Scaffolded runner + fixture | reject correlation + no gameplay mutation | Fixture PASS |
-| MP-004 | duplicate `actionId` resend의 idempotency | P0 | Scaffolded runner + fixture + socket duplicate smoke | duplicate handling + single apply guarantee | Fixture PASS / TCP=websocket BLOCKED |
+| MP-004 | duplicate `actionId` resend의 idempotency | P0 | Scaffolded runner + fixture + socket duplicate smoke | duplicate handling + single apply guarantee | Fixture PASS / TCP=websocket PASS |
 | MP-005 | `choiceRequested` 이후 invalid choice code reject | P0 | Scaffolded runner + fixture | invalid choice diagnostics + pending choice stability | Fixture PASS |
 | MP-006 | disconnect 후 grace period 내 resume | P0 | Scaffolded runner + fixture | reconnect path + snapshot recovery + input lock | Fixture PASS |
-| MP-007 | reconnect grace period 초과 처리 | P0 | Scaffolded runner + fixture | expiry behavior + reject/forfeit ordering | Fixture PASS |
+| MP-007 | reconnect grace period 초과 처리 | P0 | Scaffolded runner + fixture + socket passive-close timeout parity smoke | passive disconnect binding + reject/forfeit ordering + terminal close completion | Fixture PASS / TCP=websocket PASS |
 | MP-008 | stateVersion mismatch 후 snapshot resync | P0 | Scaffolded runner + fixture-backed stale-version resync + socket gameplay parity smoke | drift detection + authoritative resync | Fixture PASS / TCP=websocket PASS |
 | MP-009 | room ready timeout | P1 | Planned | lobby timeout policy | Draft |
 | MP-010 | in-turn timeout 처리 | P1 | Planned | turn timer policy | Draft |
@@ -260,8 +260,9 @@
   - `duplicate_probe.json`
 - **Current Live Status**:
   - fixture transcript는 PASS다.
-  - actual TCP fallback / websocket compare smoke는 같은 blocker를 재현한다.
-  - observed live blocker: duplicate resend가 `exactReplay` 대신 fresh `staleStateVersion -> stateSnapshot(reason=resync)` 경로로 빠지고, conflicting reuse도 `actionIdConflict` 대신 same stale reject로 귀결된다.
+  - actual TCP fallback / websocket compare smoke도 PASS다.
+  - exact same resend는 `duplicateActionIdDisposition=exactReplay`와 기존 authoritative `eventId` replay를 유지한다.
+  - conflicting reuse는 `duplicateActionIdDisposition=conflictReject`와 `actionRejected(code=actionIdConflict)`로 분리된다.
 
 ### MP-005: invalid choice code reject
 - **Goal**: `choiceRequested` 이후 허용되지 않은 choice code를 보내면 reject가 충분한 진단 정보와 함께 발생하는지 검증한다.
@@ -322,13 +323,15 @@
   - disconnect된 player의 grace timer가 시작됨
   - wait 또는 mocked clock으로 expiry 유도 가능
 - **Steps**:
-  1. 특정 플레이어 연결을 끊고 `playerDisconnected`를 확인한다.
+  1. explicit `disconnect` command 대신 actual guest transport connection을 닫고 `playerDisconnected`를 확인한다.
   2. 30초 reconnect grace를 초과할 때까지 대기하거나 테스트 클록을 진행한다.
   3. 동일 resume credential로 `resume` 또는 `resumeRoom`을 시도한다.
   4. reject, forfeit, room close, match end event를 순서대로 수집한다.
 - **Assertions**:
+  - passive close 직후 `playerDisconnected`가 host/guest mailbox에 모두 fan-out돼야 한다.
   - resume 시도는 `resumeExpired` 또는 동등한 만료 사유로 거절돼야 한다.
   - `starting` 또는 `inGame`에서는 grace expiry가 room-level forfeit로 이어져야 한다.
+  - live transport smoke에서는 `passiveClose -> playerDisconnected -> reapExpiredState -> actionAccepted -> roundEnded -> matchEnded -> roomEvent(playerForfeited/roomStateChanged) -> terminalSummary`, 이후 second reap에서 `roomClosed` 순서를 확인한다.
   - 재연결 실패 후 room/match 최종 상태가 replay와 summary에 반영돼야 한다.
   - expiry 판단에 필요한 deadline 정보가 artifact에서 역추적 가능해야 한다.
 - **Observability Focus**:
@@ -337,10 +340,13 @@
   - expiry 이후 room/game terminal event ordering
 - **Contract Alignment**:
   - grace expiry는 `quit(reason=disconnectTimeout)`로 귀결되며, terminal summary는 `endReason=disconnectTimeout`, `forfeitingPlayerId`, `settlementSummary=nil` 조합으로 설명된다.
+  - passive socket close는 explicit `room_transport_send(action=disconnect)`와 같은 adapter disconnect path로 수렴해야 하며, timeout fan-out semantics를 바꾸면 안 된다.
+  - `roomEvent.playerForfeited.playerId`는 room player id를 유지하고, `matchEnded.forfeitingPlayerId`와 `terminalSummary.matchEnded.forfeitingPlayerId`는 authority player id를 사용한다.
 - **Failure Artifacts**:
   - grace timeout timeline
   - expired resume request/response
   - terminal room/game snapshot
+  - `timeout_probe.json`
 
 ### MP-008: stateVersion mismatch 후 snapshot resync
 - **Goal**: client local state가 authoritative `stateVersion`과 어긋났을 때 silent drift 없이 snapshot resync로 복구되는지 검증한다.
@@ -378,6 +384,7 @@
   - authoritative recovery snapshot
   - mismatch 직전/직후 event slice
   - `replay/injection_manifest.json`
+  - `replay/gap_injection_plan.json`
   - `timeline/mismatch.ndjson`
   - resync transcript
 
@@ -481,10 +488,14 @@
   - disconnectedGrace heartbeat는 `invalidResumeState`로 reject된다.
   - replaced/stale heartbeat는 `staleConnectionId`로 reject된다.
   - reject 이후에도 current `connectedConnectionId`와 session ownership은 newest connection에 남는다.
+- **Contract Alignment**:
+  - Agent 2 live transport 결정은 audit-only가 아니라 explicit reject다.
+  - current TCP fallback / websocket parity smoke는 `invalidResumeState`, `staleConnectionId`, `recordHeartbeat` accept path가 모두 같은 artifact schema로 남는지 잠근다.
 - **Failure Artifacts**:
   - heartbeat command pair
   - reject payload pair
   - post-reject room snapshot
+  - `heartbeat_probe.json`
 
 ## Smoke Suite
 - `MP-001`
@@ -493,12 +504,15 @@
 ## Socket Smoke Suite
 - `MP-001`
 - `MP-002`
+- `MP-007`
 - `MP-008`
 - `MP-014`
 
 ## Socket Parity Suite
 - `MP-001`
 - `MP-002`
+- `MP-004`
+- `MP-007`
 - `MP-008`
 - `MP-013`
 - `MP-014`
@@ -530,6 +544,7 @@
 - `snapshots/`
 - `logs/agent.log`
 - `summary.md`
+- scenario-specific probes when applicable: `timeout_probe.json`, `heartbeat_probe.json`, `duplicate_probe.json`, `transport_parity.json`, `replay/gap_injection_plan.json`
 
 ### Suggested Path Layout
 ```text
@@ -603,22 +618,24 @@ test_artifacts/multiplayer/<scenario_id>/<run_id>/
 - `tests/test_agent/multiplayer/socket_transport.py`는 actual GoStopCLI TCP fallback + websocket transport harness를 제공하고, `--transport tcp|websocket|compare`를 지원한다
 - `fixture` mode는 synthetic transcript를 사용해 `MP-001/002/003/004/005/006/007/008/013/014`를 검증한다
 - `tests/test_agent/multiplayer_runner.py --suite smoke --mode fixture`는 `MP-001`, `MP-006`을 유지 smoke로 제공한다
-- `tests/test_agent/multiplayer_runner.py --suite socket-smoke --mode socket`는 actual TCP transport 기준 `MP-001`, `MP-002`, `MP-008`, `MP-014`를 green smoke로 유지한다
-- `tests/test_agent/multiplayer_runner.py --suite socket-parity --mode socket --transport compare`는 `MP-001`, `MP-002`, `MP-008`, `MP-013`, `MP-014`의 TCP fallback vs websocket parity를 같은 artifact layout 아래 비교한다
-- `tests/test_agent/multiplayer_runner.py --suite socket-duplicate --mode socket --transport compare`는 `MP-004` live duplicate replay/conflict blocker를 TCP fallback + websocket에서 함께 기록한다
+- `tests/test_agent/multiplayer_runner.py --suite socket-smoke --mode socket`는 actual TCP transport 기준 `MP-001`, `MP-002`, `MP-007`, `MP-008`, `MP-014`를 green smoke로 유지한다
+- `tests/test_agent/multiplayer_runner.py --suite socket-parity --mode socket --transport compare`는 `MP-001`, `MP-002`, `MP-004`, `MP-007`, `MP-008`, `MP-013`, `MP-014`의 TCP fallback vs websocket parity를 같은 artifact layout 아래 비교한다
+- `tests/test_agent/multiplayer_runner.py --suite socket-duplicate --mode socket --transport compare`는 `MP-004` live duplicate replay/conflict semantics를 TCP fallback + websocket에서 함께 잠근다
 - `tests/test_agent/multiplayer_runner.py --suite socket-review-fixups --mode socket`는 `MP-013`, `MP-014` privacy/session-hardening regressions를 current TCP facade로 재검증한다
 - `tests/test_agent/multiplayer_runner.py --scenario MP-008 --mode socket`는 actual live stale reject/recovery snapshot probe를 실행하고 `stateSnapshot(reason=resync)`까지 assert한다
 - `tests/test_agent/multiplayer_runner.py --scenario MP-002 --mode socket`는 `roundEnded`, `matchEnded`, `terminalSummary`, `roomClosed` terminal lifecycle artifact를 생성한다
+- `tests/test_agent/multiplayer_runner.py --scenario MP-007 --mode socket --transport compare`는 `passiveClose -> playerDisconnected -> reapExpiredState -> resumeExpired -> roomClosed` timeout parity를 실행하고 `timeout_probe.json`을 남긴다
 - `scripts/run_multiplayer_cli_two_player_smoke.py --scenario all`은 `ready-start`, `disconnect-resume`, `heartbeat-guard`, `mp008-hook-surface`, `mp008-gameplay-resync` scenario를 실제 CLI ingress로 확인하고 cached binary를 우선 재사용한다
 - current CLI smoke는 `guest ready -> roomState=starting`과 `requiresGameBootstrap=True`를 확인한 뒤, `room_record_game_started` metadata의 `gameStartedBootstrapPlan.fetchAction`과 `requestsByPlayerId`를 그대로 따라 paired `gameStarted + stateSnapshot(reason=gameStarted)`를 assert한다
 - `tests/test_agent/multiplayer/runner.py`는 `MP-008`용 `replay/injection_manifest.json`과 `timeline/mismatch.ndjson`을 생성해 stale-version resync artifact 구조를 고정한다
+- `tests/test_agent/multiplayer/runner.py`는 dropped-event gap future extension용 `replay/gap_injection_plan.json`을 함께 생성해 `plannedTargetClientId`, `plannedDropCount`, `lastDeliveredEventId`, `expected gapDetected` recovery cursor를 포함한 tighter executable preflight를 남긴다
 - compare socket run은 `transport_parity.json`, suffixed snapshots(`*_tcp.json`, `*_websocket.json`), combined `timeline/*.ndjson`로 TCP fallback vs websocket diff를 같은 run root에 남긴다
-- `MP-004` live duplicate probe는 `duplicate_probe.json`을 남겨 exact replay / conflict reject mismatch를 추적한다
+- `MP-004` live duplicate probe는 `duplicate_probe.json`을 남겨 exact replay / conflict reject evidence를 transport별로 비교 가능하게 남긴다
 - `MP-013`, `MP-014` privacy/session-hardening regressions는 fixture PASS를 유지하고 socket mode에서도 PASS를 재확인했다
 - CLI smoke는 `room_set_mp008_hook -> room_get_mp008_hook -> room_clear_mp008_hook`로 MP-008 deterministic hook surface도 유지 검증한다
 - CLI smoke artifact root는 기본적으로 `test_artifacts/multiplayer_cli_smoke/<run_id>/`를 사용한다
 - socket runner는 `--binary` 또는 known cached derived data를 fresh build보다 우선해서 offline-friendly하게 실행한다
-- known cached binary priority는 최신 verified rebuild(`gostop_cli_agent4_round7_recheck`, `gostop_cli_round7_review`)를 기존 round6/status-check root보다 앞에 둔다
+- known cached binary priority는 최신 verified rebuild(`gostop_cli_round12_agent2`, `gostop_cli_round11_agent4`, `gostop_cli_round10_agent4`, `gostop_cli_agent4_round7_recheck`, `gostop_cli_round7_review`)를 기존 round6/status-check root보다 앞에 둔다
 - actual GoStopCLI websocket transport parity smoke는 닫혔고, 남은 외부 binding 작업은 app-side websocket client / simulator capture 경로다
 
 ## Observability Requirements
@@ -750,7 +767,6 @@ test_artifacts/multiplayer/<scenario_id>/<run_id>/
 
 ## Open Questions
 - [ ] websocket debug connect 경로가 CLI ingress와 같은 stale heartbeat reject codes(`invalidResumeState`, `staleConnectionId`)를 유지할지
-- [ ] live duplicate `actionId` path가 exact same resend에서 `duplicateActionIdDisposition=exactReplay`, conflicting reuse에서 `duplicateActionIdDisposition=conflictReject` + `actionRejected(code=actionIdConflict)`를 실제 transport에서 만족하는지
 
 ## Validation Checklist
 - [x] P0 시나리오가 모두 정의돼 있다
@@ -773,14 +789,20 @@ test_artifacts/multiplayer/<scenario_id>/<run_id>/
 - [x] MP-008을 actual gameplay command + `expectedStateVersion` live resync probe로 승격
 - [x] MP-008 live recovery snapshot reason을 `resync`로 잠금
 - [x] GoStopCLI websocket transport를 TCP fallback과 같은 runner/artifact schema로 parity smoke화
+- [x] reconnect grace expiry를 live TCP/WebSocket timeout parity smoke(`MP-007`)로 잠금
+- [x] timeout/heartbeat probe artifact(`timeout_probe.json`, `heartbeat_probe.json`)를 runner output에 추가
 - [ ] live dropped-event gap injection path를 actual websocket/server binding까지 확장
 - [ ] websocket debug connect path에서 `MP-013/014`를 실제 transport 로그로 재검증
-- [ ] live duplicate `actionId` probe를 PASS로 끌어올려 `exactReplay` / `conflictReject` semantics를 잠금
+- [x] live duplicate `actionId` probe를 PASS로 끌어올려 `exactReplay` / `conflictReject` semantics를 잠금
 
 ## Change Log
+- 2026-03-12: `MP-007` socket passive-close timeout parity smoke가 TCP fallback / websocket 모두 PASS로 닫혔고, `passiveClose -> playerDisconnected -> reapExpiredState -> actionAccepted -> roundEnded -> matchEnded -> terminalSummary -> roomClosed` evidence를 `timeout_probe.json`으로 고정했다
+- 2026-03-12: stale/replaced heartbeat policy를 explicit reject로 문서에 잠그고, `heartbeat_probe.json`과 cached root `gostop_cli_round11_agent4`를 round11 runner baseline으로 반영했다
+- 2026-03-12: `replay/gap_injection_plan.json`을 추가해 dropped-event gap 기반 MP-008 future extension을 `plannedTargetClientId`, `plannedDropCount`, `lastDeliveredEventId`, `gapDetected` recovery cursor를 포함한 executable preflight artifact로 좁혔다
+- 2026-03-12: `socket-duplicate` compare smoke가 `MP-004`를 TCP fallback / websocket 모두 PASS로 끌어올렸고, exact resend `exactReplay` + conflicting reuse `actionRejected(code=actionIdConflict)`를 same artifact layout에서 잠갔다
 - 2026-03-11: `--transport tcp|websocket|compare` selector와 stdlib websocket client를 multiplayer runner/harness에 추가했다
 - 2026-03-11: `socket-parity` compare suite로 `MP-001`, `MP-002`, `MP-008`, `MP-013`, `MP-014`가 TCP fallback과 websocket에서 같은 semantics를 유지하는지 PASS로 잠갔다
-- 2026-03-11: `socket-duplicate` compare suite와 `duplicate_probe.json` artifact를 추가했고, `MP-004` live duplicate path는 TCP/websocket 공통으로 `exactReplay` 대신 stale reject/resync로 빠지는 blocker를 재현했다
+- 2026-03-11: `socket-duplicate` compare suite와 `duplicate_probe.json` artifact를 추가해 `MP-004` live duplicate replay/conflict semantics를 transport compare artifact로 추적할 수 있게 했다
 - 2026-03-11: `tests/test_agent/multiplayer/socket_transport.py`를 actual GoStopCLI `--room-transport-server` TCP facade 기준으로 올리고, cached build reuse 우선 경로를 추가했다
 - 2026-03-11: latest `GoStopCLI` rebuild 기준 `MP-002` socket terminal smoke가 `roundEnded`, `matchEnded`, `terminalSummary`, `roomClosed`까지 PASS로 닫혔다
 - 2026-03-11: latest `GoStopCLI` rebuild 기준 `MP-008` socket gameplay smoke가 `actionRejected(staleStateVersion)` + `stateSnapshot(reason=resync)` live assert까지 PASS로 닫혔다

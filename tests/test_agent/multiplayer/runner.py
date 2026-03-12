@@ -593,6 +593,12 @@ class MultiplayerScenarioRunner:
         if isinstance(socket_result.get("duplicateProbe"), dict):
             store.write_json("duplicate_probe.json", socket_result["duplicateProbe"])
 
+        if isinstance(socket_result.get("timeoutProbe"), dict):
+            store.write_json("timeout_probe.json", socket_result["timeoutProbe"])
+
+        if isinstance(socket_result.get("heartbeatProbe"), dict):
+            store.write_json("heartbeat_probe.json", socket_result["heartbeatProbe"])
+
         store.write_replay_manifest(
             ReplayManifest(
                 run_id=run_id,
@@ -765,6 +771,40 @@ class MultiplayerScenarioRunner:
 
         store.write_replay_placeholder("injection_manifest.json", injection_manifest)
         store.append_ndjson("timeline/mismatch.ndjson", mismatch_rows)
+        store.write_replay_placeholder(
+            "gap_injection_plan.json",
+            {
+                "scenarioId": scenario.scenario_id,
+                "status": status.value,
+                "executionReadiness": "preflight-only",
+                "plannedInjectionMode": "dropGameEvents",
+                "plannedTransportAction": "room_transport_send(action=dropGameEvents)",
+                "plannedTargetClientId": "host_client",
+                "plannedDropCount": 1,
+                "plannedTriggerPoint": "after gameStarted bootstrap and before the next authoritative gameplay command",
+                "plannedFollowUpCommand": "quit",
+                "expectedRecoverySnapshotReason": "gapDetected",
+                "expectedRejectEnvelope": None,
+                "expectedGapEvidence": {
+                    "lastDeliveredEventId": None,
+                    "nextAuthoritativeEventId": None,
+                    "droppedEnvelopeCount": 1,
+                },
+                "requiredHookSurface": "room_transport_send(action=dropGameEvents)",
+                "requiredArtifacts": [
+                    "replay/injection_manifest.json",
+                    "replay/gap_injection_plan.json",
+                    "timeline/mismatch.ndjson",
+                    "replay/event_stream.ndjson",
+                    "timeline/events.ndjson",
+                ],
+                "notes": [
+                    "Phase 0 keeps stale expectedStateVersion override as the only executable live path.",
+                    "Dropped-event gap injection remains future work until a deterministic per-session event-drop hook is exposed on the live transport path.",
+                    "The future live probe should persist lastDeliveredEventId, droppedEnvelopeCount, and the first gapDetected recovery snapshot cursor before asserting resumed continuity.",
+                ],
+            },
+        )
 
     def _ensure_socket_binary(self) -> Path:
         if self._resolved_socket_binary is None:

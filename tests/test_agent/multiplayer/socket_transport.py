@@ -8,7 +8,7 @@ import socket
 import subprocess
 import time
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +16,9 @@ from .models import ScenarioDefinition, ScenarioStatus
 
 
 KNOWN_SOCKET_DERIVED_DATA_ROOTS = [
+    Path("/tmp/gostop_cli_round12_agent2"),
+    Path("/tmp/gostop_cli_round11_agent4"),
+    Path("/tmp/gostop_cli_round10_agent4"),
     Path("/tmp/gostop_cli_agent4_round7_recheck"),
     Path("/tmp/gostop_cli_round7_review"),
     Path("/tmp/gostop_multiplayer_socket_build"),
@@ -456,6 +459,15 @@ def _frame_signature(envelope: dict[str, Any]) -> dict[str, Any]:
     return signature
 
 
+def _terminal_summary_payload(envelope: dict[str, Any]) -> dict[str, Any]:
+    if envelope.get("type") != "terminalSummary":
+        raise RuntimeError(f"Expected terminalSummary envelope, got {envelope.get('type')!r}")
+    payload = envelope.get("payload", {})
+    if not isinstance(payload, dict):
+        raise RuntimeError("terminalSummary payload is missing.")
+    return payload
+
+
 def _snapshot_payload(event: dict[str, Any]) -> dict[str, Any]:
     payload = event.get("payload", {})
     if not isinstance(payload, dict):
@@ -549,7 +561,11 @@ class SocketTransportHarness:
             client_factory = WebSocketTextClient
         else:
             client_factory = JSONLineSocketClient
-        self.client = client_factory("127.0.0.1", self.server.port)
+        self._client_factory = client_factory
+        self.connection_clients: dict[str, JSONLineSocketClient | WebSocketTextClient] = {
+            "control": client_factory("127.0.0.1", self.server.port)
+        }
+        self.client = self.connection_clients["control"]
         self.command_rows: list[dict[str, Any]] = []
         self.frame_rows: list[dict[str, Any]] = []
         self.agent_log_lines: list[str] = [
@@ -563,18 +579,53 @@ class SocketTransportHarness:
 
     def close(self) -> None:
         try:
-            self.client.close()
+            for alias in list(self.connection_clients):
+                client = self.connection_clients.pop(alias)
+                try:
+                    client.close()
+                finally:
+                    self.agent_log_lines.append(f"connectionClosed={alias}")
         finally:
             self.server.close()
             for line in self.server.output_lines:
                 self.agent_log_lines.append(f"server: {line}")
 
-    def send(self, action: str, data: dict[str, Any] | None = None) -> dict[str, Any]:
-        response = self.client.send(action, data)
+    def open_connection(self, alias: str) -> None:
+        if alias in self.connection_clients:
+            return
+        self.connection_clients[alias] = self._client_factory("127.0.0.1", self.server.port)
+        self.agent_log_lines.append(f"connectionOpened={alias}")
+
+    def close_connection(self, alias: str) -> None:
+        if alias == "control":
+            raise RuntimeError("The control connection cannot be closed independently.")
+        client = self.connection_clients.pop(alias, None)
+        if client is None:
+            raise RuntimeError(f"Transport connection alias is not open: {alias}")
+        try:
+            client.close()
+        finally:
+            self.agent_log_lines.append(f"connectionClosed={alias}")
+
+    def _connection(self, alias: str) -> JSONLineSocketClient | WebSocketTextClient:
+        client = self.connection_clients.get(alias)
+        if client is None:
+            raise RuntimeError(f"Transport connection alias is not open: {alias}")
+        return client
+
+    def send(
+        self,
+        action: str,
+        data: dict[str, Any] | None = None,
+        *,
+        connection_alias: str = "control",
+    ) -> dict[str, Any]:
+        response = self._connection(connection_alias).send(action, data)
         self.command_rows.append(
             {
                 "timestamp": _iso_now(),
                 "transportBackend": self.transport,
+                "connectionAlias": connection_alias,
                 "action": action,
                 "request": data or {},
                 "response": response,
@@ -582,8 +633,14 @@ class SocketTransportHarness:
         )
         return response
 
-    def require_ok(self, action: str, data: dict[str, Any] | None = None) -> dict[str, Any]:
-        response = self.send(action, data)
+    def require_ok(
+        self,
+        action: str,
+        data: dict[str, Any] | None = None,
+        *,
+        connection_alias: str = "control",
+    ) -> dict[str, Any]:
+        response = self.send(action, data, connection_alias=connection_alias)
         if response.get("status") != "ok":
             raise RuntimeError(f"{action} failed: {json.dumps(response, ensure_ascii=False, indent=2)}")
         return response["data"]
@@ -593,8 +650,10 @@ class SocketTransportHarness:
         action: str,
         expected_status: str,
         data: dict[str, Any] | None = None,
+        *,
+        connection_alias: str = "control",
     ) -> dict[str, Any]:
-        response = self.send(action, data)
+        response = self.send(action, data, connection_alias=connection_alias)
         if response.get("status") != expected_status:
             raise RuntimeError(
                 f"{action} expected status={expected_status}, got: "
@@ -602,8 +661,14 @@ class SocketTransportHarness:
             )
         return response
 
-    def require_action_executed(self, action: str, data: dict[str, Any] | None = None) -> dict[str, Any]:
-        response = self.send(action, data)
+    def require_action_executed(
+        self,
+        action: str,
+        data: dict[str, Any] | None = None,
+        *,
+        connection_alias: str = "control",
+    ) -> dict[str, Any]:
+        response = self.send(action, data, connection_alias=connection_alias)
         if response.get("status") != "action executed":
             raise RuntimeError(
                 f"{action} expected status=action executed, got: {json.dumps(response, ensure_ascii=False, indent=2)}"
@@ -615,8 +680,10 @@ class SocketTransportHarness:
         action: str,
         data: dict[str, Any],
         expected_code: str,
+        *,
+        connection_alias: str = "control",
     ) -> dict[str, Any]:
-        response = self.send(action, data)
+        response = self.send(action, data, connection_alias=connection_alias)
         if response.get("status") != "error":
             raise RuntimeError(
                 f"{action} expected error {expected_code}, got: {json.dumps(response, ensure_ascii=False, indent=2)}"
@@ -665,6 +732,8 @@ class SocketTransportHarness:
         player_id: str,
         device_id: str,
         resume_token: str,
+        *,
+        connection_alias: str = "control",
     ) -> dict[str, Any]:
         data = self.require_ok(
             "room_transport_connect",
@@ -676,6 +745,7 @@ class SocketTransportHarness:
                 "deviceId": device_id,
                 "resumeToken": resume_token,
             },
+            connection_alias=connection_alias,
         )
         self.transport_clients[client_id] = {
             "clientId": client_id,
@@ -688,10 +758,17 @@ class SocketTransportHarness:
         }
         return data
 
-    def transport_send_ok(self, client_id: str, transport_action: str, **kwargs: Any) -> dict[str, Any]:
+    def transport_send_ok(
+        self,
+        client_id: str,
+        transport_action: str,
+        *,
+        connection_alias: str = "control",
+        **kwargs: Any,
+    ) -> dict[str, Any]:
         payload = {"clientId": client_id, "action": transport_action}
         payload.update(kwargs)
-        data = self.require_ok("room_transport_send", payload)
+        data = self.require_ok("room_transport_send", payload, connection_alias=connection_alias)
         client = data.get("client")
         if isinstance(client, dict):
             self.transport_clients[client_id] = client
@@ -702,19 +779,31 @@ class SocketTransportHarness:
         client_id: str,
         transport_action: str,
         expected_code: str,
+        *,
+        connection_alias: str = "control",
         **kwargs: Any,
     ) -> dict[str, Any]:
         payload = {"clientId": client_id, "action": transport_action}
         payload.update(kwargs)
-        return self.require_error("room_transport_send", payload, expected_code=expected_code)
+        return self.require_error(
+            "room_transport_send",
+            payload,
+            expected_code=expected_code,
+            connection_alias=connection_alias,
+        )
 
-    def transport_receive(self, client_id: str) -> list[dict[str, Any]]:
-        data = self.require_ok("room_transport_receive", {"clientId": client_id})
+    def transport_receive(self, client_id: str, *, connection_alias: str = "control") -> list[dict[str, Any]]:
+        data = self.require_ok(
+            "room_transport_receive",
+            {"clientId": client_id},
+            connection_alias=connection_alias,
+        )
         envelopes = data["envelopes"]
         received_at = _iso_now()
         for index, envelope in enumerate(envelopes, start=1):
             row = {
                 "clientId": client_id,
+                "connectionAlias": connection_alias,
                 "receivedAt": received_at,
                 "receiveIndex": index,
                 "transportBackend": self.transport,
@@ -827,6 +916,7 @@ def _bootstrap_transport_room(
     harness: SocketTransportHarness,
     *,
     warm_engine: bool = False,
+    hello_connection_aliases: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     if warm_engine:
         harness.ensure_engine_started()
@@ -854,7 +944,13 @@ def _bootstrap_transport_room(
 
     harness.transport_send_ok("host_client", "hello", connectionId="conn_host_socket_001")
     host_hello = harness.transport_receive("host_client")
-    harness.transport_send_ok("guest_client", "hello", connectionId="conn_guest_socket_001")
+    guest_hello_alias = (hello_connection_aliases or {}).get("guest_client", "control")
+    harness.transport_send_ok(
+        "guest_client",
+        "hello",
+        connection_alias=guest_hello_alias,
+        connectionId="conn_guest_socket_001",
+    )
     guest_hello = harness.transport_receive("guest_client")
 
     harness.transport_send_ok("host_client", "setReady", ready=True)
@@ -1263,6 +1359,288 @@ def _run_mp004_socket(harness: SocketTransportHarness) -> dict[str, Any]:
     }
 
 
+def _run_mp007_socket(harness: SocketTransportHarness) -> dict[str, Any]:
+    harness.open_connection("guest_socket")
+    boot = _bootstrap_transport_room(
+        harness,
+        warm_engine=True,
+        hello_connection_aliases={"guest_client": "guest_socket"},
+    )
+    room_id = boot["room_id"]
+    transport_label = _transport_summary_label(harness.transport)
+
+    passive_close_at = datetime.now().astimezone()
+    harness.close_connection("guest_socket")
+
+    disconnected_snapshot: dict[str, Any] | None = None
+    for _ in range(20):
+        time.sleep(0.05)
+        candidate_snapshot = harness.snapshot_room(room_id)
+        guest_member = next(
+            (member for member in candidate_snapshot["room"]["members"] if member["playerId"] == "p2"),
+            None,
+        )
+        if isinstance(guest_member, dict) and guest_member.get("presence") == "disconnected":
+            disconnected_snapshot = candidate_snapshot
+            break
+    if disconnected_snapshot is None:
+        disconnected_snapshot = harness.snapshot_room(room_id)
+
+    host_after_disconnect = harness.transport_receive("host_client")
+    guest_after_disconnect = harness.transport_receive("guest_client")
+
+    player_disconnected = next(
+        (
+            frame
+            for frame in host_after_disconnect
+            if frame.get("type") == "roomEvent" and _room_event_name(frame) == "playerDisconnected"
+        ),
+        None,
+    )
+    disconnect_at = datetime.now().astimezone()
+    first_reap_at = disconnect_at + timedelta(seconds=31)
+    first_reap_response = harness.transport_send_ok(
+        "host_client",
+        "reapExpiredState",
+        traceId=f"trace_mp007_{harness.transport}",
+        asOf=first_reap_at.isoformat(timespec="seconds"),
+    )
+    host_after_timeout = harness.transport_receive("host_client")
+    guest_after_timeout = harness.transport_receive("guest_client")
+
+    harness.connect_transport_client(
+        "guest_resume",
+        room_id,
+        harness.transport_clients["guest_client"]["sessionId"],
+        "p2",
+        "dev2",
+        harness.transport_clients["guest_client"]["resumeToken"],
+    )
+    resume_attempt = harness.transport_send_error(
+        "guest_resume",
+        "hello",
+        expected_code="resumeExpired",
+        connectionId="conn_guest_socket_003",
+        lastSeen={"roomSequence": disconnected_snapshot["room"]["lastRoomSequence"]},
+    )
+    resume_probe_frames = harness.transport_receive("guest_resume")
+
+    second_reap_at = first_reap_at + timedelta(seconds=61)
+    second_reap_response = harness.transport_send_ok(
+        "host_client",
+        "reapExpiredState",
+        traceId=f"trace_mp007_close_{harness.transport}",
+        asOf=second_reap_at.isoformat(timespec="seconds"),
+    )
+    host_after_close = harness.transport_receive("host_client")
+    guest_after_close = harness.transport_receive("guest_client")
+    closed_snapshot = harness.snapshot_room(room_id)
+
+    host_timeout_labels = [_frame_label(frame) for frame in host_after_timeout]
+    guest_timeout_labels = [_frame_label(frame) for frame in guest_after_timeout]
+    host_disconnect_labels = [_frame_label(frame) for frame in host_after_disconnect]
+    guest_disconnect_labels = [_frame_label(frame) for frame in guest_after_disconnect]
+    host_close_labels = [_frame_label(frame) for frame in host_after_close]
+    guest_close_labels = [_frame_label(frame) for frame in guest_after_close]
+    resume_probe_labels = [_frame_label(frame) for frame in resume_probe_frames]
+
+    status = ScenarioStatus.PASS
+    blocking_reasons: list[str] = []
+
+    try:
+        action_accepted = _find_engine_event(host_after_timeout, event_name="actionAccepted")
+        round_ended = _find_engine_event(host_after_timeout, event_name="roundEnded")
+        match_ended = _find_engine_event(host_after_timeout, event_name="matchEnded")
+    except RuntimeError as error:
+        status = ScenarioStatus.BLOCKED
+        blocking_reasons.append(str(error))
+        action_accepted = None
+        round_ended = None
+        match_ended = None
+
+    timeout_forfeit = next(
+        (
+            frame
+            for frame in host_after_timeout
+            if frame.get("type") == "roomEvent"
+            and _room_event_name(frame) == "playerForfeited"
+            and _room_event_field(frame, "reason") == "disconnectTimeout"
+        ),
+        None,
+    )
+    if timeout_forfeit is None:
+        status = ScenarioStatus.BLOCKED
+        blocking_reasons.append("Timeout path did not emit roomEvent(playerForfeited reason=disconnectTimeout).")
+    if player_disconnected is None:
+        status = ScenarioStatus.BLOCKED
+        blocking_reasons.append("Passive close did not emit roomEvent(playerDisconnected).")
+
+    terminal_summary_frame = next(
+        (frame for frame in host_after_timeout if frame.get("type") == "terminalSummary"),
+        None,
+    )
+    terminal_payload: dict[str, Any] | None = None
+    if terminal_summary_frame is None:
+        status = ScenarioStatus.BLOCKED
+        blocking_reasons.append("Timeout path did not emit terminalSummary.")
+    else:
+        terminal_payload = _terminal_summary_payload(terminal_summary_frame)
+        terminal_match_ended = terminal_payload.get("matchEnded", {})
+        if not isinstance(terminal_match_ended, dict):
+            terminal_match_ended = {}
+        if terminal_match_ended.get("endReason") != "disconnectTimeout":
+            status = ScenarioStatus.BLOCKED
+            blocking_reasons.append(
+                "terminalSummary matchEnded.endReason diverged: expected 'disconnectTimeout', "
+                f"got {terminal_match_ended.get('endReason')!r}."
+            )
+        if not isinstance(terminal_match_ended.get("forfeitingPlayerId"), str):
+            status = ScenarioStatus.BLOCKED
+            blocking_reasons.append(
+                "terminalSummary matchEnded.forfeitingPlayerId should carry the authoritative forfeiting playerId."
+            )
+        if terminal_match_ended.get("settlementSummary") is not None:
+            status = ScenarioStatus.BLOCKED
+            blocking_reasons.append("disconnectTimeout terminalSummary should keep settlementSummary=null.")
+
+    if action_accepted is not None:
+        accepted_payload = action_accepted.get("payload", {})
+        if not isinstance(accepted_payload, dict) or accepted_payload.get("commandName") != "quit":
+            status = ScenarioStatus.BLOCKED
+            blocking_reasons.append("Timeout path did not relay actionAccepted(commandName=quit).")
+
+    match_payload: dict[str, Any] = {}
+    if match_ended is not None:
+        payload = match_ended.get("payload", {})
+        if isinstance(payload, dict):
+            match_payload = payload
+        if match_payload.get("endReason") != "disconnectTimeout":
+            status = ScenarioStatus.BLOCKED
+            blocking_reasons.append(
+                f"matchEnded endReason diverged: expected 'disconnectTimeout', got {match_payload.get('endReason')!r}."
+            )
+        if not isinstance(match_payload.get("forfeitingPlayerId"), str):
+            status = ScenarioStatus.BLOCKED
+            blocking_reasons.append(
+                "matchEnded forfeitingPlayerId should carry the authoritative forfeiting playerId."
+            )
+        if match_payload.get("settlementSummary") is not None:
+            status = ScenarioStatus.BLOCKED
+            blocking_reasons.append("disconnectTimeout matchEnded should keep settlementSummary=null.")
+        if (
+            terminal_payload is not None
+            and isinstance(terminal_payload.get("matchEnded"), dict)
+            and terminal_payload["matchEnded"].get("forfeitingPlayerId") != match_payload.get("forfeitingPlayerId")
+        ):
+            status = ScenarioStatus.BLOCKED
+            blocking_reasons.append(
+                "matchEnded forfeitingPlayerId diverged from terminalSummary.matchEnded.forfeitingPlayerId."
+            )
+
+    room_closed_frame = next(
+        (
+            frame
+            for frame in host_after_close
+            if frame.get("type") == "roomEvent" and _room_event_name(frame) == "roomClosed"
+        ),
+        None,
+    )
+    if room_closed_frame is None:
+        status = ScenarioStatus.BLOCKED
+        blocking_reasons.append("Second timeout reap did not emit roomEvent(roomClosed).")
+
+    closed_room_state = closed_snapshot["room"]["roomState"]
+    if closed_room_state != "closed":
+        status = ScenarioStatus.BLOCKED
+        blocking_reasons.append(f"Room state after timeout close diverged: expected 'closed', got {closed_room_state!r}.")
+
+    summary = (
+        f"Socket {transport_label} passive-close timeout smoke validated disconnectTimeout forfeit relay, "
+        "terminalSummary fan-out, and later roomClosed completion."
+    )
+    if status is ScenarioStatus.BLOCKED:
+        summary = (
+            f"Socket {transport_label} passive-close timeout smoke reached disconnectTimeout expiry, "
+            "but terminal or close ordering still diverged from the locked contract."
+        )
+
+    return {
+        "status": status,
+        "summary": summary,
+        "roomId": room_id,
+        "gameId": boot["game_id"],
+        "players": _collect_players(closed_snapshot),
+        "commands": list(harness.command_rows),
+        "frames": list(harness.frame_rows),
+        "snapshots": {
+            "player_a_initial": _player_snapshot_record(boot["host_state_snapshot"], "p1"),
+            "player_b_initial": _player_snapshot_record(boot["guest_state_snapshot"], "p2"),
+            "latest_server": _snapshot_record(
+                payload=closed_snapshot,
+                snapshot_id=f"{room_id}_socket_timeout",
+                source="terminal",
+                scope="authority",
+                player_id=None,
+                state_version=closed_snapshot["room"]["lastRoomSequence"],
+                event_id=None,
+            ),
+        },
+        "logs": {
+            "agent": [
+                f"Socket mode used {harness.transport} room transport passive close + reapExpiredState for timeout coverage.",
+                f"passiveCloseAt={passive_close_at.isoformat(timespec='seconds')} firstReapQueued={first_reap_response.get('queuedEnvelopeCount')}",
+                f"resumeExpiredError={resume_attempt['errorCode']}",
+                f"secondReapQueued={second_reap_response.get('queuedEnvelopeCount')}",
+                *harness.agent_log_lines,
+            ],
+            "room": harness.room_log_lines,
+            "engine": harness.engine_log_lines,
+        },
+        "blockingReasons": blocking_reasons,
+        "transportBackend": harness.transport,
+        "timeoutProbe": {
+            "policy": "disconnectTimeoutForfeit",
+            "disconnectMode": "passiveClose",
+            "disconnectResponse": None,
+            "firstReapResponse": first_reap_response,
+            "resumeExpiredResponse": resume_attempt,
+            "secondReapResponse": second_reap_response,
+            "passiveCloseAt": passive_close_at.isoformat(timespec="seconds"),
+            "hostDisconnectLabels": host_disconnect_labels,
+            "guestDisconnectLabels": guest_disconnect_labels,
+            "hostTimeoutLabels": host_timeout_labels,
+            "guestTimeoutLabels": guest_timeout_labels,
+            "resumeProbeLabels": resume_probe_labels,
+            "hostCloseLabels": host_close_labels,
+            "guestCloseLabels": guest_close_labels,
+            "closedRoomState": closed_room_state,
+            "firstReapAt": first_reap_at.isoformat(timespec="seconds"),
+            "secondReapAt": second_reap_at.isoformat(timespec="seconds"),
+            "terminalSummaryPayload": terminal_payload,
+        },
+        "paritySignature": {
+            "scenarioId": "MP-007",
+            "disconnectMode": "passiveClose",
+            "playerDisconnectedSeen": player_disconnected is not None,
+            "resumeExpiredError": resume_attempt["errorCode"],
+            "actionAcceptedSeen": action_accepted is not None,
+            "roundEndedSeen": round_ended is not None,
+            "matchEndedSeen": match_ended is not None,
+            "terminalSummarySeen": terminal_summary_frame is not None,
+            "playerForfeitedSeen": timeout_forfeit is not None,
+            "roomClosedSeen": room_closed_frame is not None,
+            "matchEndedReason": match_payload.get("endReason"),
+            "forfeitingPlayerIdPresent": isinstance(match_payload.get("forfeitingPlayerId"), str),
+            "terminalSummaryMatches": (
+                terminal_payload.get("matchEnded", {}).get("forfeitingPlayerId") == match_payload.get("forfeitingPlayerId")
+                if isinstance(terminal_payload, dict) and isinstance(terminal_payload.get("matchEnded"), dict)
+                else False
+            ),
+            "closedRoomState": closed_room_state,
+        },
+    }
+
+
 def _run_mp013_socket(harness: SocketTransportHarness) -> dict[str, Any]:
     trace_id = "trace_mp013_socket"
     room_id = "room_mp013_socket"
@@ -1568,8 +1946,18 @@ def _run_mp014_socket(harness: SocketTransportHarness) -> dict[str, Any]:
         },
         "blockingReasons": [],
         "transportBackend": harness.transport,
+        "heartbeatProbe": {
+            "policy": "explicitReject",
+            "disconnectedErrorCode": disconnected_error["errorCode"],
+            "staleErrorCode": stale_error["errorCode"],
+            "acceptedAction": accepted_ack["transportAction"],
+            "guestResumeLabels": [_frame_label(frame) for frame in guest_resume_envelopes],
+            "currentConnectionId": guest_member.get("connectedConnectionId"),
+            "lastRoomSequence": room["lastRoomSequence"],
+        },
         "paritySignature": {
             "scenarioId": "MP-014",
+            "heartbeatPolicy": "explicitReject",
             "disconnectedError": disconnected_error["errorCode"],
             "staleError": stale_error["errorCode"],
             "acceptedAction": accepted_ack["transportAction"],
@@ -1764,6 +2152,8 @@ def _run_socket_scenario_once(
             return _run_mp002_socket(harness)
         if scenario.scenario_id == "MP-004":
             return _run_mp004_socket(harness)
+        if scenario.scenario_id == "MP-007":
+            return _run_mp007_socket(harness)
         if scenario.scenario_id == "MP-013":
             return _run_mp013_socket(harness)
         if scenario.scenario_id == "MP-014":
@@ -1990,6 +2380,18 @@ def _compare_socket_results(
         result["duplicateProbe"] = {
             "tcp": tcp_result.get("duplicateProbe"),
             "websocket": websocket_result.get("duplicateProbe"),
+        }
+
+    if scenario.scenario_id == "MP-007":
+        result["timeoutProbe"] = {
+            "tcp": tcp_result.get("timeoutProbe"),
+            "websocket": websocket_result.get("timeoutProbe"),
+        }
+
+    if scenario.scenario_id == "MP-014":
+        result["heartbeatProbe"] = {
+            "tcp": tcp_result.get("heartbeatProbe"),
+            "websocket": websocket_result.get("heartbeatProbe"),
         }
 
     return result

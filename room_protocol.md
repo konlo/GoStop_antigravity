@@ -4,7 +4,7 @@
 - **Owner**: Agent 2
 - **Primary Consumers**: Agent 1, Agent 3, Agent 4
 - **Status**: Phase 7 Draft
-- **Last Updated**: 2026-03-11
+- **Last Updated**: 2026-03-12
 - **Related Docs**:
   - `multiplayer_contract.md`
   - `multiplayer_ui_flow.md`
@@ -42,7 +42,7 @@
 | --- | --- | --- | --- | --- |
 | room size | 2 players fixed | Agent 2 | Locked | first release |
 | admission modes | `invite`, `quickMatch`가 같은 state machine 사용 | Agent 2 | Locked | `joinPolicy`만 다름 |
-| transport split | REST bootstrap + WebSocket realtime | Agent 2 | Locked | room create/join은 REST, live sync는 WS |
+| transport split | current product path는 websocket command boundary를 create/join/bootstrap/live 전부에 사용 | Agent 2 | Locked | cleaner REST bootstrap split은 placeholder follow-up |
 | room start trigger | 두 플레이어가 모두 ready 되면 auto-start | Agent 2 | Locked | public `startGame` 없음 |
 | `inGame` transition control | `.starting` 이후 `recordGameStarted` explicit step 유지 | Agent 2 | Locked | ready는 `.starting`까지만, bootstrap fetch context는 `recordGameStarted` metadata로 노출 |
 | reconnect restore shape | `roomSnapshot` + Agent 1 `stateSnapshot(reason=resume)` | Agent 2 | Locked | delta resume는 Phase 1 이후 |
@@ -50,15 +50,17 @@
 | disconnect threshold | 15s 무응답이면 disconnect 판정 | Agent 2 | Locked | grace timer 시작 |
 | reconnect grace | 30s | Agent 2 | Locked | disconnect 후 session resume window, `ended`에서는 result 조회만 허용 |
 | same-player multi-device | newest valid connection wins | Agent 2 | Locked | 이전 socket은 `sessionReplaced` |
-| heartbeat acceptance | active, non-replaced session with matching connection only | Agent 2 | Locked | stale heartbeat must not overwrite current session |
-| disconnect timeout outcome | `starting`/`inGame` 중 grace 만료 시 forfeit | Agent 2 | Locked | 최종 result payload는 Agent 1 필요 |
+| heartbeat acceptance | active, non-replaced session with matching connection only | Agent 2 | Locked | stale heartbeat는 silent ignore가 아니라 `invalidResumeState` / `staleConnectionId` reject로 유지 |
+| disconnect timeout outcome | `starting`/`inGame` 중 grace 만료 시 forfeit | Agent 2 | Locked | transport는 same authority relay 위에서 synthetic `quit(reason=disconnectTimeout)`를 emit한다 |
 | gameplay turn timeout ownership | Agent 1 deadline/event contract를 그대로 소비 | Agent 2 | Locked | room layer는 fallback action 생성 안 함 |
 | presence merge entrypoint | bootstrap/projection/terminal relay 모두 shared request builder 사용 | Agent 2 | Locked | `participantPresenceByPlayerId` 누락 방지 |
 | terminal forwarder | `recordMatchEnded` metadata에 terminal relay request를 싣고 result consumer까지 fan-out | Agent 2 | Locked | `forfeitingPlayerId`, winner/loser, settlement summary 포함 |
 | authority player mapping | room seat/session lookup가 room `playerId -> authority playerId`를 internal mapping한다 | Agent 2 | Locked | room envelope는 room `playerId`, nested engine payload는 authority `playerId` 유지 |
-| transport spike surface | CLI `room_transport_connect/send/receive`를 websocket-equivalent spike로 사용 | Agent 2 | Locked | gameplay relay, stale heartbeat, invalid resume reject code parity 유지 |
-| gameplay relay over transport | `playCard`, `submitChoice`, `quit`, `leaveRoom`를 room transport action으로 노출 | Agent 2 | Locked | accepted path는 nested engine envelope, result dismissal은 room event로 완료 |
-| server binding spike | `GoStopCLI --room-transport-websocket-server [--port PORT]` actual websocket path가 shared server boundary + serial frame send queue 위에서 same transport adapter를 재사용 | Agent 2 | Locked | legacy TCP `--room-transport-server`는 parity smoke용 fallback으로 유지 |
+| invite/share identifier | product-facing join/share identifier는 `inviteCode` 유지 | Agent 2 | Locked | Phase 0에서는 `inviteCode == roomId`, 별도 share token 없음 |
+| transport spike surface | CLI `room_transport_connect/send/receive`를 websocket-equivalent spike로 사용 | Agent 2 | Locked | gameplay relay, stale heartbeat, invalid resume reject code parity 유지, passive TCP EOF / websocket close도 same adapter path 사용 |
+| gameplay relay over transport | `playCard`, `submitChoice`, `quit`, `leaveRoom`를 room transport action으로 노출 | Agent 2 | Locked | app-facing adapter는 이 gameplay command surface를 직접 사용한다 |
+| timeout relay over transport | explicit `disconnect`와 passive close가 same adapter disconnect path를 공유하고 `reapExpiredState`가 timeout completion을 재현 | Agent 2 | Locked | grace expiry는 terminal fan-out, later result expiry는 `roomClosed`만 emit |
+| server binding spike | `GoStopCLI --room-transport-websocket-server [--port PORT]` actual websocket path가 shared server boundary + serial frame send queue 위에서 same transport adapter를 재사용 | Agent 2 | Locked | create/join/bootstrap current source도 이 command boundary이며, legacy TCP `--room-transport-server`는 parity smoke용 fallback으로 유지 |
 | MP-008 deterministic hook | stale `expectedStateVersion` override | Agent 2 | Locked | per-session outbound queue가 없는 현 구조에서는 `dropNextGameEvent`보다 구현/검증이 단순함 |
 
 ## Entities
@@ -67,6 +69,7 @@
 ```json
 {
   "roomId": "room_001",
+  "inviteCode": "room_001",
   "roomType": "invite|quickMatch",
   "joinPolicy": "inviteCode|matchmaker",
   "roomState": "waitingForPlayers|waitingForReady|starting|inGame|ended|closed",
@@ -120,6 +123,7 @@
 - room/session 복구는 같은 `playerId` + `roomId` + 유효한 `resumeToken`을 전제로 한다.
 - `graceExpiresAt`은 `disconnectedGrace` 진입 시점에만 채워진다.
 - `connectionId`와 member `connectedConnectionId`는 initial create/join 시점에는 `null`일 수 있고, attach/resume 이후 채워진다.
+- `inviteCode`는 invite room의 product-facing share/join 식별자다. Phase 0에서는 canonical `roomId`와 같은 값을 쓴다.
 
 ## Swift Model Mapping
 
@@ -290,9 +294,11 @@
   - terminal path는 `terminalSummaryRelayRequest`와 actual `get_multiplayer_terminal_summary` payload를 함께 반환하며, `roundEnded` / `matchEnded` required field를 검증한 뒤 fan-out한다.
 - CLI transport spike note:
   - `room_transport_connect`는 logical socket mailbox를 연다.
-  - `room_transport_send`는 `hello|ack|pong|setReady|snapshot|playCard|submitChoice|quit|leaveRoom|recordGameStartedAndPrepareBootstrap|recordMatchEndedAndFetchTerminalSummary` action을 지원한다.
+  - `room_transport_send`는 `hello|ack|pong|disconnect|setReady|snapshot|reapExpiredState|playCard|submitChoice|quit|leaveRoom|recordGameStartedAndPrepareBootstrap|recordMatchEndedAndFetchTerminalSummary` action을 지원한다.
   - `room_transport_receive`는 queued envelope를 drain한다.
   - `hello`/`ack`는 기존 `performRoomHello(...)` / `recordHeartbeat(_:)`를 그대로 써서 `invalidResumeState`, `staleConnectionId` semantics를 유지한다.
+  - `disconnect`는 session을 `disconnectedGrace`로 내리고, actual TCP EOF / websocket close도 마지막 successful `hello.connectionId` binding 기준으로 같은 disconnect helper를 탄다.
+  - `reapExpiredState { asOf }`는 grace/result TTL expiry mutation을 same mailbox path로 fan-out한다.
   - gameplay action에 `actionId`가 있으면 transport layer는 exact duplicate를 prior result replay로, conflicting reuse를 `actionRejected(code=actionIdConflict)`로 노출한다.
   - gameplay/terminal relay는 seat-based internal identity mapping을 먼저 resolve하므로 room `playerId`와 authority `playerId`가 달라도 `actionAccepted`, `actionRejected`, `roundEnded`, `matchEnded`, `terminalSummary` path가 흔들리지 않는다.
 
@@ -300,6 +306,7 @@
 - spike transport boundary:
   - request frame은 `CommandRequest { action, data }`
   - websocket은 text frame 1개당 request 1개, TCP는 newline-delimited JSON request 1개다.
+  - current product bootstrap boundary는 여전히 이 websocket command surface다. `room_create`, `room_join`, `room_record_game_started*`가 current source-of-truth이고, cleaner REST split은 placeholder follow-up이다.
 - lifecycle minimum:
   - `room_create { hostPlayerId, roomType, joinPolicy, now? }`
   - `room_join { roomId, playerId, deviceId, now? }`
@@ -309,10 +316,13 @@
   - `room_transport_receive { clientId }`
 - response minimum:
   - `room_create` / `room_join`는 `room`, `session`, `websocket`, `mutation`을 반환한다.
+  - invite room payload에는 `room.inviteCode`가 포함되고, Phase 0에서는 `room.inviteCode == room.roomId`다.
   - `room_transport_send(action=hello)`는 immediate ack payload 대신 mailbox에 `helloAck -> roomSnapshot -> roomEvent/gameEvent*`를 queue하고 command response에는 `client`, `metadata`, `queuedEnvelopeCount`만 반환한다.
   - app source는 `room_transport_receive`의 `envelopes[]`를 inbound stream source of truth로 본다.
 - gameplay minimum:
-  - `room_transport_send { clientId, action, actionId, expectedStateVersion, commandPayload, requestId?, traceId? }`
+  - `room_transport_send { clientId, action:\"playCard\", actionId, expectedStateVersion, commandPayload:{ cardId, source }, requestId?, traceId? }`
+  - `room_transport_send { clientId, action:\"submitChoice\", actionId, expectedStateVersion, commandPayload:{ choiceId, optionCode, choiceCommandName? }, requestId?, traceId? }`
+  - `room_transport_send { clientId, action:\"quit\", actionId, expectedStateVersion, commandPayload:{ reason }, requestId?, traceId? }`
   - exact duplicate `actionId`는 same result + same envelope `eventId` replay를 허용하고, conflicting reuse는 `actionRejected(code=actionIdConflict)`를 queue한다.
 
 ### DEBUG App Local Service
@@ -472,7 +482,10 @@
 - send:
   - `room_transport_send { clientId, action, ... }`
   - `action=hello`는 `connectionId`, optional `lastSeen`을 받고 `helloAck -> roomSnapshot -> roomEvent*`를 queue한다.
-  - `action=ack|pong`는 existing bound `connectionId`만 허용한다.
+  - `action=ack|pong`는 existing bound `connectionId`만 허용하며, stale/replaced/disconnected heartbeat는 `invalidResumeState` 또는 `staleConnectionId` error를 즉시 반환한다.
+  - `action=disconnect`는 transport-owned session을 `disconnectedGrace`로 내리고 `roomEvent(playerDisconnected)`를 queue한다.
+  - passive TCP EOF / websocket close도 same disconnect helper를 타며, current active owner는 마지막 successful `room_transport_send(action=hello)`를 보낸 physical connection 기준으로만 판정한다.
+  - `action=reapExpiredState`는 `{ asOf }`를 받아 timeout/result TTL mutation을 transport mailbox에 fan-out한다.
   - gameplay action은 공통 envelope field `requestId?`, `traceId?`, `actionId`, `expectedStateVersion`, `commandPayload`를 받는다.
   - `action=playCard` payload는 `{ cardId, source }`다.
   - `action=submitChoice` payload는 `{ choiceId, optionCode, choiceCommandName? }`다.
@@ -486,7 +499,7 @@
 - parity rule:
   - `room_transport_send(action=hello)`와 `room_hello`는 같은 `performRoomHello(...)`를 탄다.
   - `room_transport_send(action=ack|pong)`와 `room_ack|room_pong`는 같은 `recordHeartbeat(_:)`를 탄다.
-  - 따라서 stale heartbeat/no-owner ack는 `staleConnectionId`, invalid resume path는 `invalidResumeState`를 유지한다.
+  - 따라서 stale heartbeat/no-owner ack는 `staleConnectionId`, invalid resume path는 `invalidResumeState`를 유지하며 silent ignore로 바꾸지 않는다.
   - `room_transport_send(action=playCard|submitChoice|quit)`와 websocket/TCP binding은 같은 `RoomCoordinatorCLIAdapter` gameplay relay를 탄다.
 
 ### Gameplay Relay Ordering
@@ -495,17 +508,20 @@
 3. semantic follow-up은 phase에 따라 `turnChanged`, `choiceRequested`, `roundEnded`, `matchEnded`가 뒤따른다.
 4. stale `expectedStateVersion` reject path는 `gameEvent(actionRejected code=staleStateVersion)` 뒤에 `gameEvent(stateSnapshot reason=resync)`를 queue한다.
 5. `quit` baseline은 `gameEvent(actionAccepted) -> gameEvent(roundEnded) -> gameEvent(matchEnded) -> roomEvent(playerForfeited/roomStateChanged) -> terminalSummary`다.
-6. result dismissal baseline은 `room_transport_send(action=leaveRoom)` 후 `roomEvent(memberLeft)`와 final `roomEvent(roomClosed)`를 authoritative close signal로 사용한다.
-7. exact duplicate `actionId` replay는 prior `eventId`를 유지하고, conflicting reuse는 state mutation 없이 `gameEvent(actionRejected code=actionIdConflict)`만 추가한다.
+6. reconnect grace expiry가 active match를 끝내면 transport는 same authority relay 위에서 synthetic `quit(reason=disconnectTimeout)`를 emit하고 위 `quit` baseline을 그대로 따른다.
+7. timeout path의 `roomClosed`는 terminal summary보다 먼저 오지 않는다. 이후 `leaveRoom` 또는 `reapExpiredState(result TTL)`에서 별도 `roomEvent(roomClosed)`로만 닫힌다.
+8. result dismissal baseline은 `room_transport_send(action=leaveRoom)` 후 `roomEvent(memberLeft)`와 final `roomEvent(roomClosed)`를 authoritative close signal로 사용한다.
+9. exact duplicate `actionId` replay는 prior `eventId`를 유지하고, conflicting reuse는 state mutation 없이 `gameEvent(actionRejected code=actionIdConflict)`만 추가한다.
 
 ### Server Binding Boundary
 - startup selection:
   - `configuredRoomTransportServerMode(from:)`가 websocket 우선, 없으면 TCP fallback을 고른다.
   - `makeRoomTransportServer(mode:engine:)`가 `RoomTransportServer` boundary 뒤에서 websocket/TCP 구현을 swap한다.
 - shared server rule:
-  - websocket/TCP 모두 `handleCommandPacket(_:,engine:)`를 공통 command decoder로 사용한다.
+  - websocket/TCP 모두 shared `RoomTransportServerRuntime`에서 같은 `CommandRequest { action, data }` decoder와 `engine.handle(request:)` path를 사용한다.
   - 따라서 stdin CLI와 같은 `CommandRequest { action, data }` payload, envelope ordering, `invalidResumeState` / `staleConnectionId` error code를 유지한다.
   - websocket은 per-connection serial frame send queue를 써서 request 처리 순서와 response frame 순서를 같게 유지한다.
+  - TCP EOF / websocket close는 shared server runtime이 마지막 successful `hello.connectionId` owner만 authoritative disconnect 대상으로 삼아 same adapter `disconnectMember -> grace tracking` path로 연결한다.
 - websocket entrypoint:
   - `GoStopCLI --room-transport-websocket-server`
   - `GoStopCLI --room-transport-websocket-server --port 9092`
@@ -725,15 +741,17 @@
 - [x] stale/replaced session heartbeat가 현재 연결 정보를 덮어쓰지 않는다
 - [x] gameplay `room_transport_send`가 `playCard`, `submitChoice`, `quit`, `leaveRoom`를 받는다
 - [x] stale `expectedStateVersion` path가 `actionRejected -> stateSnapshot(reason=resync)`를 queue한다
+- [x] duplicate `actionId` exact resend가 `duplicateActionIdDisposition=exactReplay`, conflicting reuse가 `actionRejected(code=actionIdConflict)`로 live transport에서 분리된다
 - [x] result dismissal path가 `leaveRoom -> roomClosed` authoritative room event로 드러난다
+- [x] reconnect grace expiry transport path가 synthetic `quit(reason=disconnectTimeout)`와 terminal fan-out으로 이어진다
+- [x] timeout terminal path에서 `roundEnded -> matchEnded -> terminalSummary`가 `roomClosed`보다 먼저 온다
+- [x] invite room payload가 `inviteCode`를 노출하고, Phase 0에서는 `inviteCode == roomId`로 고정된다
+- [x] passive TCP/WebSocket close가 explicit `disconnect`와 같은 authoritative disconnect helper로 연결된다
+- [x] socket parity `MP-007`이 passive close timeout path에서 PASS다
 
 ## Open Questions
-- protocol-level open question:
-  - actual websocket `--room-transport-websocket-server`가 shared `RoomTransportServer` boundary 위에서 current TCP `--room-transport-server` fallback과 same `room_transport_connect/send/receive` ordering, stale heartbeat code parity, `terminalSummary` fan-out을 유지하는지 Agent 4 live parity smoke로 최종 확인 필요
 - implementation follow-up:
-  - room transport에서 reconnect grace 만료 시 Agent 1 `quit(reason=disconnectTimeout)`를 실제로 emit해야 한다.
-  - stale socket heartbeat를 transport error로 반환할지, silent ignore + audit log로 둘지 결정 필요
-  - room terminal summary forwarder는 `matchEnded.forfeitingPlayerId`와 `settlementSummary`를 그대로 보존해야 한다.
+  - background lifecycle sweep 없이도 timeout completion을 자동 발생시키는 server-owned timer는 아직 없다. 현재 authoritative timeout completion trigger는 same adapter `reapExpiredState`다.
 
 ## Change Log
 - 2026-03-08: skeleton replaced with Phase 0 draft for room/session lifecycle, websocket envelope, reconnect, heartbeat, timeout, and Agent 1 dependency list
@@ -742,3 +760,5 @@
 - 2026-03-08: app target now reuses the same coordinator via `LocalRoomCoordinatorDebugService`, and `recordHeartbeat(_:)` rejects stale/replaced/expired connection ownership
 - 2026-03-10: `room_transport_send` gameplay relay now accepts `playCard`, `submitChoice`, `quit`, `leaveRoom`, queues nested engine envelopes including stale-version resync recovery, and exposes a TCP `--room-transport-server` binding skeleton
 - 2026-03-11: transport relay now rewrites room `playerId` to authority `playerId` via room seat/session lookup, validates `roundEnded`/`matchEnded` terminal payloads, fixes live stale recovery `stateSnapshot(reason=resync)`, adds `--room-transport-websocket-server` websocket listener skeleton, routes TCP/websocket startup through a shared `RoomTransportServer` boundary, and exposes duplicate `actionId` replay/conflict semantics on live transport
+- 2026-03-12: `MP-004` compare smoke confirmed duplicate `actionId` exact replay and conflicting reuse separation on both TCP fallback and websocket transport
+- 2026-03-12: transport timeout hardening added `room_transport_send(action=disconnect|reapExpiredState)`, kept stale heartbeat as explicit reject parity, routed grace expiry through synthetic `quit(reason=disconnectTimeout)`, and exposed `inviteCode` as the Phase 0 share/join identifier

@@ -2042,3 +2042,67 @@
 - **Files Touched**: ["GoStopCLI/RoomCoordinatorModels.swift", "GoStopCLI/RoomCoordinatorCLIAdapter.swift", "GoStopCLI/main.swift", "GoStop/Core/LocalRoomCoordinatorDebugService.swift", "room_protocol.md", "agent_sync_board.md", "project_progress.md"]
 - **Validation**: "cached SourcePackages를 재사용한 unrestricted `xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI -configuration Debug -derivedDataPath /tmp/gostop_cli_round7_agent2 build CODE_SIGNING_ALLOWED=NO -disableAutomaticPackageResolution -clonedSourcePackagesDirPath /tmp/gostop_cli_round7_review/SourcePackages`와 unrestricted `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_round7_agent2 build CODE_SIGNING_ALLOWED=NO -disableAutomaticPackageResolution -clonedSourcePackagesDirPath /tmp/gostop_ios_round7_review/SourcePackages`가 모두 `BUILD SUCCEEDED`였다. escalated `PYTHONDONTWRITEBYTECODE=1 python3 tests/test_agent/multiplayer_runner.py --scenario MP-002 --scenario MP-008 --mode socket --binary /tmp/gostop_cli_round7_agent2/Build/Products/Debug/GoStopCLI --skip-build`는 `MP-002 PASS`, `MP-008 PASS`를 반환했고, `/tmp/gostop_cli_round7_agent2/Build/Products/Debug/GoStopCLI --room-transport-websocket-server --port 19092` startup에서 `RoomTransportWebSocketServer ready`를 확인했다."
 - **Outcome**: "transport relay가 room seat/session lookup으로 room `playerId -> authority playerId`를 internal mapping한 뒤 projection/bootstrap/gameplay/terminal helper를 호출하도록 정리했다. 이로써 live terminal probe의 `invalidAuthorityPayload(roundEnded)`를 닫았고, live stale-version recovery snapshot reason도 `resync`로 고정했다. DEBUG local service도 같은 mapping/request builder를 타게 맞췄고, 기존 TCP fallback을 유지한 채 same adapter 기반 websocket listener skeleton `--room-transport-websocket-server`를 추가했다."
+
+### [2026-03-12 21:19:17 KST] User Request: 오늘 할일 정리와 agent별 실행 프롬프트 생성
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 최신 멀티플레이 상태를 기준으로 오늘 처리할 우선순위를 다시 정리하고, 각 agent가 바로 실행할 수 있는 프롬프트를 원했다."
+- **Files Touched**: ["agent_code_tasks_round10.md", "project_progress.md"]
+- **Validation**: "`sed -n '1,240p' agent_sync_board.md`, `sed -n '1,220p' agent_code_tasks_round9.md`, `tail -n 80 project_progress.md`, `date '+%Y-%m-%d %H:%M:%S %Z'`로 최신 board 상태와 직전 round 문서를 다시 대조했다. 현재 green 상태는 TCP/WebSocket parity `MP-001`, `MP-002`, `MP-008`, `MP-013`, `MP-014`이고, 남은 핵심 blocker는 live duplicate `actionId` semantics(`MP-004`)와 app product route mount라는 점을 기준으로 오늘 작업을 재배치했다."
+- **Outcome**: "`agent_code_tasks_round10.md`를 새로 추가했다. 오늘 우선순위를 `Agent 2 -> Agent 4 -> Agent 3 -> Agent 1 support`로 정리하고, Agent 2는 duplicate `actionId` transport fix, Agent 4는 `MP-004` TCP/WebSocket parity smoke closure, Agent 3는 product-facing route 준비와 localization cleanup, Agent 1은 duplicate contract drift arbitration을 담당하는 실행 프롬프트를 작성했다."
+
+### [2026-03-12 21:23:30 KST] User Request: agent별로 해야 할 일 프롬프트를 다시 정리
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 각 agent 세션에 바로 붙여넣을 수 있는 Round 10 프롬프트만 다시 간단히 받길 원했다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`agent_code_tasks_round10.md`의 우선순위와 각 agent prompt를 기준으로, Agent 2 -> Agent 4 -> Agent 3 -> Agent 1 support 순서를 유지한 채 복붙용 메시지 형태로 다시 정리했다."
+- **Outcome**: "각 agent 세션에 바로 입력할 수 있는 Round 10 프롬프트를 재구성해 전달했다."
+
+### [2026-03-12 21:54:17 KST] User Request: agent 작업 완료 후 다음 할 일 정리, agent별 prompt 작성, 우선순위와 병렬 가능 여부 확인
+- **Skills Planned**: ["basic-code-review", "gostop-game-builder", "project_logger"]
+- **Skills Used**: ["basic-code-review", "gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 Round 10 완료 후 최신 상태를 기준으로 다음 라운드 작업을 다시 배분하고, agent별 실행 프롬프트와 우선순위, 병렬 가능 범위를 한 번에 확인하고 싶어 했다."
+- **Files Touched**: ["agent_code_tasks_round11.md", "project_progress.md"]
+- **Validation**: "`git status --short`, `sed -n '1,320p' agent_sync_board.md`, `tail -n 120 project_progress.md`, `rg -n 'disconnectTimeout|stale heartbeat|heartbeat|inviteCode|productPreparation|GameplayNetworkingAdapter|roomClosed|leaveAcknowledged' GoStop GoStopCLI tests/test_agent multiplayer_*.md room_protocol.md agent_sync_board.md`로 최신 board 상태와 남은 blocker를 다시 확인했다. 현재 locked 상태는 duplicate `actionId` parity와 TCP/WebSocket smoke green이고, 다음 핵심은 reconnect timeout emit, heartbeat policy, product route mount, gameplay adapter concrete path라는 점을 기준으로 Round 11을 정의했다."
+- **Outcome**: "`agent_code_tasks_round11.md`를 새로 추가했다. 다음 라운드 우선순위를 `Agent 2 -> Agent 4 -> Agent 3 -> Agent 1 support`로 정리하고, Agent 2는 timeout/heartbeat hardening과 invite/share identifier, Agent 4는 timeout/heartbeat live smoke와 parity 유지, Agent 3는 product route mount와 gameplay adapter concrete, Agent 1은 timeout/heartbeat contract arbitration을 담당하는 프롬프트를 작성했다."
+
+### [2026-03-12 21:56:15 KST] User Request: agent들에게 해야할 prompt 요청
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 Round 11 기준으로 각 agent 세션에 바로 넣을 수 있는 복붙용 프롬프트만 다시 받고 싶어 했다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`agent_code_tasks_round11.md`에 정리한 Agent 1~4 prompt와 우선순위를 기준으로, 실행 순서를 유지한 채 세션별 복붙 메시지 형태로 다시 정리했다."
+- **Outcome**: "Round 11 agent 실행 프롬프트를 Agent 2, Agent 4, Agent 3, Agent 1 순서로 다시 제공했다."
+
+### [2026-03-12 23:16:47 KST] User Request: agent 작업 완료 후 남은 작업량 추정
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 현재 멀티플레이 진행 상태를 기준으로 앞으로 얼마나 더 남았는지 대략적인 규모를 알고 싶어 했다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`sed -n '1,280p' agent_sync_board.md`, `tail -n 80 project_progress.md`, `date '+%Y-%m-%d %H:%M:%S %Z'`로 최신 Phase 9 상태와 open blocker를 다시 확인했다. 현재 locked 상태는 duplicate `actionId`, reconnect-timeout/heartbeat contract, TCP/WebSocket parity, product-preparation route host이며, 남은 핵심은 자동 connection-close binding, main app product mount, richer gameplay controls, message catalog 정리, dropped-event gap future extension이라는 점을 기준으로 잔여 라운드를 추정했다."
+- **Outcome**: "현재 상태는 개발용 멀티플레이 기준으로 마무리 단계에 들어왔다고 판단했고, 남은 양은 대략 1~2 round(개발용 end-to-end), 외부 사용자 alpha 기준으로는 2~3 round 정도라고 추정해 전달했다."
+
+### [2026-03-12 23:18:12 KST] User Request: 다음 round 일 agent 별로 정리
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 Phase 9 완료 기준으로 다음 라운드의 agent별 작업을 다시 배분해달라고 요청했다."
+- **Files Touched**: ["agent_code_tasks_round12.md", "project_progress.md"]
+- **Validation**: "`rg -n 'Ready For Merge|Current Task|Blocks|Latest Update|MP-007|inviteCode|product-facing|GameplayNetworkingAdapter|disconnect\\)|reapExpiredState|roomClosed' agent_sync_board.md multiplayer_ui_flow.md multiplayer_test_scenarios.md room_protocol.md`, `rg --files | rg '^agent_code_tasks_round1[12]\\.md$'`, `date '+%Y-%m-%d %H:%M:%S %Z'`로 최신 상태와 기존 round 문서를 다시 대조했다. 다음 핵심이 passive socket close binding, main app product mount, richer gameplay UI, gap-based resync future extension이라는 점을 기준으로 Round 12를 정의했다."
+- **Outcome**: "`agent_code_tasks_round12.md`를 새로 추가했다. 다음 라운드 우선순위를 `Agent 2 -> Agent 4 -> Agent 3 -> Agent 1 support`로 정리하고, Agent 2는 passive close binding, Agent 4는 passive close timeout parity smoke, Agent 3는 main app mount와 gameplay UI 개선, Agent 1은 passive-disconnect contract arbitration을 담당하는 프롬프트를 작성했다."
+
+### [2026-03-12 23:19:41 KST] User Request: Round 12 agent 프롬프트를 순서대로 다시 요청
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 Round 12 기준으로 실행 순서에 맞는 agent 프롬프트를 다시 한 번 복붙용으로 받고 싶어 했다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`agent_code_tasks_round12.md`의 Recommended Order와 Agent 1~4 prompt를 기준으로, 실행 순서 `Agent 2 -> Agent 4 -> Agent 3 -> Agent 1`에 맞춰 세션별 복붙 메시지 형태로 다시 정리했다."
+- **Outcome**: "Round 12 agent 실행 프롬프트를 순서대로 다시 제공했다."
+
+### [2026-03-12 23:54:04 KST] User Request: 업무 마무리 및 commit message 작성
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 오늘 작업을 마무리하면서 현재 변경 범위를 요약하고, 그에 맞는 커밋 메시지를 원했다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`git diff --stat`, `git diff --name-only`, `tail -n 40 project_progress.md`, `date '+%Y-%m-%d %H:%M:%S %Z'`로 오늘 변경 범위와 최근 작업 로그를 다시 요약했다. 현재 diff는 app shell, room transport, smoke runner, 문서/보드까지 한 덩어리로 묶이는 멀티플레이 transport/product route hardening 작업으로 판단했다."
+- **Outcome**: "오늘 작업 요약과 현재 diff 전체를 기준으로 한 권장 커밋 메시지(subject/body)를 정리해 전달했다."

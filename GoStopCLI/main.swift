@@ -343,7 +343,22 @@ class CLIEngine {
             throw roomGameplayRejection(.invalidState, "multiplayer.reject.invalid_state")
 
         case .quit:
-            throw roomGameplayRejection(.invalidState, "multiplayer.reject.invalid_state")
+            let quitReasonRaw = (request.commandPayload["reason"] as? String) ?? MultiplayerQuitReason.voluntaryExit.rawValue
+            guard let quitReason = MultiplayerQuitReason(rawValue: quitReasonRaw) else {
+                throw roomGameplayRejection(.invalidState, "multiplayer.reject.invalid_state", retryable: false)
+            }
+            guard gameManager.players.contains(where: { $0.id.uuidString == request.playerId }),
+                  gameManager.multiplayerMatchEndedPayload(
+                    quitReason: quitReason,
+                    forfeitingPlayerId: request.playerId
+                  ) != nil else {
+                throw roomGameplayRejection(.invalidState, "multiplayer.reject.invalid_state")
+            }
+            return RoomAuthorityGameplayExecutionResult(
+                result: [
+                    "quitReason": quitReason.rawValue,
+                ]
+            )
         }
     }
 
@@ -358,16 +373,134 @@ class CLIEngine {
             messageKey: messageKey
         )
     }
+
+    func handlePassiveTransportTeardown(
+        clientId: String,
+        expectedConnectionId: String?
+    ) -> [String: Any]? {
+        roomCLIAdapter.handlePassiveTransportTeardown(
+            clientId: clientId,
+            expectedConnectionId: expectedConnectionId
+        )
+    }
+}
+
+private struct RoomTransportServerBindingUpdate {
+    var clientId: String
+    var logicalConnectionId: String?
+}
+
+private final class RoomTransportServerRuntime {
+    private let engine: CLIEngine
+    private let decoder = JSONDecoder()
+    private var clientIDsByConnection: [ObjectIdentifier: Set<String>] = [:]
+    private var activeConnectionKeyByClientID: [String: ObjectIdentifier] = [:]
+    private var activeLogicalConnectionIDByClientID: [String: String] = [:]
+
+    init(engine: CLIEngine) {
+        self.engine = engine
+    }
+
+    func handlePacket(_ data: Data, on connection: NWConnection) -> [String: Any] {
+        do {
+            let request = try decoder.decode(CommandRequest.self, from: data)
+            let response = engine.handle(request: request)
+            if isSuccessful(response),
+               let binding = bindingUpdate(from: request) {
+                register(binding: binding, for: ObjectIdentifier(connection))
+            }
+            return response
+        } catch {
+            return [
+                "status": "error",
+                "errorCode": "invalidPayload",
+                "message": error.localizedDescription,
+            ]
+        }
+    }
+
+    func handleConnectionClosed(_ connection: NWConnection) {
+        let connectionKey = ObjectIdentifier(connection)
+        let clientIDs = Array(clientIDsByConnection[connectionKey] ?? []).sorted()
+        for clientID in clientIDs {
+            if activeConnectionKeyByClientID[clientID] == connectionKey {
+                _ = engine.handlePassiveTransportTeardown(
+                    clientId: clientID,
+                    expectedConnectionId: activeLogicalConnectionIDByClientID[clientID]
+                )
+                activeConnectionKeyByClientID.removeValue(forKey: clientID)
+                activeLogicalConnectionIDByClientID.removeValue(forKey: clientID)
+            }
+        }
+        clientIDsByConnection.removeValue(forKey: connectionKey)
+    }
+
+    private func register(
+        binding: RoomTransportServerBindingUpdate,
+        for connectionKey: ObjectIdentifier
+    ) {
+        clientIDsByConnection[connectionKey, default: []].insert(binding.clientId)
+        if let logicalConnectionId = binding.logicalConnectionId {
+            activeConnectionKeyByClientID[binding.clientId] = connectionKey
+            activeLogicalConnectionIDByClientID[binding.clientId] = logicalConnectionId
+        }
+    }
+
+    private func bindingUpdate(from request: CommandRequest) -> RoomTransportServerBindingUpdate? {
+        switch request.action {
+        case "room_transport_connect":
+            guard let clientId = stringValue(for: "clientId", in: request.data) else {
+                return nil
+            }
+            return RoomTransportServerBindingUpdate(
+                clientId: clientId,
+                logicalConnectionId: nil
+            )
+        case "room_transport_send":
+            guard let clientId = stringValue(for: "clientId", in: request.data) else {
+                return nil
+            }
+            let transportAction = stringValue(for: "action", in: request.data)
+            let logicalConnectionId = transportAction == "hello"
+                ? stringValue(for: "connectionId", in: request.data)
+                : nil
+            return RoomTransportServerBindingUpdate(
+                clientId: clientId,
+                logicalConnectionId: logicalConnectionId
+            )
+        case "room_transport_receive":
+            guard let clientId = stringValue(for: "clientId", in: request.data) else {
+                return nil
+            }
+            return RoomTransportServerBindingUpdate(
+                clientId: clientId,
+                logicalConnectionId: nil
+            )
+        default:
+            return nil
+        }
+    }
+
+    private func stringValue(
+        for key: String,
+        in data: [String: AnyCodable]?
+    ) -> String? {
+        data?[key]?.value as? String
+    }
+
+    private func isSuccessful(_ response: [String: Any]) -> Bool {
+        (response["status"] as? String) != "error"
+    }
 }
 
 final class RoomTransportTCPServer {
     private let listener: NWListener
     private let queue = DispatchQueue(label: "com.antigravity.GoStopCLI.RoomTransportTCPServer")
-    private let engine: CLIEngine
+    private let runtime: RoomTransportServerRuntime
     private var receiveBuffers: [ObjectIdentifier: Data] = [:]
 
     init(engine: CLIEngine, port: UInt16) throws {
-        self.engine = engine
+        self.runtime = RoomTransportServerRuntime(engine: engine)
         guard let port = NWEndpoint.Port(rawValue: port) else {
             throw NSError(domain: "RoomTransportTCPServer", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid port"])
         }
@@ -433,7 +566,7 @@ final class RoomTransportTCPServer {
     }
 
     private func handlePacket(_ data: Data, connection: NWConnection) {
-        let payload = handleCommandPacket(data, engine: engine)
+        let payload = runtime.handlePacket(data, on: connection)
         send(payload: payload, connection: connection)
     }
 
@@ -446,6 +579,7 @@ final class RoomTransportTCPServer {
     }
 
     private func cleanup(connection: NWConnection) {
+        runtime.handleConnectionClosed(connection)
         receiveBuffers.removeValue(forKey: ObjectIdentifier(connection))
         connection.cancel()
     }
@@ -460,12 +594,12 @@ extension RoomTransportTCPServer: RoomTransportServer {}
 final class RoomTransportWebSocketServer {
     private let listener: NWListener
     private let queue = DispatchQueue(label: "com.antigravity.GoStopCLI.RoomTransportWebSocketServer")
-    private let engine: CLIEngine
+    private let runtime: RoomTransportServerRuntime
     private var pendingPayloadsByConnection: [ObjectIdentifier: [Data]] = [:]
     private var sendingConnections: Set<ObjectIdentifier> = []
 
     init(engine: CLIEngine, port: UInt16) throws {
-        self.engine = engine
+        self.runtime = RoomTransportServerRuntime(engine: engine)
         guard let port = NWEndpoint.Port(rawValue: port) else {
             throw NSError(domain: "RoomTransportWebSocketServer", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid port"])
         }
@@ -522,7 +656,7 @@ final class RoomTransportWebSocketServer {
             }
 
             if let content, !content.isEmpty {
-                let payload = handleCommandPacket(content, engine: self.engine)
+                let payload = self.runtime.handlePacket(content, on: connection)
                 self.enqueue(payload: payload, connection: connection)
             }
             self.receiveMessage(on: connection)
@@ -562,6 +696,7 @@ final class RoomTransportWebSocketServer {
 
     private func cleanup(connection: NWConnection) {
         let key = ObjectIdentifier(connection)
+        runtime.handleConnectionClosed(connection)
         pendingPayloadsByConnection.removeValue(forKey: key)
         sendingConnections.remove(key)
         connection.cancel()

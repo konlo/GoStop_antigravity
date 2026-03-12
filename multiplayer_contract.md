@@ -4,7 +4,7 @@
 - **Owner**: Agent 1
 - **Primary Consumers**: Agent 2, Agent 3, Agent 4
 - **Status**: Draft
-- **Last Updated**: 2026-03-11
+- **Last Updated**: 2026-03-12
 - **Related Docs**:
   - `room_protocol.md`
   - `multiplayer_ui_flow.md`
@@ -117,6 +117,9 @@
 - 같은 `actionId`를 다른 command body로 재사용하면 `actionIdConflict` reject를 반환한다.
 - duplicate `actionId` resolution은 `staleStateVersion` 판단보다 먼저 일어난다. exact duplicate resend는 current authoritative head가 더 앞서 있어도 `exactReplay`여야 하고, `staleStateVersion` + `stateSnapshot(reason=resync)`로 downgrade되면 안 된다.
 - conflicting reuse는 `actionIdConflict` reject여야 한다. conflicting reuse가 `staleStateVersion` reject나 `resync` recovery path로 빠지면 implementation drift다.
+- contract owner artifact ruling:
+  - exact resend artifact가 `duplicateActionIdDisposition=exactReplay` + prior authoritative `eventId` replay가 아니면 implementation drift다
+  - conflicting reuse artifact가 `actionRejected(code=actionIdConflict)`가 아니면 implementation drift다
 
 ## Match State Model
 
@@ -254,6 +257,10 @@
 - accepted gameplay relay baseline은 `actionAccepted -> statePatched|stateSnapshot -> semantic follow-up` ordered engine events다.
 - stale `expectedStateVersion` reject path는 `actionRejected(code=staleStateVersion)` 뒤에 같은 websocket stream에서 `stateSnapshot(reason=resync)` recovery pair를 이어서 받아야 한다.
 - live stale-version recovery snapshot reason은 `resync`만 허용된다. `localPreview`는 local bridge / debug preview helper에서만 허용되며 live room/game transport에서는 사용할 수 없다.
+- passive socket close / transport teardown은 engine command가 아니라 room-owned disconnect signal이다. passive close 감지 자체는 engine `actionAccepted` / `actionRejected` / `stateSnapshot`을 만들지 않고, room layer disconnect tracking으로만 들어가야 한다.
+- explicit `room_transport_send(action=disconnect)`와 passive socket close는 disconnect tracking 이후 동일한 downstream authority path를 공유해야 한다. reconnect grace expiry가 실제 terminal closure를 만들 때는 두 path 모두 `quit(reason=disconnectTimeout)` same authority transaction으로 수렴해야 한다.
+- stale heartbeat / pong / ack는 engine command가 아니라 room-owned liveness signal이다. replaced/expired/mismatched connection에서 온 stale heartbeat는 explicit room-level reject(`staleConnectionId` 또는 `invalidResumeState`)가 source-of-truth고, audit log는 additive-only다.
+- stale heartbeat handling은 `actionRejected`, `stateSnapshot`, `roundEnded`, `matchEnded` 같은 engine envelope를 emit하거나 `stateVersion`을 바꾸면 안 된다. silent audit-only로 내려버리는 것도 contract drift다.
 
 ### Commands
 | Command | Actor | Preconditions | Success Output | Common Rejects |
@@ -804,6 +811,7 @@ Failure relay:
 }
 ```
 - terminal consumer baseline은 success sequence 중 `matchEnded`다. room layer는 같은 terminal transaction에서 별도 `terminalSummary`를 fan-out할 수 있지만, result route의 game-engine source of truth는 `matchEnded`다.
+- reconnect grace expiry는 same authority path의 `quit(reason=disconnectTimeout)`로 처리한다. room layer가 이 command를 synthetic emit 하더라도, engine-visible actor와 terminal authority fields는 모두 forfeiting authority `playerId`를 유지해야 한다.
 
 ### Duplicate `actionId` Websocket Parity Samples
 
@@ -966,6 +974,7 @@ Authoritative reject:
 }
 ```
 - conflict reject 뒤에는 `stateSnapshot(reason=resync)` recovery pair가 오지 않는다. `staleStateVersion`/`resync`로 떨어지면 contract drift다.
+- Agent 2/4가 live parity artifact를 가져오면 above two cases를 source-of-truth로 판정한다. TCP/WebSocket 차이와 무관하게 이 분류가 우선이다.
 
 ## Reject Reason Contract
 
@@ -1089,6 +1098,16 @@ Authoritative reject:
 - `get_multiplayer_terminal_summary` response baseline type은 `MultiplayerTerminalSummaryPayload`이며, top-level metadata는 `roomId`, `gameId`, `summaryStateVersion`, `lastEventId`, `roundEnded`, `matchEnded`다.
 - room transport layer는 `gameEvent(roundEnded).payload`, `gameEvent(matchEnded).payload`, `terminalSummary.payload.roundEnded`, `terminalSummary.payload.matchEnded`를 서로 다른 shape로 재합성하지 않는다. terminalSummary는 same authority payload object를 fan-out하는 view여야 한다.
 - Agent 2 validator는 `roundEnded.summary`에서 `settlementSummary`와 `forfeitingPlayerId`를 동시에 required로 간주하면 안 된다. 둘은 `endReason`에 따라 mutually conditioned field다.
+- reconnect grace expiry -> `quit(reason=disconnectTimeout)` terminal invariants:
+  - `actionAccepted.payload.playerId == roundEnded.summary.forfeitingPlayerId == matchEnded.forfeitingPlayerId`
+  - `roundEnded.summary.endReason == matchEnded.endReason == "disconnectTimeout"`
+  - `roundEnded.summary.endReasonMessageKey == matchEnded.endReasonMessageKey == "match.end.disconnect_timeout"`
+  - `roundEnded.stateVersion == matchEnded.stateVersion == terminalSummary.summaryStateVersion`
+  - `matchEnded.eventId == terminalSummary.lastEventId`
+  - `winnerPlayerId`, `loserPlayerId`, `finalScores[]`, `roundIndex`, `isDraw`는 `roundEnded.summary`, `matchEnded`, `terminalSummary.payload.roundEnded.summary`, `terminalSummary.payload.matchEnded`에서 동일해야 한다
+- passive socket close -> timeout expiry path에서도 위 invariants는 그대로 유지된다. close detection mechanism이 TCP/WebSocket/passive teardown인지 여부는 authority payload shape를 바꾸지 못한다.
+- `roomClosed`는 room-owned cleanup signal이며 authority result source가 아니다. room layer가 timeout cleanup 후 terminal correlation metadata를 싣는다면 최소 `gameId`, `lastTerminalEventId`, `summaryStateVersion`, `endReason`, `forfeitingPlayerId`를 prior terminal authority payload와 일치시켜야 한다. `winnerPlayerId` / `loserPlayerId` / `finalScores[]`를 복사한다면 `matchEnded`와 byte-for-byte 같은 값이어야 하고, 아니면 생략하는 편이 낫다.
+- passive disconnect cleanup에서도 `roomClosed` correlation fields는 동일하다. passive close 때문에 `gameId`, `summaryStateVersion`, `lastTerminalEventId`, `endReason`, `forfeitingPlayerId` naming이나 값이 달라지면 contract drift다.
 
 ### Event Sample Payloads
 
@@ -1643,6 +1662,189 @@ Authoritative reject:
 ```
 - disconnect timeout / voluntary quit / admin forfeit relay에서는 위 sample에서 `settlementSummary = null`, `forfeitingPlayerId = authority playerId`로 바뀌는 것만 mandatory 차이다.
 
+#### Timeout Forfeit Relay Sequence (`disconnectTimeout`)
+```json
+[
+  {
+    "type": "gameEvent",
+    "roomId": "room_001",
+    "roomSequence": 70,
+    "payload": {
+      "engineEvent": {
+        "type": "event",
+        "eventName": "actionAccepted",
+        "eventId": "evt_000316",
+        "stateVersion": 24,
+        "causedByActionId": "act_timeout_001",
+        "payload": {
+          "requestId": "req_timeout_001",
+          "actionId": "act_timeout_001",
+          "playerId": "player_b",
+          "commandName": "quit"
+        }
+      }
+    }
+  },
+  {
+    "type": "gameEvent",
+    "roomId": "room_001",
+    "roomSequence": 71,
+    "payload": {
+      "engineEvent": {
+        "type": "event",
+        "eventName": "roundEnded",
+        "eventId": "evt_000317",
+        "stateVersion": 24,
+        "causedByActionId": "act_timeout_001",
+        "payload": {
+          "roundIndex": 1,
+          "summary": {
+            "roundIndex": 1,
+            "winnerPlayerId": "player_a",
+            "loserPlayerId": "player_b",
+            "finalScores": [
+              {
+                "playerId": "player_a",
+                "score": 5,
+                "goCount": 0,
+                "money": 10000
+              },
+              {
+                "playerId": "player_b",
+                "score": 2,
+                "goCount": 0,
+                "money": 10000
+              }
+            ],
+            "settlementSummary": null,
+            "endReason": "disconnectTimeout",
+            "endReasonMessageKey": "match.end.disconnect_timeout",
+            "forfeitingPlayerId": "player_b",
+            "isDraw": false
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "gameEvent",
+    "roomId": "room_001",
+    "roomSequence": 72,
+    "payload": {
+      "engineEvent": {
+        "type": "event",
+        "eventName": "matchEnded",
+        "eventId": "evt_000318",
+        "stateVersion": 24,
+        "causedByActionId": "act_timeout_001",
+        "payload": {
+          "roundIndex": 1,
+          "winnerPlayerId": "player_a",
+          "loserPlayerId": "player_b",
+          "finalScores": [
+            {
+              "playerId": "player_a",
+              "score": 5,
+              "goCount": 0,
+              "money": 10000
+            },
+            {
+              "playerId": "player_b",
+              "score": 2,
+              "goCount": 0,
+              "money": 10000
+            }
+          ],
+          "settlementSummary": null,
+          "endReason": "disconnectTimeout",
+          "endReasonMessageKey": "match.end.disconnect_timeout",
+          "forfeitingPlayerId": "player_b",
+          "isDraw": false
+        }
+      }
+    }
+  },
+  {
+    "type": "terminalSummary",
+    "roomId": "room_001",
+    "roomSequence": 73,
+    "payload": {
+      "roomId": "room_001",
+      "gameId": "game_001",
+      "summaryStateVersion": 24,
+      "lastEventId": "evt_000318",
+      "roundEnded": {
+        "roundIndex": 1,
+        "summary": {
+          "roundIndex": 1,
+          "winnerPlayerId": "player_a",
+          "loserPlayerId": "player_b",
+          "finalScores": [
+            {
+              "playerId": "player_a",
+              "score": 5,
+              "goCount": 0,
+              "money": 10000
+            },
+            {
+              "playerId": "player_b",
+              "score": 2,
+              "goCount": 0,
+              "money": 10000
+            }
+          ],
+          "settlementSummary": null,
+          "endReason": "disconnectTimeout",
+          "endReasonMessageKey": "match.end.disconnect_timeout",
+          "forfeitingPlayerId": "player_b",
+          "isDraw": false
+        }
+      },
+      "matchEnded": {
+        "roundIndex": 1,
+        "winnerPlayerId": "player_a",
+        "loserPlayerId": "player_b",
+        "finalScores": [
+          {
+            "playerId": "player_a",
+            "score": 5,
+            "goCount": 0,
+            "money": 10000
+          },
+          {
+            "playerId": "player_b",
+            "score": 2,
+            "goCount": 0,
+            "money": 10000
+          }
+        ],
+        "settlementSummary": null,
+        "endReason": "disconnectTimeout",
+        "endReasonMessageKey": "match.end.disconnect_timeout",
+        "forfeitingPlayerId": "player_b",
+        "isDraw": false
+      }
+    }
+  },
+  {
+    "type": "roomEvent",
+    "roomId": "room_001",
+    "roomSequence": 74,
+    "eventName": "roomClosed",
+    "payload": {
+      "reason": "resultExpired",
+      "gameId": "game_001",
+      "summaryStateVersion": 24,
+      "lastTerminalEventId": "evt_000318",
+      "endReason": "disconnectTimeout",
+      "forfeitingPlayerId": "player_b"
+    }
+  }
+]
+```
+- 위 `roomClosed` example은 authority carry-through reference만 보여준다. `roomClosed` full envelope ownership은 Agent 2 문서에 있지만, timeout cleanup path에서 terminal correlation fields를 싣는다면 위 sample처럼 prior `matchEnded`와 충돌하지 않아야 한다.
+- passive socket close path는 위 sequence 앞단에 room-owned disconnect detection signal(`playerDisconnected`, connection teardown audit, grace-start marker 등)을 추가할 수 있다. 하지만 grace expiry 뒤 authoritative tail은 여전히 `actionAccepted -> roundEnded -> matchEnded -> terminalSummary`, 이후 cleanup `roomClosed`로 이어져야 하며, 위 authority fields와 correlation fields를 바꾸면 안 된다.
+
 ## Choice Contract
 
 ### Shape
@@ -2029,3 +2231,6 @@ Authoritative reject:
 - 2026-03-11: authority `playerId` vs room `playerId` mapping owner를 room/session layer로 고정하고, live stale recovery snapshot reason을 `resync` only로 제한했으며, transport terminal minimum payload를 다시 좁혀 sample로 남김
 - 2026-03-11: authority identity field matrix와 terminal validator mutual-condition rule(`settlementSummary` vs `forfeitingPlayerId`)를 추가해 Agent 2 relay validator 해석 여지를 줄임
 - 2026-03-11: websocket parity용 duplicate `actionId` exact replay / conflict reject sample과 precedence rule(`duplicate` resolution before `staleStateVersion`)을 추가
+- 2026-03-12: duplicate `actionId` live parity artifact ruling을 추가해 exact resend/conflicting reuse의 source-of-truth 판정을 다시 명시
+- 2026-03-12: reconnect-timeout terminal invariants, `roomClosed` terminal correlation carry-through rule, stale heartbeat explicit-reject owner ruling을 추가
+- 2026-03-12: passive socket close도 same `quit(reason=disconnectTimeout)` terminal invariants와 cleanup correlation rule로 수렴해야 한다는 owner ruling을 추가
