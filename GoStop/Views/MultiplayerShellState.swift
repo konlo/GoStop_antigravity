@@ -162,6 +162,20 @@ func multiplayerShellFallbackText(for key: String) -> String? {
         return "The transport source is not ready to create, join, or resume right now."
     case "match.end.disconnect_timeout":
         return "Reconnect grace expired, so the match ended on disconnect timeout."
+    case "match.end.stop":
+        return "The match ended because Stop was called."
+    case "match.end.max_score":
+        return "The match ended because the maximum score threshold was reached."
+    case "match.end.nagari":
+        return "The round ended in nagari."
+    case "match.end.chongtong":
+        return "The match ended on chongtong."
+    case "match.end.three_seolsa":
+        return "The match ended on three seolsa."
+    case "match.end.voluntary_quit":
+        return "A player quit and the match ended."
+    case "match.end.admin_forfeit":
+        return "The match ended on an administrative forfeit."
     case "match.result.leave.ready":
         return "Leave the retained result room when you are finished reading."
     case "match.result.leave.pending":
@@ -186,12 +200,54 @@ func multiplayerShellFallbackText(for key: String) -> String? {
         return "The room expired after staying idle too long."
     case "room.closed.bootstrapFailed":
         return "The room closed because bootstrap completion failed."
+    case "match.choice.capture":
+        return "Choose which same-month line to capture."
+    case "match.choice.capture.take_pair":
+        return "Take this capture pair."
+    case "match.choice.shake":
+        return "Decide whether to shake before continuing."
+    case "match.choice.shake.yes":
+        return "Shake"
+    case "match.choice.shake.no":
+        return "Keep Playing"
+    case "match.choice.go_stop":
+        return "Choose whether to continue with Go or finish with Stop."
+    case "match.choice.go_stop.go":
+        return "Go"
+    case "match.choice.go_stop.stop":
+        return "Stop"
+    case "match.choice.chrysanthemum_role":
+        return "Choose how the chrysanthemum card should score."
+    case "match.choice.chrysanthemum_role.animal":
+        return "Score As Animal"
+    case "match.choice.chrysanthemum_role.double_pi":
+        return "Score As Double Pi"
     case "match.choice.shake.actor_only_waiting":
         return "The opponent is deciding whether to shake."
     case "match.reject.stale_state_version":
         return "The action targeted an older board version. Wait for the authoritative resync."
     case "match.reject.action_id_conflict":
         return "That actionId was reused with different command data and was rejected."
+    case "match.reject.out_of_turn":
+        return "It is not your turn yet. Wait for the authoritative turn change."
+    case "match.reject.invalid_phase":
+        return "That action is not valid in the current phase."
+    case "match.reject.invalid_card":
+        return "That card is no longer a valid target on the current board."
+    case "match.reject.invalid_choice":
+        return "That choice option is no longer valid."
+    case "match.reject.choice_expired":
+        return "The choice expired before the command arrived."
+    case "match.reject.choice_owner_mismatch":
+        return "The choice belongs to the other player."
+    case "match.reject.not_participant":
+        return "The current session no longer belongs to this match."
+    case "match.reject.resume_expired":
+        return "Resume can no longer complete because the grace window expired."
+    case "match.reject.game_not_resumable":
+        return "The match is no longer resumable."
+    case "match.reject.invalid_state":
+        return "The server rejected the action because the live state is no longer valid."
     default:
         if key.hasPrefix("match.end.") {
             return "The match ended for an authoritative server reason."
@@ -422,9 +478,9 @@ enum MultiplayerTransportMountMode: Equatable {
             return "Transport-backed shell route mounted on Agent 2 websocket command frames. MP Lab uses this same boundary, but the source itself is no longer lab-only. Endpoint: \(endpointURL.absoluteString)."
         case .productPreparation(let inviteCode):
             if let inviteCode {
-                return "Future product entry can mount this transport route directly. Create, join, resume, and authoritative result dismissal all stay on helloAck, roomSnapshot, leaveAcknowledged, and roomClosed. Pending inviteCode: \(inviteCode). Phase 0 keeps inviteCode == roomId. Endpoint: \(endpointURL.absoluteString)."
+                return "The product route mounts this transport source directly. Create, join, resume, and authoritative result dismissal all stay on helloAck, roomSnapshot, leaveAcknowledged, and roomClosed. Pending inviteCode: \(inviteCode). Phase 0 keeps inviteCode == roomId. Endpoint: \(endpointURL.absoluteString)."
             }
-            return "Future product entry can mount this transport route directly. Create, resume, and authoritative result dismissal already stay on helloAck, roomSnapshot, leaveAcknowledged, and roomClosed. Join Invite remains hidden until an outer route or local product entry input provides inviteCode. Endpoint: \(endpointURL.absoluteString)."
+            return "The product route mounts this transport source directly. Create, resume, and authoritative result dismissal already stay on helloAck, roomSnapshot, leaveAcknowledged, and roomClosed. Join Invite remains hidden until an outer route or local product entry input provides inviteCode. Endpoint: \(endpointURL.absoluteString)."
         }
     }
 
@@ -443,9 +499,9 @@ enum MultiplayerTransportMountMode: Equatable {
             return "Create Room will hit the Agent 2 websocket command server, then attach through helloAck -> roomSnapshot. `GOSTOP_MP_TRANSPORT_URL` overrides the default endpoint."
         case .productPreparation(let inviteCode):
             if let inviteCode {
-                return "This route is ready for product create/join/resume wiring. Join Invite will use inviteCode \(inviteCode), which Phase 0 resolves as the roomId alias, and still wait for helloAck -> roomSnapshot before entering the room."
+                return "This product route can create, join, and resume now. Join Invite will use inviteCode \(inviteCode), which Phase 0 resolves as the roomId alias, and still wait for helloAck -> roomSnapshot before entering the room."
             }
-            return "This route is ready for product create/resume wiring. Join Invite stays hidden until the outer app route or entry input supplies inviteCode."
+            return "This product route can create and resume now. Join Invite stays hidden until the outer app route or entry input supplies inviteCode."
         }
     }
 }
@@ -3847,6 +3903,7 @@ final class MultiplayerLocalDebugShellSource: MultiplayerShellSource {
                     roomId: store.liveState.roomId,
                     gameId: store.liveState.gameId,
                     localPlayerId: store.liveState.localPlayerId,
+                    localPlayerDisplayName: store.liveState.localPlayerDisplayName,
                     stateVersion: store.liveState.stateVersion,
                     currentPlayerId: store.liveState.currentPlayerId,
                     phase: store.liveState.phase,
@@ -3854,9 +3911,20 @@ final class MultiplayerLocalDebugShellSource: MultiplayerShellSource {
                     turnDeadlineAt: store.liveState.turnDeadlineAt,
                     serverTime: store.liveState.serverTime,
                     opponentPlayerId: store.liveState.opponentPlayerId,
+                    opponentPlayerDisplayName: store.liveState.opponentPlayerDisplayName,
                     opponentHandCount: store.liveState.opponentHandCount,
                     localHandCount: store.liveState.localHandCount,
+                    localScore: store.liveState.localScore,
+                    opponentScore: store.liveState.opponentScore,
+                    localGoCount: store.liveState.localGoCount,
+                    opponentGoCount: store.liveState.opponentGoCount,
+                    deckRemainingCount: store.liveState.deckRemainingCount,
                     localPlayableCardIds: store.liveState.localPlayableCardIds,
+                    localHandCards: store.liveState.localHandCards,
+                    tableCards: store.liveState.tableCards,
+                    tableMonthBuckets: store.liveState.tableMonthBuckets,
+                    localCapturedZone: store.liveState.localCapturedZone,
+                    opponentCapturedZone: store.liveState.opponentCapturedZone,
                     pendingChoice: store.liveState.pendingChoice,
                     lastReject: store.liveState.lastReject,
                     connectionBanner: banner
@@ -3943,6 +4011,7 @@ final class MultiplayerLocalDebugShellSource: MultiplayerShellSource {
             roomId: liveState.roomId,
             gameId: liveState.gameId,
             localPlayerId: liveState.localPlayerId,
+            localPlayerDisplayName: liveState.localPlayerDisplayName,
             stateVersion: liveState.stateVersion,
             currentPlayerId: liveState.currentPlayerId,
             phase: liveState.phase,
@@ -3950,9 +4019,20 @@ final class MultiplayerLocalDebugShellSource: MultiplayerShellSource {
             turnDeadlineAt: liveState.turnDeadlineAt,
             serverTime: liveState.serverTime,
             opponentPlayerId: liveState.opponentPlayerId,
+            opponentPlayerDisplayName: liveState.opponentPlayerDisplayName,
             opponentHandCount: liveState.opponentHandCount,
             localHandCount: liveState.localHandCount,
+            localScore: liveState.localScore,
+            opponentScore: liveState.opponentScore,
+            localGoCount: liveState.localGoCount,
+            opponentGoCount: liveState.opponentGoCount,
+            deckRemainingCount: liveState.deckRemainingCount,
             localPlayableCardIds: liveState.localPlayableCardIds,
+            localHandCards: liveState.localHandCards,
+            tableCards: liveState.tableCards,
+            tableMonthBuckets: liveState.tableMonthBuckets,
+            localCapturedZone: liveState.localCapturedZone,
+            opponentCapturedZone: liveState.opponentCapturedZone,
             pendingChoice: liveState.pendingChoice,
             lastReject: liveState.lastReject,
             connectionBanner: liveBanner(roomState: roomState, helloAck: helloAck)
@@ -4335,6 +4415,7 @@ enum MultiplayerShellMapper {
             roomId: snapshot.state.roomId ?? "room_pending",
             gameId: snapshot.state.gameId,
             localPlayerId: localPlayerId ?? "player_local_pending",
+            localPlayerDisplayName: localPlayer?.name ?? fallbackName(for: localPlayerId ?? "player_local_pending"),
             stateVersion: snapshot.state.stateVersion,
             currentPlayerId: snapshot.state.currentPlayerId ?? localPlayerId ?? "player_turn_pending",
             phase: gamePhase(from: snapshot.state.phase),
@@ -4342,9 +4423,28 @@ enum MultiplayerShellMapper {
             turnDeadlineAt: parseDate(snapshot.state.timers.turnDeadlineAt),
             serverTime: parseDate(serverTime) ?? Date.now,
             opponentPlayerId: opponentPlayer?.playerId ?? "player_opponent_pending",
+            opponentPlayerDisplayName: opponentPlayer?.name ?? fallbackName(for: opponentPlayer?.playerId ?? "player_opponent_pending"),
             opponentHandCount: opponentPlayer?.handCount ?? 0,
             localHandCount: localPlayer?.handCount ?? 0,
+            localScore: localPlayer?.score ?? 0,
+            opponentScore: opponentPlayer?.score ?? 0,
+            localGoCount: localPlayer?.goCount ?? 0,
+            opponentGoCount: opponentPlayer?.goCount ?? 0,
+            deckRemainingCount: snapshot.state.deck.remainingCount,
             localPlayableCardIds: localPlayer?.hand?.map(\.cardId) ?? [],
+            localHandCards: localPlayer?.hand?.map { cardState(from: $0, zone: "hand") } ?? [],
+            tableCards: snapshot.state.table.cards.map { cardState(from: $0, zone: "table") },
+            tableMonthBuckets: tableMonthBucketStates(from: snapshot.state.table),
+            localCapturedZone: capturedZoneState(
+                from: localPlayer,
+                isLocalPlayer: true,
+                fallbackPlayerId: localPlayerId ?? "player_local_pending"
+            ),
+            opponentCapturedZone: capturedZoneState(
+                from: opponentPlayer,
+                isLocalPlayer: false,
+                fallbackPlayerId: opponentPlayer?.playerId ?? "player_opponent_pending"
+            ),
             pendingChoice: snapshot.state.pendingChoice.map { choiceState(from: $0, localPlayerId: localPlayerId) },
             lastReject: nil,
             connectionBanner: liveBanner(snapshot: snapshot, localPlayer: localPlayer, opponentPlayer: opponentPlayer)
@@ -4360,6 +4460,7 @@ enum MultiplayerShellMapper {
             roomId: state.roomId,
             gameId: state.gameId,
             localPlayerId: state.localPlayerId,
+            localPlayerDisplayName: state.localPlayerDisplayName,
             stateVersion: state.stateVersion,
             currentPlayerId: turnChanged.currentPlayerId,
             phase: state.phase == .choicePending ? .choicePending : .inTurn,
@@ -4367,9 +4468,20 @@ enum MultiplayerShellMapper {
             turnDeadlineAt: parseDate(turnChanged.turnDeadlineAt),
             serverTime: parseDate(serverTime) ?? state.serverTime,
             opponentPlayerId: state.opponentPlayerId,
+            opponentPlayerDisplayName: state.opponentPlayerDisplayName,
             opponentHandCount: state.opponentHandCount,
             localHandCount: state.localHandCount,
+            localScore: state.localScore,
+            opponentScore: state.opponentScore,
+            localGoCount: state.localGoCount,
+            opponentGoCount: state.opponentGoCount,
+            deckRemainingCount: state.deckRemainingCount,
             localPlayableCardIds: state.localPlayableCardIds,
+            localHandCards: state.localHandCards,
+            tableCards: state.tableCards,
+            tableMonthBuckets: state.tableMonthBuckets,
+            localCapturedZone: state.localCapturedZone,
+            opponentCapturedZone: state.opponentCapturedZone,
             pendingChoice: state.pendingChoice,
             lastReject: state.lastReject,
             connectionBanner: state.connectionBanner
@@ -4381,6 +4493,7 @@ enum MultiplayerShellMapper {
             roomId: state.roomId,
             gameId: state.gameId,
             localPlayerId: state.localPlayerId,
+            localPlayerDisplayName: state.localPlayerDisplayName,
             stateVersion: state.stateVersion,
             currentPlayerId: state.currentPlayerId,
             phase: state.phase,
@@ -4388,9 +4501,20 @@ enum MultiplayerShellMapper {
             turnDeadlineAt: state.turnDeadlineAt,
             serverTime: state.serverTime,
             opponentPlayerId: state.opponentPlayerId,
+            opponentPlayerDisplayName: state.opponentPlayerDisplayName,
             opponentHandCount: state.opponentHandCount,
             localHandCount: state.localHandCount,
+            localScore: state.localScore,
+            opponentScore: state.opponentScore,
+            localGoCount: state.localGoCount,
+            opponentGoCount: state.opponentGoCount,
+            deckRemainingCount: state.deckRemainingCount,
             localPlayableCardIds: state.localPlayableCardIds,
+            localHandCards: state.localHandCards,
+            tableCards: state.tableCards,
+            tableMonthBuckets: state.tableMonthBuckets,
+            localCapturedZone: state.localCapturedZone,
+            opponentCapturedZone: state.opponentCapturedZone,
             pendingChoice: state.pendingChoice,
             lastReject: rejectState(from: actionRejected.rejectReason),
             connectionBanner: state.connectionBanner
@@ -4458,9 +4582,14 @@ enum MultiplayerShellMapper {
         if let lastError {
             return MultiplayerBannerState(
                 style: .warning,
-                title: lastError.code,
+                title: humanizedBannerCode(lastError.code),
                 detail: [lastError.messageKey, lastError.detail]
-                    .compactMap { $0 }
+                    .compactMap { item in
+                        guard let item else { return nil }
+                        return item == lastError.messageKey
+                            ? multiplayerShellText(item, fallback: item)
+                            : item
+                    }
                     .joined(separator: " • "),
                 messageKey: lastError.messageKey
             )
@@ -4595,11 +4724,125 @@ enum MultiplayerShellMapper {
                 MultiplayerChoiceOptionShellState(
                     optionCode: option.optionCode,
                     labelKey: option.labelKey,
-                    cardIds: option.cards.map(\.cardId),
+                    cards: option.cards.map(cardState(from:)),
                     scoreDeltaPreviewSelf: option.scoreDeltaPreview?.selfDelta ?? 0,
                     scoreDeltaPreviewOpponent: option.scoreDeltaPreview?.opponentDelta ?? 0
                 )
             }
+        )
+    }
+
+    private static func tableMonthBucketStates(
+        from table: MultiplayerTableSnapshot
+    ) -> [MultiplayerTableMonthBucketShellState] {
+        let buckets: [(month: Int, cards: [MultiplayerCardSummary])]
+        if table.monthBuckets.isEmpty {
+            let grouped = Dictionary(grouping: table.cards, by: \.month)
+            buckets = grouped.map { (month: $0.key, cards: $0.value) }
+        } else {
+            buckets = table.monthBuckets.compactMap { entry in
+                let cards = entry.value
+                if let month = Int(entry.key) {
+                    return (month: month, cards: cards)
+                }
+                guard let firstMonth = cards.first?.month else { return nil }
+                return (month: firstMonth, cards: cards)
+            }
+        }
+
+        return buckets
+            .sorted(by: { $0.month < $1.month })
+            .map { bucket in
+                MultiplayerTableMonthBucketShellState(
+                    month: bucket.month,
+                    cards: bucket.cards
+                        .sorted(by: { lhs, rhs in
+                            if lhs.month == rhs.month {
+                                return lhs.cardId < rhs.cardId
+                            }
+                            return lhs.month < rhs.month
+                        })
+                        .map { cardState(from: $0, zone: "table") }
+                )
+            }
+    }
+
+    private static func capturedZoneState(
+        from player: MultiplayerPlayerProjection?,
+        isLocalPlayer: Bool,
+        fallbackPlayerId: String
+    ) -> MultiplayerCapturedZoneShellState {
+        let captured = player?.captured ?? MultiplayerCapturedCards(bright: [], animal: [], ribbon: [], junk: [])
+        return MultiplayerCapturedZoneShellState(
+            playerId: player?.playerId ?? fallbackPlayerId,
+            isLocalPlayer: isLocalPlayer,
+            groups: capturedGroupStates(from: captured)
+        )
+    }
+
+    private static func capturedGroupStates(
+        from captured: MultiplayerCapturedCards
+    ) -> [MultiplayerCapturedGroupShellState] {
+        [
+            MultiplayerCapturedGroupShellState(
+                kind: "bright",
+                title: "Bright",
+                cards: sortedCardStates(from: captured.bright, zone: "captured")
+            ),
+            MultiplayerCapturedGroupShellState(
+                kind: "animal",
+                title: "Animal",
+                cards: sortedCardStates(from: captured.animal, zone: "captured")
+            ),
+            MultiplayerCapturedGroupShellState(
+                kind: "ribbon",
+                title: "Ribbon",
+                cards: sortedCardStates(from: captured.ribbon, zone: "captured")
+            ),
+            MultiplayerCapturedGroupShellState(
+                kind: "junk",
+                title: "Junk",
+                cards: sortedCardStates(from: captured.junk, zone: "captured")
+            )
+        ]
+    }
+
+    private static func sortedCardStates(
+        from summaries: [MultiplayerCardSummary],
+        zone: String
+    ) -> [MultiplayerRenderableCardShellState] {
+        summaries
+            .sorted(by: { lhs, rhs in
+                if lhs.month == rhs.month {
+                    return lhs.cardId < rhs.cardId
+                }
+                return lhs.month < rhs.month
+            })
+            .map { cardState(from: $0, zone: zone) }
+    }
+
+    private static func cardState(
+        from summary: MultiplayerCardSummary,
+        zone: String?
+    ) -> MultiplayerRenderableCardShellState {
+        MultiplayerRenderableCardShellState(
+            cardId: summary.cardId,
+            month: summary.month,
+            kind: summary.kind,
+            imageIndex: summary.imageIndex,
+            selectedRole: summary.selectedRole,
+            zone: zone
+        )
+    }
+
+    private static func cardState(from choiceCard: MultiplayerChoiceCard) -> MultiplayerRenderableCardShellState {
+        MultiplayerRenderableCardShellState(
+            cardId: choiceCard.cardId,
+            month: choiceCard.month,
+            kind: choiceCard.kind,
+            imageIndex: choiceCard.imageIndex,
+            selectedRole: choiceCard.selectedRole,
+            zone: choiceCard.zone
         )
     }
 
@@ -4728,6 +4971,25 @@ enum MultiplayerShellMapper {
         "Player \(playerId.suffix(4))"
     }
 
+    private static func humanizedBannerCode(_ code: String) -> String {
+        code
+            .reduce(into: "") { partial, character in
+                if character == "." || character == "_" {
+                    partial.append(" ")
+                } else if character.isUppercase {
+                    if let last = partial.last, last != " " {
+                        partial.append(" ")
+                    }
+                    partial.append(character.lowercased())
+                } else {
+                    partial.append(character)
+                }
+            }
+            .split(separator: " ")
+            .map { $0.capitalized }
+            .joined(separator: " ")
+    }
+
     private static let dateFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -4787,6 +5049,7 @@ private extension MultiplayerLiveShellState {
             roomId: roomId,
             gameId: gameId,
             localPlayerId: localPlayerId,
+            localPlayerDisplayName: localPlayerDisplayName,
             stateVersion: stateVersion,
             currentPlayerId: currentPlayerId,
             phase: phase,
@@ -4794,9 +5057,20 @@ private extension MultiplayerLiveShellState {
             turnDeadlineAt: turnDeadlineAt,
             serverTime: serverTime,
             opponentPlayerId: opponentPlayerId,
+            opponentPlayerDisplayName: opponentPlayerDisplayName,
             opponentHandCount: opponentHandCount,
             localHandCount: localHandCount,
+            localScore: localScore,
+            opponentScore: opponentScore,
+            localGoCount: localGoCount,
+            opponentGoCount: opponentGoCount,
+            deckRemainingCount: deckRemainingCount,
             localPlayableCardIds: localPlayableCardIds,
+            localHandCards: localHandCards,
+            tableCards: tableCards,
+            tableMonthBuckets: tableMonthBuckets,
+            localCapturedZone: localCapturedZone,
+            opponentCapturedZone: opponentCapturedZone,
             pendingChoice: pendingChoice,
             lastReject: lastReject,
             connectionBanner: connectionBanner
@@ -4893,6 +5167,46 @@ private struct MultiplayerShellContractFixture {
             ]
         )
 
+        let localHandCards = [
+            MultiplayerCardSummary(
+                cardId: "card_03_ribbon_red_poem",
+                month: 3,
+                kind: "ribbon",
+                imageIndex: 9,
+                selectedRole: nil
+            ),
+            MultiplayerCardSummary(
+                cardId: "card_04_junk_a",
+                month: 4,
+                kind: "junk",
+                imageIndex: 11,
+                selectedRole: nil
+            )
+        ]
+        let tableCards = [
+            MultiplayerCardSummary(
+                cardId: "card_03_junk_a",
+                month: 3,
+                kind: "junk",
+                imageIndex: 11,
+                selectedRole: nil
+            ),
+            MultiplayerCardSummary(
+                cardId: "card_03_junk_b",
+                month: 3,
+                kind: "junk",
+                imageIndex: 10,
+                selectedRole: nil
+            ),
+            MultiplayerCardSummary(
+                cardId: "card_08_animal_geese",
+                month: 8,
+                kind: "animal",
+                imageIndex: 3,
+                selectedRole: nil
+            )
+        ]
+
         let gameSnapshot = MultiplayerSnapshot(
             snapshotId: "snap_000013_player_a",
             reason: .resume,
@@ -4917,7 +5231,7 @@ private struct MultiplayerShellContractFixture {
                         playerId: localPlayerId,
                         seatIndex: 0,
                         name: "You",
-                        hand: nil,
+                        hand: localHandCards,
                         handCount: 6,
                         captured: MultiplayerCapturedCards(bright: [], animal: [], ribbon: [], junk: []),
                         score: 5,
@@ -4944,7 +5258,13 @@ private struct MultiplayerShellContractFixture {
                         isViewer: false
                     )
                 ],
-                table: MultiplayerTableSnapshot(cards: [], monthBuckets: [:]),
+                table: MultiplayerTableSnapshot(
+                    cards: tableCards,
+                    monthBuckets: [
+                        "03": Array(tableCards.prefix(2)),
+                        "08": Array(tableCards.suffix(1))
+                    ]
+                ),
                 deck: MultiplayerDeckSnapshot(remainingCount: 18),
                 pendingChoice: choice,
                 scoreboard: MultiplayerScoreboard(

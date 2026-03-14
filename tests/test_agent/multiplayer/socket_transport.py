@@ -8,7 +8,7 @@ import socket
 import subprocess
 import time
 from collections.abc import Callable
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +16,12 @@ from .models import ScenarioDefinition, ScenarioStatus
 
 
 KNOWN_SOCKET_DERIVED_DATA_ROOTS = [
+    Path("/tmp/gostop_cli_round16_agent2"),
+    Path("/tmp/gostop_cli_round16_agent4"),
+    Path("/tmp/gostop_cli_round15_agent2"),
+    Path("/tmp/gostop_cli_round15_agent4"),
+    Path("/tmp/gostop_cli_round14_agent2"),
+    Path("/tmp/gostop_cli_round13_agent2"),
     Path("/tmp/gostop_cli_round12_agent2"),
     Path("/tmp/gostop_cli_round11_agent4"),
     Path("/tmp/gostop_cli_round10_agent4"),
@@ -435,6 +441,23 @@ def _frame_label(envelope: dict[str, Any]) -> str:
     return str(envelope.get("type"))
 
 
+def _label_index(labels: list[str], label: str) -> int | None:
+    try:
+        return labels.index(label)
+    except ValueError:
+        return None
+
+
+def _contains_label_sequence(labels: list[str], required: list[str]) -> bool:
+    required_index = 0
+    for label in labels:
+        if required_index >= len(required):
+            break
+        if label == required[required_index]:
+            required_index += 1
+    return required_index == len(required)
+
+
 def _game_event_id(envelope: dict[str, Any]) -> str | None:
     event = _engine_event(envelope)
     if isinstance(event, dict):
@@ -549,6 +572,375 @@ def _transport_summary_label(transport: str) -> str:
     if transport == "websocket":
         return "websocket"
     return "TCP fallback"
+
+
+def _bootstrap_recommended_next_actions(stage: str) -> list[str]:
+    if stage == "createRoom":
+        return ["room_transport_connect", "room_transport_send(action=hello)"]
+    if stage == "lookupInvite":
+        return ["room_bootstrap_join"]
+    if stage == "joinRoom":
+        return ["room_transport_connect", "room_transport_send(action=hello)", "room_set_ready"]
+    if stage == "prepareGameStart":
+        return ["room_transport_receive"]
+    return []
+
+
+def _assert_bootstrap_boundary(
+    payload: Any,
+    *,
+    stage: str,
+    current_action: str,
+    future_public_route: str,
+) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        raise RuntimeError("bootstrapBoundary payload is missing.")
+
+    if payload.get("surfaceKind") != "publicBootstrapFacade":
+        raise RuntimeError(f"bootstrapBoundary.surfaceKind expected 'publicBootstrapFacade', got {payload.get('surfaceKind')!r}")
+    if payload.get("boundaryVersion") != "room-bootstrap.v1":
+        raise RuntimeError(
+            f"bootstrapBoundary.boundaryVersion expected 'room-bootstrap.v1', got {payload.get('boundaryVersion')!r}"
+        )
+    if payload.get("stage") != stage:
+        raise RuntimeError(f"bootstrapBoundary.stage expected {stage!r}, got {payload.get('stage')!r}")
+
+    current_boundary = payload.get("currentBoundary")
+    if not isinstance(current_boundary, dict):
+        raise RuntimeError("bootstrapBoundary.currentBoundary is missing.")
+    expected_current_boundary = {
+        "mode": "concreteCommandFacade",
+        "createAction": "room_bootstrap_create",
+        "lookupInviteAction": "room_bootstrap_lookup_invite",
+        "joinAction": "room_bootstrap_join",
+        "prepareGameStartAction": "room_bootstrap_prepare_game_start",
+    }
+    if current_boundary != expected_current_boundary:
+        raise RuntimeError(
+            "bootstrapBoundary.currentBoundary diverged from the locked bootstrap facade.\n"
+            f"expected={json.dumps(expected_current_boundary, ensure_ascii=False, sort_keys=True)}\n"
+            f"actual={json.dumps(current_boundary, ensure_ascii=False, sort_keys=True)}"
+        )
+
+    if payload.get("currentCommandAction") != current_action:
+        raise RuntimeError(
+            "bootstrapBoundary.currentCommandAction expected "
+            f"{current_action!r}, got {payload.get('currentCommandAction')!r}"
+        )
+
+    future_public_split = payload.get("futurePublicSplit")
+    if not isinstance(future_public_split, dict):
+        raise RuntimeError("bootstrapBoundary.futurePublicSplit is missing.")
+    if future_public_split.get("status") != "placeholder":
+        raise RuntimeError(
+            "bootstrapBoundary.futurePublicSplit.status expected 'placeholder', got "
+            f"{future_public_split.get('status')!r}"
+        )
+    if future_public_split.get("route") != future_public_route:
+        raise RuntimeError(
+            "bootstrapBoundary.futurePublicSplit.route expected "
+            f"{future_public_route!r}, got {future_public_split.get('route')!r}"
+        )
+
+    gameplay_boundary = payload.get("gameplayTransportBoundary")
+    if not isinstance(gameplay_boundary, dict):
+        raise RuntimeError("bootstrapBoundary.gameplayTransportBoundary is missing.")
+    expected_gameplay_boundary = {
+        "connectAction": "room_transport_connect",
+        "sendAction": "room_transport_send",
+        "receiveAction": "room_transport_receive",
+        "helloAction": "hello",
+    }
+    if gameplay_boundary != expected_gameplay_boundary:
+        raise RuntimeError(
+            "bootstrapBoundary.gameplayTransportBoundary diverged from the locked transport surface.\n"
+            f"expected={json.dumps(expected_gameplay_boundary, ensure_ascii=False, sort_keys=True)}\n"
+            f"actual={json.dumps(gameplay_boundary, ensure_ascii=False, sort_keys=True)}"
+        )
+
+    recommended_next_actions = payload.get("recommendedNextActions")
+    expected_next_actions = _bootstrap_recommended_next_actions(stage)
+    if recommended_next_actions != expected_next_actions:
+        raise RuntimeError(
+            "bootstrapBoundary.recommendedNextActions diverged from the locked stage guidance.\n"
+            f"expected={json.dumps(expected_next_actions, ensure_ascii=False)}\n"
+            f"actual={json.dumps(recommended_next_actions, ensure_ascii=False)}"
+        )
+
+    if payload.get("gapRecoveryShapeAction") != "room_gap_recovery_shape":
+        raise RuntimeError(
+            "bootstrapBoundary.gapRecoveryShapeAction expected 'room_gap_recovery_shape', got "
+            f"{payload.get('gapRecoveryShapeAction')!r}"
+        )
+    gap_recovery = payload.get("gapRecovery")
+    expected_gap_recovery = {
+        "shapeAction": "room_gap_recovery_shape",
+        "transportTriggerAction": "triggerGapRecovery",
+    }
+    if gap_recovery != expected_gap_recovery:
+        raise RuntimeError(
+            "bootstrapBoundary.gapRecovery diverged from the locked live gap hook surface.\n"
+            f"expected={json.dumps(expected_gap_recovery, ensure_ascii=False, sort_keys=True)}\n"
+            f"actual={json.dumps(gap_recovery, ensure_ascii=False, sort_keys=True)}"
+        )
+
+    return {
+        "surfaceKind": payload["surfaceKind"],
+        "boundaryVersion": payload["boundaryVersion"],
+        "stage": payload["stage"],
+        "currentBoundary": dict(current_boundary),
+        "currentCommandAction": payload["currentCommandAction"],
+        "futurePublicSplit": dict(future_public_split),
+        "recommendedNextActions": list(recommended_next_actions),
+        "gameplayTransportBoundary": dict(gameplay_boundary),
+        "gapRecoveryShapeAction": payload["gapRecoveryShapeAction"],
+        "gapRecovery": dict(gap_recovery),
+    }
+
+
+def _assert_paired_bootstrap_by_player(
+    payload: Any,
+    *,
+    room_id: str,
+    game_id: str,
+) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        raise RuntimeError("bootstrapByPlayerId payload is missing.")
+
+    viewer_bootstrap: dict[str, Any] = {}
+    for room_player_id in ("p1", "p2"):
+        bootstrap = payload.get(room_player_id)
+        if not isinstance(bootstrap, dict):
+            raise RuntimeError(f"bootstrapByPlayerId[{room_player_id!r}] is missing.")
+        game_started = bootstrap.get("gameStarted")
+        state_snapshot = bootstrap.get("stateSnapshot")
+        if not isinstance(game_started, dict) or not isinstance(state_snapshot, dict):
+            raise RuntimeError(f"bootstrapByPlayerId[{room_player_id!r}] is missing gameStarted/stateSnapshot pair.")
+        snapshot_state = state_snapshot.get("state")
+        if not isinstance(snapshot_state, dict):
+            raise RuntimeError(f"bootstrapByPlayerId[{room_player_id!r}].stateSnapshot.state is missing.")
+        if state_snapshot.get("reason") != "gameStarted":
+            raise RuntimeError(
+                f"bootstrapByPlayerId[{room_player_id!r}] snapshot reason expected 'gameStarted', got {state_snapshot.get('reason')!r}"
+            )
+        if game_started.get("snapshotId") != state_snapshot.get("snapshotId"):
+            raise RuntimeError(
+                f"bootstrapByPlayerId[{room_player_id!r}] snapshotId pair diverged: "
+                f"{game_started.get('snapshotId')!r} vs {state_snapshot.get('snapshotId')!r}"
+            )
+        if game_started.get("snapshotStateVersion") != state_snapshot.get("snapshotStateVersion"):
+            raise RuntimeError(
+                f"bootstrapByPlayerId[{room_player_id!r}] snapshotStateVersion pair diverged: "
+                f"{game_started.get('snapshotStateVersion')!r} vs {state_snapshot.get('snapshotStateVersion')!r}"
+            )
+        if snapshot_state.get("roomId") != room_id:
+            raise RuntimeError(
+                f"bootstrapByPlayerId[{room_player_id!r}] state.roomId expected {room_id!r}, got {snapshot_state.get('roomId')!r}"
+            )
+        if snapshot_state.get("gameId") != game_id:
+            raise RuntimeError(
+                f"bootstrapByPlayerId[{room_player_id!r}] state.gameId expected {game_id!r}, got {snapshot_state.get('gameId')!r}"
+            )
+        if not isinstance(snapshot_state.get("viewerPlayerId"), str):
+            raise RuntimeError(f"bootstrapByPlayerId[{room_player_id!r}] viewerPlayerId is missing.")
+        viewer_bootstrap[room_player_id] = {
+            "viewerPlayerId": snapshot_state["viewerPlayerId"],
+            "snapshotId": state_snapshot["snapshotId"],
+            "snapshotReason": state_snapshot["reason"],
+            "snapshotStateVersion": state_snapshot["snapshotStateVersion"],
+            "stateVersion": snapshot_state.get("stateVersion"),
+            "turnId": snapshot_state.get("turnId"),
+            "currentPlayerId": snapshot_state.get("currentPlayerId"),
+        }
+
+    return {
+        "roomPlayerIds": sorted(viewer_bootstrap),
+        "byRoomPlayerId": viewer_bootstrap,
+    }
+
+
+def _assert_gap_recovery_shape(payload: Any) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        raise RuntimeError("gapRecoveryShape payload is missing.")
+    if payload.get("mode") != "artifactOnly":
+        raise RuntimeError(f"gapRecoveryShape.mode expected 'artifactOnly', got {payload.get('mode')!r}")
+
+    transport_flag = payload.get("transportFlag")
+    if not isinstance(transport_flag, dict):
+        raise RuntimeError("gapRecoveryShape.transportFlag is missing.")
+    expected_transport_flag = {
+        "name": "gapDetected",
+        "status": "placeholder",
+        "currentEmission": False,
+        "futureTrigger": "missingGameEventOrStateVersionGap",
+    }
+    if transport_flag != expected_transport_flag:
+        raise RuntimeError(
+            "gapRecoveryShape.transportFlag diverged from the locked preflight contract.\n"
+            f"expected={json.dumps(expected_transport_flag, ensure_ascii=False, sort_keys=True)}\n"
+            f"actual={json.dumps(transport_flag, ensure_ascii=False, sort_keys=True)}"
+        )
+
+    artifact = payload.get("artifact")
+    if not isinstance(artifact, dict):
+        raise RuntimeError("gapRecoveryShape.artifact is missing.")
+    expected_artifact = {
+        "name": "gapRecoveryHint",
+        "inputLockRequired": True,
+        "snapshotReason": "gapDetected",
+        "minimumFields": [
+            "roomId",
+            "sessionId",
+            "lastAckedGameEventId",
+            "lastSeenStateVersion",
+            "authoritativeEventId",
+            "authoritativeStateVersion",
+        ],
+    }
+    if artifact != expected_artifact:
+        raise RuntimeError(
+            "gapRecoveryShape.artifact diverged from the locked preflight contract.\n"
+            f"expected={json.dumps(expected_artifact, ensure_ascii=False, sort_keys=True)}\n"
+            f"actual={json.dumps(artifact, ensure_ascii=False, sort_keys=True)}"
+        )
+
+    recovery_envelope = payload.get("recoveryEnvelope")
+    if not isinstance(recovery_envelope, dict):
+        raise RuntimeError("gapRecoveryShape.recoveryEnvelope is missing.")
+    expected_recovery_envelope = {
+        "type": "gameEvent",
+        "eventName": "stateSnapshot",
+        "reason": "gapDetected",
+    }
+    if recovery_envelope != expected_recovery_envelope:
+        raise RuntimeError(
+            "gapRecoveryShape.recoveryEnvelope diverged from the locked preflight contract.\n"
+            f"expected={json.dumps(expected_recovery_envelope, ensure_ascii=False, sort_keys=True)}\n"
+            f"actual={json.dumps(recovery_envelope, ensure_ascii=False, sort_keys=True)}"
+        )
+
+    related_actions = payload.get("relatedActions")
+    if not isinstance(related_actions, dict):
+        raise RuntimeError("gapRecoveryShape.relatedActions is missing.")
+    expected_related_actions = {
+        "bootstrapPrepareAction": "room_bootstrap_prepare_game_start",
+        "debugStaleHookAction": "room_set_mp008_hook",
+    }
+    if related_actions != expected_related_actions:
+        raise RuntimeError(
+            "gapRecoveryShape.relatedActions diverged from the locked preflight contract.\n"
+            f"expected={json.dumps(expected_related_actions, ensure_ascii=False, sort_keys=True)}\n"
+            f"actual={json.dumps(related_actions, ensure_ascii=False, sort_keys=True)}"
+        )
+
+    live_hook = payload.get("liveHook")
+    expected_live_hook = {
+        "transportAction": "room_transport_send(action=triggerGapRecovery)",
+        "recoveryEnvelopeType": "gapRecoveryHint",
+    }
+    if live_hook != expected_live_hook:
+        raise RuntimeError(
+            "gapRecoveryShape.liveHook diverged from the locked live hook contract.\n"
+            f"expected={json.dumps(expected_live_hook, ensure_ascii=False, sort_keys=True)}\n"
+            f"actual={json.dumps(live_hook, ensure_ascii=False, sort_keys=True)}"
+        )
+
+    return {
+        "mode": payload["mode"],
+        "transportFlag": dict(transport_flag),
+        "artifact": dict(artifact),
+        "recoveryEnvelope": dict(recovery_envelope),
+        "relatedActions": dict(related_actions),
+        "liveHook": dict(live_hook),
+    }
+
+
+def _assert_gap_recovery_hint(
+    payload: Any,
+    *,
+    room_id: str,
+    session_id: str,
+    target_client_id: str,
+    last_acked_game_event_id: str | None,
+    last_seen_state_version: int,
+) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        raise RuntimeError("gapRecoveryHint payload is missing.")
+
+    if payload.get("artifactVersion") != "gapRecoveryHint.v1":
+        raise RuntimeError(
+            f"gapRecoveryHint.artifactVersion expected 'gapRecoveryHint.v1', got {payload.get('artifactVersion')!r}"
+        )
+    transport_flag = payload.get("transportFlag")
+    expected_transport_flag = {
+        "name": "gapDetected",
+        "value": True,
+    }
+    if transport_flag != expected_transport_flag:
+        raise RuntimeError(
+            "gapRecoveryHint.transportFlag diverged from the locked live payload.\n"
+            f"expected={json.dumps(expected_transport_flag, ensure_ascii=False, sort_keys=True)}\n"
+            f"actual={json.dumps(transport_flag, ensure_ascii=False, sort_keys=True)}"
+        )
+    if payload.get("inputLockRequired") is not True:
+        raise RuntimeError("gapRecoveryHint.inputLockRequired expected True.")
+    if payload.get("roomId") != room_id:
+        raise RuntimeError(f"gapRecoveryHint.roomId expected {room_id!r}, got {payload.get('roomId')!r}")
+    if payload.get("sessionId") != session_id:
+        raise RuntimeError(
+            f"gapRecoveryHint.sessionId expected {session_id!r}, got {payload.get('sessionId')!r}"
+        )
+    if payload.get("targetClientId") != target_client_id:
+        raise RuntimeError(
+            f"gapRecoveryHint.targetClientId expected {target_client_id!r}, got {payload.get('targetClientId')!r}"
+        )
+    if payload.get("lastAckedGameEventId") != last_acked_game_event_id:
+        raise RuntimeError(
+            "gapRecoveryHint.lastAckedGameEventId diverged from the trigger payload.\n"
+            f"expected={last_acked_game_event_id!r} actual={payload.get('lastAckedGameEventId')!r}"
+        )
+    if payload.get("lastSeenStateVersion") != last_seen_state_version:
+        raise RuntimeError(
+            "gapRecoveryHint.lastSeenStateVersion diverged from the trigger payload.\n"
+            f"expected={last_seen_state_version!r} actual={payload.get('lastSeenStateVersion')!r}"
+        )
+    authoritative_event_id = payload.get("authoritativeEventId")
+    if not isinstance(authoritative_event_id, str):
+        raise RuntimeError("gapRecoveryHint.authoritativeEventId is missing.")
+    authoritative_state_version = payload.get("authoritativeStateVersion")
+    if not isinstance(authoritative_state_version, int):
+        raise RuntimeError("gapRecoveryHint.authoritativeStateVersion is missing.")
+    if payload.get("snapshotReason") != "gapDetected":
+        raise RuntimeError(
+            f"gapRecoveryHint.snapshotReason expected 'gapDetected', got {payload.get('snapshotReason')!r}"
+        )
+    recovery_envelope = payload.get("recoveryEnvelope")
+    expected_recovery_envelope = {
+        "type": "gameEvent",
+        "eventName": "stateSnapshot",
+        "reason": "gapDetected",
+    }
+    if recovery_envelope != expected_recovery_envelope:
+        raise RuntimeError(
+            "gapRecoveryHint.recoveryEnvelope diverged from the locked live payload.\n"
+            f"expected={json.dumps(expected_recovery_envelope, ensure_ascii=False, sort_keys=True)}\n"
+            f"actual={json.dumps(recovery_envelope, ensure_ascii=False, sort_keys=True)}"
+        )
+
+    return {
+        "artifactVersion": payload["artifactVersion"],
+        "transportFlag": dict(transport_flag),
+        "inputLockRequired": payload["inputLockRequired"],
+        "roomId": payload["roomId"],
+        "sessionId": payload["sessionId"],
+        "targetClientId": payload["targetClientId"],
+        "lastAckedGameEventId": payload.get("lastAckedGameEventId"),
+        "lastSeenStateVersion": payload["lastSeenStateVersion"],
+        "authoritativeEventId": authoritative_event_id,
+        "authoritativeStateVersion": authoritative_state_version,
+        "snapshotReason": payload["snapshotReason"],
+        "recoveryEnvelope": dict(recovery_envelope),
+    }
 
 
 class SocketTransportHarness:
@@ -700,7 +1092,7 @@ class SocketTransportHarness:
 
     def bootstrap_two_player_room(self) -> dict[str, Any]:
         create = self.require_ok(
-            "room_create",
+            "room_bootstrap_create",
             {
                 "hostPlayerId": "p1",
                 "deviceId": "dev1",
@@ -708,13 +1100,65 @@ class SocketTransportHarness:
                 "joinPolicy": "inviteCode",
             },
         )
+        create_boundary = _assert_bootstrap_boundary(
+            create.get("bootstrapBoundary"),
+            stage="createRoom",
+            current_action="room_bootstrap_create",
+            future_public_route="POST /api/multiplayer/rooms",
+        )
+        create_room = create.get("room", {})
+        invite_code = create_room.get("inviteCode") if isinstance(create_room, dict) else None
+        if not isinstance(invite_code, str):
+            invite_code = create["room"]["roomId"]
+        lookup = self.require_ok(
+            "room_bootstrap_lookup_invite",
+            {
+                "inviteCode": invite_code,
+            },
+        )
+        lookup_boundary = _assert_bootstrap_boundary(
+            lookup.get("bootstrapBoundary"),
+            stage="lookupInvite",
+            current_action="room_bootstrap_lookup_invite",
+            future_public_route="GET /api/multiplayer/invites/{inviteCode}",
+        )
+        lookup_summary = lookup.get("roomSummary")
+        if not isinstance(lookup_summary, dict):
+            raise RuntimeError("room_bootstrap_lookup_invite roomSummary is missing.")
+        if lookup_summary.get("roomId") != create["room"]["roomId"]:
+            raise RuntimeError(
+                "room_bootstrap_lookup_invite roomId diverged from the created room.\n"
+                f"expected={create['room']['roomId']!r} actual={lookup_summary.get('roomId')!r}"
+            )
+        if lookup_summary.get("inviteCode") != invite_code:
+            raise RuntimeError(
+                "room_bootstrap_lookup_invite inviteCode diverged from the bootstrap create response.\n"
+                f"expected={invite_code!r} actual={lookup_summary.get('inviteCode')!r}"
+            )
+        if lookup_summary.get("canJoin") is not True:
+            raise RuntimeError(f"room_bootstrap_lookup_invite canJoin expected True, got {lookup_summary.get('canJoin')!r}")
+        if lookup_summary.get("memberCount") != 1:
+            raise RuntimeError(
+                f"room_bootstrap_lookup_invite memberCount expected 1, got {lookup_summary.get('memberCount')!r}"
+            )
+        if lookup_summary.get("availableSeatCount") != 1:
+            raise RuntimeError(
+                "room_bootstrap_lookup_invite availableSeatCount expected 1, got "
+                f"{lookup_summary.get('availableSeatCount')!r}"
+            )
         join = self.require_ok(
-            "room_join",
+            "room_bootstrap_join",
             {
                 "roomId": create["room"]["roomId"],
                 "playerId": "p2",
                 "deviceId": "dev2",
             },
+        )
+        join_boundary = _assert_bootstrap_boundary(
+            join.get("bootstrapBoundary"),
+            stage="joinRoom",
+            current_action="room_bootstrap_join",
+            future_public_route="POST /api/multiplayer/rooms/{roomId}/join",
         )
         return {
             "room_id": create["room"]["roomId"],
@@ -722,6 +1166,13 @@ class SocketTransportHarness:
             "guest_session_id": join["session"]["sessionId"],
             "host_resume_token": create["session"]["resumeToken"],
             "guest_resume_token": join["session"]["resumeToken"],
+            "invite_code": invite_code,
+            "bootstrapBoundary": {
+                "create": create_boundary,
+                "lookupInvite": lookup_boundary,
+                "join": join_boundary,
+            },
+            "lookupInviteSummary": lookup_summary,
         }
 
     def connect_transport_client(
@@ -912,15 +1363,142 @@ def _collect_projection_players(snapshot: dict[str, Any]) -> list[dict[str, Any]
     return players
 
 
+def _probe_bootstrap_facade(harness: SocketTransportHarness) -> dict[str, Any]:
+    create = harness.require_ok(
+        "room_bootstrap_create",
+        {
+            "hostPlayerId": "p1",
+            "deviceId": "probe_dev1",
+            "roomType": "invite",
+            "joinPolicy": "inviteCode",
+        },
+    )
+    create_boundary = _assert_bootstrap_boundary(
+        create.get("bootstrapBoundary"),
+        stage="createRoom",
+        current_action="room_bootstrap_create",
+        future_public_route="POST /api/multiplayer/rooms",
+    )
+    room_id = create["room"]["roomId"]
+    invite_code = create["room"].get("inviteCode")
+    if not isinstance(invite_code, str):
+        invite_code = room_id
+
+    lookup = harness.require_ok(
+        "room_bootstrap_lookup_invite",
+        {
+            "inviteCode": invite_code,
+        },
+    )
+    lookup_boundary = _assert_bootstrap_boundary(
+        lookup.get("bootstrapBoundary"),
+        stage="lookupInvite",
+        current_action="room_bootstrap_lookup_invite",
+        future_public_route="GET /api/multiplayer/invites/{inviteCode}",
+    )
+    lookup_summary = lookup.get("roomSummary")
+    if not isinstance(lookup_summary, dict):
+        raise RuntimeError("room_bootstrap_lookup_invite roomSummary is missing.")
+    if lookup_summary.get("roomId") != room_id:
+        raise RuntimeError(
+            f"room_bootstrap_lookup_invite roomSummary.roomId expected {room_id!r}, got {lookup_summary.get('roomId')!r}"
+        )
+    if lookup_summary.get("inviteCode") != invite_code:
+        raise RuntimeError(
+            "room_bootstrap_lookup_invite roomSummary.inviteCode diverged from the created room.\n"
+            f"expected={invite_code!r} actual={lookup_summary.get('inviteCode')!r}"
+        )
+    if lookup_summary.get("canJoin") is not True:
+        raise RuntimeError(f"room_bootstrap_lookup_invite roomSummary.canJoin expected True, got {lookup_summary.get('canJoin')!r}")
+    if lookup_summary.get("memberCount") != 1 or lookup_summary.get("availableSeatCount") != 1:
+        raise RuntimeError(
+            "room_bootstrap_lookup_invite roomSummary expected memberCount=1 and availableSeatCount=1, got "
+            f"{lookup_summary.get('memberCount')!r}/{lookup_summary.get('availableSeatCount')!r}"
+        )
+
+    join = harness.require_ok(
+        "room_bootstrap_join",
+        {
+            "roomId": room_id,
+            "playerId": "p2",
+            "deviceId": "probe_dev2",
+        },
+    )
+    join_boundary = _assert_bootstrap_boundary(
+        join.get("bootstrapBoundary"),
+        stage="joinRoom",
+        current_action="room_bootstrap_join",
+        future_public_route="POST /api/multiplayer/rooms/{roomId}/join",
+    )
+
+    harness.require_ok("room_set_ready", {"roomId": room_id, "playerId": "p1", "ready": True})
+    harness.require_ok("room_set_ready", {"roomId": room_id, "playerId": "p2", "ready": True})
+
+    shape = _assert_gap_recovery_shape(harness.require_ok("room_gap_recovery_shape"))
+
+    game_id = f"{room_id}_bootstrap_facade_game_001"
+    prepare = harness.require_ok(
+        "room_bootstrap_prepare_game_start",
+        {
+            "roomId": room_id,
+            "gameId": game_id,
+        },
+    )
+    prepare_boundary = _assert_bootstrap_boundary(
+        prepare.get("bootstrapBoundary"),
+        stage="prepareGameStart",
+        current_action="room_bootstrap_prepare_game_start",
+        future_public_route="POST /api/multiplayer/rooms/{roomId}/bootstrap/game-start",
+    )
+    mutation = prepare.get("mutation")
+    if not isinstance(mutation, dict):
+        raise RuntimeError("room_bootstrap_prepare_game_start mutation payload is missing.")
+    mutation_snapshot = mutation.get("snapshot")
+    if not isinstance(mutation_snapshot, dict):
+        raise RuntimeError("room_bootstrap_prepare_game_start mutation snapshot is missing.")
+    room = mutation_snapshot.get("room")
+    if not isinstance(room, dict):
+        raise RuntimeError("room_bootstrap_prepare_game_start mutation room snapshot is missing.")
+    if room.get("roomState") != "inGame":
+        raise RuntimeError(
+            f"room_bootstrap_prepare_game_start expected roomState='inGame', got {room.get('roomState')!r}"
+        )
+    if room.get("activeGameId") != game_id:
+        raise RuntimeError(
+            "room_bootstrap_prepare_game_start activeGameId diverged from requested gameId: "
+            f"{room.get('activeGameId')!r} vs {game_id!r}"
+        )
+
+    paired_bootstrap = _assert_paired_bootstrap_by_player(
+        prepare.get("bootstrapByPlayerId"),
+        room_id=room_id,
+        game_id=game_id,
+    )
+
+    return {
+        "roomId": room_id,
+        "gameId": game_id,
+        "createBoundary": create_boundary,
+        "lookupInviteBoundary": lookup_boundary,
+        "lookupInviteSummary": lookup_summary,
+        "joinBoundary": join_boundary,
+        "prepareGameStartBoundary": prepare_boundary,
+        "pairedBootstrap": paired_bootstrap,
+        "gapRecoveryShape": shape,
+    }
+
+
 def _bootstrap_transport_room(
     harness: SocketTransportHarness,
     *,
     warm_engine: bool = False,
     hello_connection_aliases: dict[str, str] | None = None,
+    probe_bootstrap_facade: bool = False,
 ) -> dict[str, Any]:
     if warm_engine:
         harness.ensure_engine_started()
 
+    facade_probe = _probe_bootstrap_facade(harness) if probe_bootstrap_facade else None
     bootstrap = harness.bootstrap_two_player_room()
     room_id = bootstrap["room_id"]
     game_id = f"{room_id}_socket_game_001"
@@ -1012,14 +1590,18 @@ def _bootstrap_transport_room(
         "guest_state_snapshot": guest_state_snapshot,
         "authoritative_state_version": _snapshot_state_version(host_state_snapshot),
         "authoritative_event_id": start_data.get("authoritativeEventId"),
+        "facade_probe": facade_probe,
     }
 
 
 def _run_mp001_socket(harness: SocketTransportHarness) -> dict[str, Any]:
-    boot = _bootstrap_transport_room(harness, warm_engine=False)
+    boot = _bootstrap_transport_room(harness, warm_engine=False, probe_bootstrap_facade=True)
     room_snapshot = boot["room_snapshot"]
     room = room_snapshot["room"]
     transport_label = _transport_summary_label(harness.transport)
+    facade_probe = boot["facade_probe"]
+    if not isinstance(facade_probe, dict):
+        raise RuntimeError("MP-001 bootstrap facade probe is missing.")
 
     if room["roomState"] != "inGame":
         raise RuntimeError(f"Expected roomState=inGame, got {room['roomState']!r}")
@@ -1028,7 +1610,10 @@ def _run_mp001_socket(harness: SocketTransportHarness) -> dict[str, Any]:
 
     return {
         "status": ScenarioStatus.PASS,
-        "summary": f"Socket {transport_label} smoke validated hello/setReady/recordGameStarted with paired gameStarted/stateSnapshot bootstrap.",
+        "summary": (
+            f"Socket {transport_label} smoke validated room_bootstrap facade boundaries for create/join/prepareGameStart "
+            "while preserving live paired gameStarted/stateSnapshot bootstrap."
+        ),
         "roomId": boot["room_id"],
         "gameId": boot["game_id"],
         "players": _collect_players(room_snapshot),
@@ -1051,6 +1636,7 @@ def _run_mp001_socket(harness: SocketTransportHarness) -> dict[str, Any]:
             "agent": [
                 f"Socket mode executed through GoStopCLI {harness.transport} room transport facade.",
                 "Validated paired bootstrap delivery after recordGameStartedAndPrepareBootstrap.",
+                "Validated room_bootstrap_create/join plus room_bootstrap_prepare_game_start facade boundaries on the same transport backend.",
                 *harness.agent_log_lines,
             ],
             "room": harness.room_log_lines,
@@ -1058,6 +1644,17 @@ def _run_mp001_socket(harness: SocketTransportHarness) -> dict[str, Any]:
         },
         "blockingReasons": [],
         "transportBackend": harness.transport,
+        "bootstrapBoundaryProbe": {
+            "liveCreateBoundary": boot["bootstrap"]["bootstrapBoundary"]["create"],
+            "liveLookupInviteBoundary": boot["bootstrap"]["bootstrapBoundary"]["lookupInvite"],
+            "liveLookupInviteSummary": boot["bootstrap"]["lookupInviteSummary"],
+            "liveJoinBoundary": boot["bootstrap"]["bootstrapBoundary"]["join"],
+            "prepareLookupInviteBoundary": facade_probe["lookupInviteBoundary"],
+            "prepareLookupInviteSummary": facade_probe["lookupInviteSummary"],
+            "prepareGameStartBoundary": facade_probe["prepareGameStartBoundary"],
+            "pairedBootstrap": facade_probe["pairedBootstrap"],
+            "gapRecoveryShape": facade_probe["gapRecoveryShape"],
+        },
         "paritySignature": {
             "scenarioId": "MP-001",
             "roomState": room["roomState"],
@@ -1068,6 +1665,10 @@ def _run_mp001_socket(harness: SocketTransportHarness) -> dict[str, Any]:
             "hostSnapshotReason": _snapshot_reason(boot["host_state_snapshot"]),
             "guestSnapshotReason": _snapshot_reason(boot["guest_state_snapshot"]),
             "authoritativeStateVersion": boot["authoritative_state_version"],
+            "liveCreateBoundary": boot["bootstrap"]["bootstrapBoundary"]["create"],
+            "liveLookupInviteBoundary": boot["bootstrap"]["bootstrapBoundary"]["lookupInvite"],
+            "liveJoinBoundary": boot["bootstrap"]["bootstrapBoundary"]["join"],
+            "prepareGameStartBoundary": facade_probe["prepareGameStartBoundary"],
         },
     }
 
@@ -1372,9 +1973,22 @@ def _run_mp007_socket(harness: SocketTransportHarness) -> dict[str, Any]:
     passive_close_at = datetime.now().astimezone()
     harness.close_connection("guest_socket")
 
+    def drain_mailboxes() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        return (
+            harness.transport_receive("host_client"),
+            harness.transport_receive("guest_client"),
+        )
+
     disconnected_snapshot: dict[str, Any] | None = None
-    for _ in range(20):
-        time.sleep(0.05)
+    host_after_disconnect: list[dict[str, Any]] = []
+    guest_after_disconnect: list[dict[str, Any]] = []
+    disconnect_observed_at: datetime | None = None
+    disconnect_deadline = time.monotonic() + 5.0
+    while time.monotonic() < disconnect_deadline:
+        time.sleep(0.1)
+        host_frames, guest_frames = drain_mailboxes()
+        host_after_disconnect.extend(host_frames)
+        guest_after_disconnect.extend(guest_frames)
         candidate_snapshot = harness.snapshot_room(room_id)
         guest_member = next(
             (member for member in candidate_snapshot["room"]["members"] if member["playerId"] == "p2"),
@@ -1382,12 +1996,15 @@ def _run_mp007_socket(harness: SocketTransportHarness) -> dict[str, Any]:
         )
         if isinstance(guest_member, dict) and guest_member.get("presence") == "disconnected":
             disconnected_snapshot = candidate_snapshot
+        if disconnect_observed_at is None and any(
+            frame.get("type") == "roomEvent" and _room_event_name(frame) == "playerDisconnected"
+            for frame in host_after_disconnect
+        ):
+            disconnect_observed_at = datetime.now().astimezone()
+        if disconnected_snapshot is not None and disconnect_observed_at is not None:
             break
     if disconnected_snapshot is None:
         disconnected_snapshot = harness.snapshot_room(room_id)
-
-    host_after_disconnect = harness.transport_receive("host_client")
-    guest_after_disconnect = harness.transport_receive("guest_client")
 
     player_disconnected = next(
         (
@@ -1397,16 +2014,62 @@ def _run_mp007_socket(harness: SocketTransportHarness) -> dict[str, Any]:
         ),
         None,
     )
-    disconnect_at = datetime.now().astimezone()
-    first_reap_at = disconnect_at + timedelta(seconds=31)
-    first_reap_response = harness.transport_send_ok(
-        "host_client",
-        "reapExpiredState",
-        traceId=f"trace_mp007_{harness.transport}",
-        asOf=first_reap_at.isoformat(timespec="seconds"),
-    )
-    host_after_timeout = harness.transport_receive("host_client")
-    guest_after_timeout = harness.transport_receive("guest_client")
+    if disconnect_observed_at is None:
+        disconnect_observed_at = datetime.now().astimezone()
+
+    host_after_timeout: list[dict[str, Any]] = []
+    guest_after_timeout: list[dict[str, Any]] = []
+    action_accepted: dict[str, Any] | None = None
+    round_ended: dict[str, Any] | None = None
+    match_ended: dict[str, Any] | None = None
+    timeout_forfeit: dict[str, Any] | None = None
+    terminal_summary_frame: dict[str, Any] | None = None
+    terminal_observed_at: datetime | None = None
+    automatic_timeout_deadline = time.monotonic() + 40.0
+    while time.monotonic() < automatic_timeout_deadline:
+        time.sleep(0.5)
+        host_frames, guest_frames = drain_mailboxes()
+        host_after_timeout.extend(host_frames)
+        guest_after_timeout.extend(guest_frames)
+        if action_accepted is None:
+            try:
+                action_accepted = _find_engine_event(host_after_timeout, event_name="actionAccepted")
+            except RuntimeError:
+                action_accepted = None
+        if round_ended is None:
+            try:
+                round_ended = _find_engine_event(host_after_timeout, event_name="roundEnded")
+            except RuntimeError:
+                round_ended = None
+        if match_ended is None:
+            try:
+                match_ended = _find_engine_event(host_after_timeout, event_name="matchEnded")
+            except RuntimeError:
+                match_ended = None
+        if timeout_forfeit is None:
+            timeout_forfeit = next(
+                (
+                    frame
+                    for frame in host_after_timeout
+                    if frame.get("type") == "roomEvent"
+                    and _room_event_name(frame) == "playerForfeited"
+                    and _room_event_field(frame, "reason") == "disconnectTimeout"
+                ),
+                None,
+            )
+        if terminal_summary_frame is None:
+            terminal_summary_frame = next(
+                (frame for frame in host_after_timeout if frame.get("type") == "terminalSummary"),
+                None,
+            )
+        if all(
+            item is not None
+            for item in (action_accepted, round_ended, match_ended, timeout_forfeit, terminal_summary_frame)
+        ):
+            terminal_observed_at = datetime.now().astimezone()
+            break
+
+    timeout_snapshot = harness.snapshot_room(room_id)
 
     harness.connect_transport_client(
         "guest_resume",
@@ -1421,20 +2084,34 @@ def _run_mp007_socket(harness: SocketTransportHarness) -> dict[str, Any]:
         "hello",
         expected_code="resumeExpired",
         connectionId="conn_guest_socket_003",
-        lastSeen={"roomSequence": disconnected_snapshot["room"]["lastRoomSequence"]},
+        lastSeen={"roomSequence": timeout_snapshot["room"]["lastRoomSequence"]},
     )
     resume_probe_frames = harness.transport_receive("guest_resume")
 
-    second_reap_at = first_reap_at + timedelta(seconds=61)
-    second_reap_response = harness.transport_send_ok(
-        "host_client",
-        "reapExpiredState",
-        traceId=f"trace_mp007_close_{harness.transport}",
-        asOf=second_reap_at.isoformat(timespec="seconds"),
-    )
-    host_after_close = harness.transport_receive("host_client")
-    guest_after_close = harness.transport_receive("guest_client")
-    closed_snapshot = harness.snapshot_room(room_id)
+    host_after_close: list[dict[str, Any]] = []
+    guest_after_close: list[dict[str, Any]] = []
+    room_closed_frame: dict[str, Any] | None = None
+    room_closed_observed_at: datetime | None = None
+    closed_snapshot = timeout_snapshot
+    automatic_close_deadline = time.monotonic() + 70.0
+    while time.monotonic() < automatic_close_deadline:
+        time.sleep(0.5)
+        host_frames, guest_frames = drain_mailboxes()
+        host_after_close.extend(host_frames)
+        guest_after_close.extend(guest_frames)
+        closed_snapshot = harness.snapshot_room(room_id)
+        if room_closed_frame is None:
+            room_closed_frame = next(
+                (
+                    frame
+                    for frame in host_after_close
+                    if frame.get("type") == "roomEvent" and _room_event_name(frame) == "roomClosed"
+                ),
+                None,
+            )
+        if room_closed_frame is not None and closed_snapshot["room"]["roomState"] == "closed":
+            room_closed_observed_at = datetime.now().astimezone()
+            break
 
     host_timeout_labels = [_frame_label(frame) for frame in host_after_timeout]
     guest_timeout_labels = [_frame_label(frame) for frame in guest_after_timeout]
@@ -1446,39 +2123,42 @@ def _run_mp007_socket(harness: SocketTransportHarness) -> dict[str, Any]:
 
     status = ScenarioStatus.PASS
     blocking_reasons: list[str] = []
-
-    try:
-        action_accepted = _find_engine_event(host_after_timeout, event_name="actionAccepted")
-        round_ended = _find_engine_event(host_after_timeout, event_name="roundEnded")
-        match_ended = _find_engine_event(host_after_timeout, event_name="matchEnded")
-    except RuntimeError as error:
-        status = ScenarioStatus.BLOCKED
-        blocking_reasons.append(str(error))
-        action_accepted = None
-        round_ended = None
-        match_ended = None
-
-    timeout_forfeit = next(
-        (
-            frame
-            for frame in host_after_timeout
-            if frame.get("type") == "roomEvent"
-            and _room_event_name(frame) == "playerForfeited"
-            and _room_event_field(frame, "reason") == "disconnectTimeout"
-        ),
-        None,
-    )
     if timeout_forfeit is None:
         status = ScenarioStatus.BLOCKED
         blocking_reasons.append("Timeout path did not emit roomEvent(playerForfeited reason=disconnectTimeout).")
     if player_disconnected is None:
         status = ScenarioStatus.BLOCKED
         blocking_reasons.append("Passive close did not emit roomEvent(playerDisconnected).")
+    if action_accepted is None:
+        status = ScenarioStatus.BLOCKED
+        blocking_reasons.append("Automatic timeout path did not emit gameEvent(actionAccepted).")
+    if round_ended is None:
+        status = ScenarioStatus.BLOCKED
+        blocking_reasons.append("Automatic timeout path did not emit gameEvent(roundEnded).")
+    if match_ended is None:
+        status = ScenarioStatus.BLOCKED
+        blocking_reasons.append("Automatic timeout path did not emit gameEvent(matchEnded).")
+    if not _contains_label_sequence(host_timeout_labels, ["actionAccepted", "roundEnded", "matchEnded", "terminalSummary"]):
+        status = ScenarioStatus.BLOCKED
+        blocking_reasons.append(
+            "Automatic timeout host ordering diverged: expected actionAccepted -> roundEnded -> matchEnded -> terminalSummary."
+        )
+    player_forfeited_index = _label_index(host_timeout_labels, "playerForfeited")
+    room_state_changed_index = _label_index(host_timeout_labels, "roomStateChanged")
+    terminal_summary_index = _label_index(host_timeout_labels, "terminalSummary")
+    if player_forfeited_index is None or room_state_changed_index is None:
+        status = ScenarioStatus.BLOCKED
+        blocking_reasons.append(
+            "Automatic timeout host timeline is missing roomEvent(playerForfeited) or roomEvent(roomStateChanged)."
+        )
+    elif terminal_summary_index is not None and (
+        player_forfeited_index > terminal_summary_index or room_state_changed_index > terminal_summary_index
+    ):
+        status = ScenarioStatus.BLOCKED
+        blocking_reasons.append(
+            "Automatic timeout roomEvent(playerForfeited/roomStateChanged) must precede terminalSummary on the host timeline."
+        )
 
-    terminal_summary_frame = next(
-        (frame for frame in host_after_timeout if frame.get("type") == "terminalSummary"),
-        None,
-    )
     terminal_payload: dict[str, Any] | None = None
     if terminal_summary_frame is None:
         status = ScenarioStatus.BLOCKED
@@ -1537,17 +2217,9 @@ def _run_mp007_socket(harness: SocketTransportHarness) -> dict[str, Any]:
                 "matchEnded forfeitingPlayerId diverged from terminalSummary.matchEnded.forfeitingPlayerId."
             )
 
-    room_closed_frame = next(
-        (
-            frame
-            for frame in host_after_close
-            if frame.get("type") == "roomEvent" and _room_event_name(frame) == "roomClosed"
-        ),
-        None,
-    )
     if room_closed_frame is None:
         status = ScenarioStatus.BLOCKED
-        blocking_reasons.append("Second timeout reap did not emit roomEvent(roomClosed).")
+        blocking_reasons.append("Automatic result retention did not emit roomEvent(roomClosed).")
 
     closed_room_state = closed_snapshot["room"]["roomState"]
     if closed_room_state != "closed":
@@ -1555,13 +2227,13 @@ def _run_mp007_socket(harness: SocketTransportHarness) -> dict[str, Any]:
         blocking_reasons.append(f"Room state after timeout close diverged: expected 'closed', got {closed_room_state!r}.")
 
     summary = (
-        f"Socket {transport_label} passive-close timeout smoke validated disconnectTimeout forfeit relay, "
-        "terminalSummary fan-out, and later roomClosed completion."
+        f"Socket {transport_label} automatic passive-close timeout smoke validated timer-driven disconnectTimeout "
+        "forfeit relay, terminalSummary fan-out, and later roomClosed completion."
     )
     if status is ScenarioStatus.BLOCKED:
         summary = (
-            f"Socket {transport_label} passive-close timeout smoke reached disconnectTimeout expiry, "
-            "but terminal or close ordering still diverged from the locked contract."
+            f"Socket {transport_label} automatic passive-close timeout smoke reached disconnectTimeout expiry, "
+            "but timer-driven terminal or close ordering still diverged from the locked contract."
         )
 
     return {
@@ -1587,10 +2259,10 @@ def _run_mp007_socket(harness: SocketTransportHarness) -> dict[str, Any]:
         },
         "logs": {
             "agent": [
-                f"Socket mode used {harness.transport} room transport passive close + reapExpiredState for timeout coverage.",
-                f"passiveCloseAt={passive_close_at.isoformat(timespec='seconds')} firstReapQueued={first_reap_response.get('queuedEnvelopeCount')}",
+                f"Socket mode used {harness.transport} room transport passive close + automatic expiry timer for timeout coverage.",
+                f"passiveCloseAt={passive_close_at.isoformat(timespec='seconds')} disconnectObservedAt={disconnect_observed_at.isoformat(timespec='seconds') if disconnect_observed_at else 'n/a'}",
                 f"resumeExpiredError={resume_attempt['errorCode']}",
-                f"secondReapQueued={second_reap_response.get('queuedEnvelopeCount')}",
+                f"terminalObservedAt={terminal_observed_at.isoformat(timespec='seconds') if terminal_observed_at else 'n/a'} roomClosedObservedAt={room_closed_observed_at.isoformat(timespec='seconds') if room_closed_observed_at else 'n/a'}",
                 *harness.agent_log_lines,
             ],
             "room": harness.room_log_lines,
@@ -1601,11 +2273,14 @@ def _run_mp007_socket(harness: SocketTransportHarness) -> dict[str, Any]:
         "timeoutProbe": {
             "policy": "disconnectTimeoutForfeit",
             "disconnectMode": "passiveClose",
+            "progressionMode": "automaticExpirySweep",
+            "manualReapUsed": False,
             "disconnectResponse": None,
-            "firstReapResponse": first_reap_response,
             "resumeExpiredResponse": resume_attempt,
-            "secondReapResponse": second_reap_response,
             "passiveCloseAt": passive_close_at.isoformat(timespec="seconds"),
+            "disconnectObservedAt": disconnect_observed_at.isoformat(timespec="seconds") if disconnect_observed_at else None,
+            "terminalObservedAt": terminal_observed_at.isoformat(timespec="seconds") if terminal_observed_at else None,
+            "roomClosedObservedAt": room_closed_observed_at.isoformat(timespec="seconds") if room_closed_observed_at else None,
             "hostDisconnectLabels": host_disconnect_labels,
             "guestDisconnectLabels": guest_disconnect_labels,
             "hostTimeoutLabels": host_timeout_labels,
@@ -1614,13 +2289,14 @@ def _run_mp007_socket(harness: SocketTransportHarness) -> dict[str, Any]:
             "hostCloseLabels": host_close_labels,
             "guestCloseLabels": guest_close_labels,
             "closedRoomState": closed_room_state,
-            "firstReapAt": first_reap_at.isoformat(timespec="seconds"),
-            "secondReapAt": second_reap_at.isoformat(timespec="seconds"),
+            "timeoutSnapshotRoomSequence": timeout_snapshot["room"]["lastRoomSequence"],
             "terminalSummaryPayload": terminal_payload,
         },
         "paritySignature": {
             "scenarioId": "MP-007",
             "disconnectMode": "passiveClose",
+            "progressionMode": "automaticExpirySweep",
+            "manualReapUsed": False,
             "playerDisconnectedSeen": player_disconnected is not None,
             "resumeExpiredError": resume_attempt["errorCode"],
             "actionAcceptedSeen": action_accepted is not None,
@@ -1635,6 +2311,10 @@ def _run_mp007_socket(harness: SocketTransportHarness) -> dict[str, Any]:
                 terminal_payload.get("matchEnded", {}).get("forfeitingPlayerId") == match_payload.get("forfeitingPlayerId")
                 if isinstance(terminal_payload, dict) and isinstance(terminal_payload.get("matchEnded"), dict)
                 else False
+            ),
+            "terminalOrderingStable": _contains_label_sequence(
+                host_timeout_labels,
+                ["actionAccepted", "roundEnded", "matchEnded", "terminalSummary"],
             ),
             "closedRoomState": closed_room_state,
         },
@@ -1896,6 +2576,26 @@ def _run_mp014_socket(harness: SocketTransportHarness) -> dict[str, Any]:
     room = latest_snapshot["room"]
     guest_member = next(member for member in room["members"] if member["playerId"] == "p2")
     transport_label = _transport_summary_label(harness.transport)
+    stale_heartbeat_code_probe = {
+        "probeName": "debugConnectHeartbeatEnvelope",
+        "adapterPath": "MultiplayerWebSocketCommandNetworkingAdapter",
+        "transportBackend": harness.transport,
+        "commandSurface": "room_transport_send(action=ack)",
+        "cliIngressBaseline": {
+            "commandSurface": "room_heartbeat",
+            "disconnectedErrorCode": "invalidResumeState",
+            "staleErrorCode": "staleConnectionId",
+        },
+        "rawCommandResponses": {
+            "disconnected": disconnected_error,
+            "stale": stale_error,
+            "accepted": accepted_ack,
+        },
+        "commandEnvelopeParity": {
+            "disconnectedMatchesCliIngress": disconnected_error["errorCode"] == "invalidResumeState",
+            "staleMatchesCliIngress": stale_error["errorCode"] == "staleConnectionId",
+        },
+    }
 
     return {
         "status": ScenarioStatus.PASS,
@@ -1955,6 +2655,7 @@ def _run_mp014_socket(harness: SocketTransportHarness) -> dict[str, Any]:
             "currentConnectionId": guest_member.get("connectedConnectionId"),
             "lastRoomSequence": room["lastRoomSequence"],
         },
+        "staleHeartbeatCodeProbe": stale_heartbeat_code_probe,
         "paritySignature": {
             "scenarioId": "MP-014",
             "heartbeatPolicy": "explicitReject",
@@ -1972,6 +2673,7 @@ def _run_mp008_socket(harness: SocketTransportHarness) -> dict[str, Any]:
     room_id = boot["room_id"]
     game_id = boot["game_id"]
     room_snapshot = boot["room_snapshot"]
+    gap_recovery_shape = _assert_gap_recovery_shape(harness.require_ok("room_gap_recovery_shape"))
     hook = harness.require_ok(
         "room_set_mp008_hook",
         {
@@ -2021,7 +2723,10 @@ def _run_mp008_socket(harness: SocketTransportHarness) -> dict[str, Any]:
     recovery_state = _snapshot_state(recovery)
     recovery_reason = _snapshot_reason(recovery)
     status = ScenarioStatus.PASS
-    summary = "Socket TCP gameplay smoke validated staleStateVersion reject plus stateSnapshot(reason=resync) on a live transport command."
+    summary = (
+        "Socket TCP gameplay smoke validated staleStateVersion reject/stateSnapshot(reason=resync) "
+        "and triggerGapRecovery -> gapRecoveryHint -> stateSnapshot(reason=gapDetected) on live transport."
+    )
     blocking_reasons: list[str] = []
     if recovery_reason != "resync":
         status = ScenarioStatus.BLOCKED
@@ -2032,6 +2737,79 @@ def _run_mp008_socket(harness: SocketTransportHarness) -> dict[str, Any]:
         blocking_reasons.append(
             f"Recovery snapshot reason diverged: expected 'resync', got {recovery_reason!r}."
         )
+
+    gap_client_state_version = max(0, boot["authoritative_state_version"] - 1)
+    gap_send_result = harness.transport_send_ok(
+        "host_client",
+        "triggerGapRecovery",
+        requestId="req_mp008_socket_gap_001",
+        actionId="act_mp008_socket_gap_001",
+        expectedStateVersion=gap_client_state_version,
+        lastEventId=boot["authoritative_event_id"],
+        lastSeen={
+            "roomSequence": room_snapshot["room"]["lastRoomSequence"],
+            "gameEventId": boot["authoritative_event_id"],
+            "stateVersion": gap_client_state_version,
+        },
+    )
+    host_gap_frames = harness.transport_receive("host_client")
+    guest_gap_frames = harness.transport_receive("guest_client")
+    host_gap_labels = [_frame_label(frame) for frame in host_gap_frames]
+    if not _contains_label_sequence(host_gap_labels, ["gapRecoveryHint", "stateSnapshot"]):
+        raise RuntimeError(
+            "MP-008 live gap recovery ordering diverged. "
+            f"expected gapRecoveryHint -> stateSnapshot, got labels={host_gap_labels!r}"
+        )
+    gap_hint_envelope = next(
+        (frame for frame in host_gap_frames if frame.get("type") == "gapRecoveryHint"),
+        None,
+    )
+    if not isinstance(gap_hint_envelope, dict):
+        raise RuntimeError("MP-008 live gap recovery did not emit a gapRecoveryHint envelope.")
+    gap_hint = _assert_gap_recovery_hint(
+        gap_hint_envelope.get("payload"),
+        room_id=room_id,
+        session_id=boot["bootstrap"]["host_session_id"],
+        target_client_id="host_client",
+        last_acked_game_event_id=boot["authoritative_event_id"],
+        last_seen_state_version=gap_client_state_version,
+    )
+    returned_gap_hint = _assert_gap_recovery_hint(
+        gap_send_result.get("gapRecoveryHint"),
+        room_id=room_id,
+        session_id=boot["bootstrap"]["host_session_id"],
+        target_client_id="host_client",
+        last_acked_game_event_id=boot["authoritative_event_id"],
+        last_seen_state_version=gap_client_state_version,
+    )
+    if returned_gap_hint != gap_hint:
+        raise RuntimeError(
+            "MP-008 live gap recovery response payload diverged from the queued gapRecoveryHint envelope.\n"
+            f"response={json.dumps(returned_gap_hint, ensure_ascii=False, sort_keys=True)}\n"
+            f"envelope={json.dumps(gap_hint, ensure_ascii=False, sort_keys=True)}"
+        )
+    gap_snapshot = _find_engine_event(
+        host_gap_frames,
+        event_name="stateSnapshot",
+        reason="gapDetected",
+        snapshot_only=True,
+    )
+    if gap_snapshot.get("eventId") != gap_hint["authoritativeEventId"]:
+        raise RuntimeError(
+            "MP-008 live gap recovery eventId diverged from gapRecoveryHint.authoritativeEventId.\n"
+            f"expected={gap_hint['authoritativeEventId']!r} actual={gap_snapshot.get('eventId')!r}"
+        )
+    gap_snapshot_state = _snapshot_state(gap_snapshot)
+    gap_snapshot_reason = _snapshot_reason(gap_snapshot)
+    gap_snapshot_state_version = _snapshot_state_version(gap_snapshot)
+    if gap_snapshot_state_version != gap_hint["authoritativeStateVersion"]:
+        raise RuntimeError(
+            "MP-008 live gap recovery snapshot stateVersion diverged from gapRecoveryHint.authoritativeStateVersion.\n"
+            f"expected={gap_hint['authoritativeStateVersion']!r} actual={gap_snapshot_state_version!r}"
+        )
+    guest_gap_labels = [_frame_label(frame) for frame in guest_gap_frames]
+    if any(label == "gapRecoveryHint" for label in guest_gap_labels):
+        raise RuntimeError(f"MP-008 live gap recovery leaked gapRecoveryHint to guest frames: {guest_gap_labels!r}")
 
     authoritative_state_version = reject_details.get("authoritativeStateVersion")
     authoritative_event_id = reject_details.get("authoritativeEventId")
@@ -2067,6 +2845,8 @@ def _run_mp008_socket(harness: SocketTransportHarness) -> dict[str, Any]:
                 "MP-008 uses the live quit command so the reject/resync pair is deterministic even while playCard still depends on room/authority playerId mapping.",
                 f"authoritativeStateVersion={authoritative_state_version} authoritativeEventId={authoritative_event_id}",
                 f"guestReceiveCountDuringResync={len(guest_resync_frames)}",
+                f"gapRecoveryAuthoritativeEventId={gap_hint['authoritativeEventId']} "
+                f"gapRecoveryAuthoritativeStateVersion={gap_hint['authoritativeStateVersion']}",
                 *harness.agent_log_lines,
             ],
             "room": harness.room_log_lines,
@@ -2074,8 +2854,9 @@ def _run_mp008_socket(harness: SocketTransportHarness) -> dict[str, Any]:
         },
         "blockingReasons": blocking_reasons,
         "transportBackend": harness.transport,
+        "gapRecoveryShape": gap_recovery_shape,
         "injectionPlan": {
-            "executionReadiness": "live-socket-gameplay",
+            "executionReadiness": "live-socket-gameplay-and-gap-hook",
             "injectedMismatchMode": normalized_mode or "staleExpectedStateVersion",
             "clientStateVersion": client_state_version,
             "expectedStateVersion": expected_state_version,
@@ -2087,6 +2868,17 @@ def _run_mp008_socket(harness: SocketTransportHarness) -> dict[str, Any]:
             "commandName": "quit",
             "debugWarmupActions": ["start_game"],
             "recoveryShouldLockInput": resync_details.get("shouldLockInput"),
+            "gapRecoveryShapeAction": "room_gap_recovery_shape",
+            "gapRecoveryHintMinimumFields": gap_recovery_shape["artifact"]["minimumFields"],
+            "expectedGapRecoverySnapshotReason": gap_recovery_shape["recoveryEnvelope"]["reason"],
+            "liveGapRecoveryTransportAction": gap_recovery_shape["liveHook"]["transportAction"],
+            "liveGapRecoveryEnvelopeType": gap_recovery_shape["liveHook"]["recoveryEnvelopeType"],
+            "gapTriggerClientStateVersion": gap_client_state_version,
+            "gapTriggerLastDeliveredEventId": boot["authoritative_event_id"],
+            "gapTriggeredAuthoritativeStateVersion": gap_hint["authoritativeStateVersion"],
+            "gapTriggeredAuthoritativeEventId": gap_hint["authoritativeEventId"],
+            "gapRecoverySnapshotReason": gap_snapshot_reason,
+            "gapRecoverySnapshotId": _snapshot_id(gap_snapshot),
         },
         "mismatchFrames": [
             {
@@ -2105,6 +2897,7 @@ def _run_mp008_socket(harness: SocketTransportHarness) -> dict[str, Any]:
                 "recoverySnapshotReason": recovery_reason,
                 "recoverySnapshotId": recovery_payload.get("snapshotId"),
                 "sendAuthoritativeEventId": send_result.get("authoritativeEventId"),
+                "expectedGapRecoverySnapshotReason": gap_recovery_shape["recoveryEnvelope"]["reason"],
             },
             {
                 "kind": "live_socket_resync_snapshot",
@@ -2116,8 +2909,50 @@ def _run_mp008_socket(harness: SocketTransportHarness) -> dict[str, Any]:
                 "stateHash": _stable_hash(recovery_state),
                 "viewerPlayerId": recovery_state.get("viewerPlayerId"),
                 "currentPlayerId": recovery_state.get("currentPlayerId"),
+                "gapRecoveryHintMinimumFields": gap_recovery_shape["artifact"]["minimumFields"],
+            },
+            {
+                "kind": "live_socket_gap_hint",
+                "scenarioId": "MP-008",
+                "status": status.value,
+                "commandName": "triggerGapRecovery",
+                "actionId": "act_mp008_socket_gap_001",
+                "requestId": "req_mp008_socket_gap_001",
+                "artifactVersion": gap_hint["artifactVersion"],
+                "transportFlagName": gap_hint["transportFlag"]["name"],
+                "transportFlagValue": gap_hint["transportFlag"]["value"],
+                "targetClientId": gap_hint["targetClientId"],
+                "lastAckedGameEventId": gap_hint["lastAckedGameEventId"],
+                "lastSeenStateVersion": gap_hint["lastSeenStateVersion"],
+                "authoritativeEventId": gap_hint["authoritativeEventId"],
+                "authoritativeStateVersion": gap_hint["authoritativeStateVersion"],
+                "snapshotReason": gap_hint["snapshotReason"],
+            },
+            {
+                "kind": "live_socket_gap_snapshot",
+                "scenarioId": "MP-008",
+                "status": status.value,
+                "commandName": "triggerGapRecovery",
+                "snapshotId": _snapshot_id(gap_snapshot),
+                "eventId": gap_snapshot.get("eventId"),
+                "stateVersion": gap_snapshot_state_version,
+                "stateHash": _stable_hash(gap_snapshot_state),
+                "snapshotReason": gap_snapshot_reason,
+                "viewerPlayerId": gap_snapshot_state.get("viewerPlayerId"),
             },
         ],
+        "gapRecoveryProbe": {
+            "transportAction": "triggerGapRecovery",
+            "liveHook": gap_recovery_shape["liveHook"],
+            "gapHint": gap_hint,
+            "snapshotEventId": gap_snapshot.get("eventId"),
+            "snapshotId": _snapshot_id(gap_snapshot),
+            "snapshotReason": gap_snapshot_reason,
+            "snapshotStateVersion": gap_snapshot_state_version,
+            "hostFrameLabels": host_gap_labels,
+            "guestFrameLabels": guest_gap_labels,
+            "queuedEnvelopeCount": gap_send_result.get("queuedEnvelopeCount"),
+        },
         "resyncProbe": {
             "sendResult": send_result,
             "guestFrameLabels": [_frame_label(frame) for frame in guest_resync_frames],
@@ -2133,6 +2968,10 @@ def _run_mp008_socket(harness: SocketTransportHarness) -> dict[str, Any]:
             "expectedStateVersion": expected_state_version,
             "authoritativeStateVersion": authoritative_state_version,
             "recoverySnapshotReason": recovery_reason,
+            "gapRecoveryShape": gap_recovery_shape,
+            "gapRecoveryHintArtifactVersion": gap_hint["artifactVersion"],
+            "gapRecoveryHintTransportFlag": gap_hint["transportFlag"],
+            "gapRecoverySnapshotReason": gap_snapshot_reason,
         },
     }
 
@@ -2372,9 +3211,23 @@ def _compare_socket_results(
             "tcp": tcp_result.get("injectionPlan"),
             "websocket": websocket_result.get("injectionPlan"),
         }
+        result["gapRecoveryShape"] = {
+            "tcp": tcp_result.get("gapRecoveryShape"),
+            "websocket": websocket_result.get("gapRecoveryShape"),
+        }
         mismatch_frames = _merge_transport_rows(tcp_result.get("mismatchFrames", []), "tcp")
         mismatch_frames.extend(_merge_transport_rows(websocket_result.get("mismatchFrames", []), "websocket"))
         result["mismatchFrames"] = mismatch_frames
+        result["gapRecoveryProbe"] = {
+            "tcp": tcp_result.get("gapRecoveryProbe"),
+            "websocket": websocket_result.get("gapRecoveryProbe"),
+        }
+
+    if scenario.scenario_id == "MP-001":
+        result["bootstrapBoundaryProbe"] = {
+            "tcp": tcp_result.get("bootstrapBoundaryProbe"),
+            "websocket": websocket_result.get("bootstrapBoundaryProbe"),
+        }
 
     if scenario.scenario_id == "MP-004":
         result["duplicateProbe"] = {
@@ -2392,6 +3245,15 @@ def _compare_socket_results(
         result["heartbeatProbe"] = {
             "tcp": tcp_result.get("heartbeatProbe"),
             "websocket": websocket_result.get("heartbeatProbe"),
+        }
+        result["staleHeartbeatCodeProbe"] = {
+            "cliIngressBaseline": {
+                "commandSurface": "room_heartbeat",
+                "disconnectedErrorCode": "invalidResumeState",
+                "staleErrorCode": "staleConnectionId",
+            },
+            "tcp": tcp_result.get("staleHeartbeatCodeProbe"),
+            "websocket": websocket_result.get("staleHeartbeatCodeProbe"),
         }
 
     return result

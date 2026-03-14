@@ -20,6 +20,10 @@ private struct RoomSnapshotCLIRequest: Codable {
     var roomId: String
 }
 
+private struct RoomBootstrapLookupCLIRequest: Codable {
+    var inviteCode: String
+}
+
 private struct RoomRecordMatchEndedCLIRequest: Codable {
     var roomId: String
     var roundIndex: Int?
@@ -204,20 +208,33 @@ final class RoomCoordinatorCLIAdapter {
     func handle(request: CommandRequest) -> [String: Any]? {
         do {
             switch request.action {
-            case "room_create":
+            case "room_create", "room_bootstrap_create":
                 let payload = try decode(CreateRoomRequest.self, from: request.data)
                 let mutation = try coordinator.createRoom(payload)
                 return success(
                     action: request.action,
-                    data: createOrJoinResponse(mutation: mutation, playerId: payload.hostPlayerId)
+                    data: bootstrapScopedData(
+                        createOrJoinResponse(mutation: mutation, playerId: payload.hostPlayerId),
+                        stage: "createRoom",
+                        currentAction: request.action,
+                        futurePublicRoute: "POST /api/multiplayer/rooms"
+                    )
                 )
-            case "room_join":
+            case "room_join", "room_bootstrap_join":
                 let payload = try decode(JoinRoomRequest.self, from: request.data)
                 let mutation = try coordinator.joinRoom(payload)
                 return success(
                     action: request.action,
-                    data: createOrJoinResponse(mutation: mutation, playerId: payload.playerId)
+                    data: bootstrapScopedData(
+                        createOrJoinResponse(mutation: mutation, playerId: payload.playerId),
+                        stage: "joinRoom",
+                        currentAction: request.action,
+                        futurePublicRoute: "POST /api/multiplayer/rooms/{roomId}/join"
+                    )
                 )
+            case "room_bootstrap_lookup_invite":
+                let payload = try decode(RoomBootstrapLookupCLIRequest.self, from: request.data)
+                return try handleBootstrapLookupInvite(payload, action: request.action)
             case "room_set_ready":
                 let payload = try decode(SetReadyRequest.self, from: request.data)
                 let mutation = try coordinator.setReady(payload)
@@ -246,9 +263,14 @@ final class RoomCoordinatorCLIAdapter {
                 let payload = try decode(RecordGameStartedRequest.self, from: request.data)
                 let mutation = try coordinator.recordGameStarted(payload)
                 return success(action: request.action, data: mutationResponse(mutation))
-            case "room_record_game_started_and_prepare_bootstrap":
+            case "room_record_game_started_and_prepare_bootstrap", "room_bootstrap_prepare_game_start":
                 let payload = try decode(RecordGameStartedRequest.self, from: request.data)
                 return try handleRecordGameStartedAndPrepareBootstrap(payload, action: request.action)
+            case "room_gap_recovery_shape":
+                return success(
+                    action: request.action,
+                    data: gapRecoveryShape()
+                )
             case "room_projection_preview":
                 let payload = try decode(RoomProjectionPreviewCLIRequest.self, from: request.data)
                 return try handleProjectionPreview(payload, action: request.action)
@@ -396,6 +418,61 @@ final class RoomCoordinatorCLIAdapter {
             data: [
                 "mutation": mutationResponse(mutation),
                 "bootstrapByPlayerId": bootstrapByPlayerId,
+                "bootstrapBoundary": bootstrapBoundary(
+                    stage: "prepareGameStart",
+                    currentAction: action,
+                    futurePublicRoute: "POST /api/multiplayer/rooms/{roomId}/bootstrap/game-start"
+                ),
+            ]
+        )
+    }
+
+    private func handleBootstrapLookupInvite(
+        _ payload: RoomBootstrapLookupCLIRequest,
+        action: String
+    ) throws -> [String: Any] {
+        // Phase 0 ships invite lookup as part of the bootstrap facade.
+        guard let snapshot = coordinator.snapshot(for: payload.inviteCode) else {
+            throw RoomCoordinatorError.roomNotFound(roomId: payload.inviteCode)
+        }
+
+        let room = snapshot.room
+        let inviteCode = serializedInviteCode(for: room) ?? room.roomId
+        let availableSeatCount = max(0, 2 - room.members.count)
+        let roomIsJoinable = room.roomState == .waitingForPlayers || room.roomState == .waitingForReady
+        return success(
+            action: action,
+            data: [
+                "inviteCode": inviteCode,
+                "roomSummary": [
+                    "roomId": room.roomId,
+                    "inviteCode": inviteCode,
+                    "roomType": room.roomType.rawValue,
+                    "joinPolicy": room.joinPolicy.rawValue,
+                    "roomState": room.roomState.rawValue,
+                    "hostPlayerId": room.hostPlayerId,
+                    "memberCount": room.members.count,
+                    "availableSeatCount": availableSeatCount,
+                    "canJoin": roomIsJoinable && availableSeatCount > 0,
+                    "activeGameId": room.activeGameId ?? NSNull(),
+                    "members": room.members
+                        .sorted(by: { $0.seat < $1.seat })
+                        .map { member in
+                            [
+                                "playerId": member.playerId,
+                                "seat": member.seat,
+                                "role": member.role.rawValue,
+                                "ready": member.ready,
+                                "presence": member.presence.rawValue,
+                            ]
+                        },
+                ],
+                "websocket": transportPolicy(),
+                "bootstrapBoundary": bootstrapBoundary(
+                    stage: "lookupInvite",
+                    currentAction: action,
+                    futurePublicRoute: "GET /api/multiplayer/invites/{inviteCode}"
+                ),
             ]
         )
     }
@@ -672,10 +749,15 @@ final class RoomCoordinatorCLIAdapter {
                     "queuedEnvelopeCount": transportMailboxes[payload.clientId]?.count ?? 0,
                 ]
             )
+        case "triggerGapRecovery":
+            return try handleTransportGapRecovery(
+                payload,
+                client: client,
+                action: action
+            )
         case "reapExpiredState":
-            let mutations = try coordinator.reapExpiredState(asOf: payload.asOf ?? Date())
-            try relayExpiredTransportMutations(
-                mutations,
+            let mutations = try handleTransportExpirySweep(
+                asOf: payload.asOf ?? Date(),
                 initiatedByClientId: payload.clientId,
                 traceId: payload.traceId
             )
@@ -760,6 +842,21 @@ final class RoomCoordinatorCLIAdapter {
         default:
             throw RoomCLIAdapterError.unsupportedTransportAction(payload.action)
         }
+    }
+
+    @discardableResult
+    func handleTransportExpirySweep(
+        asOf: Date,
+        initiatedByClientId: String? = nil,
+        traceId: String? = nil
+    ) throws -> [RoomCoordinatorMutation] {
+        let mutations = try coordinator.reapExpiredState(asOf: asOf)
+        try relayExpiredTransportMutations(
+            mutations,
+            initiatedByClientId: initiatedByClientId,
+            traceId: traceId
+        )
+        return mutations
     }
 
     @discardableResult
@@ -1409,7 +1506,7 @@ final class RoomCoordinatorCLIAdapter {
 
     private func relayExpiredTransportMutations(
         _ mutations: [RoomCoordinatorMutation],
-        initiatedByClientId: String,
+        initiatedByClientId: String?,
         traceId: String?
     ) throws {
         let authorityRelay = self.authorityRelay
@@ -1426,9 +1523,101 @@ final class RoomCoordinatorCLIAdapter {
             }
             broadcastRoomEvents(mutation.events, in: mutation.snapshot.room.roomId)
         }
-        if transportMailboxes[initiatedByClientId] == nil {
+        if let initiatedByClientId,
+           transportMailboxes[initiatedByClientId] == nil {
             transportMailboxes[initiatedByClientId] = []
         }
+    }
+
+    private func handleTransportGapRecovery(
+        _ payload: RoomTransportSendCLIRequest,
+        client: RoomTransportClientState,
+        action: String
+    ) throws -> [String: Any] {
+        // Shipped Phase 0 live recovery path: gapRecoveryHint -> stateSnapshot(reason=gapDetected).
+        let authorityRelay = try requireAuthorityRelay()
+        let roomSnapshot = try requireRoomSnapshot(client.roomId)
+        guard let session = roomSnapshot.sessions.first(where: { $0.sessionId == client.sessionId }) else {
+            throw RoomCLIAdapterError.invalidAuthorityPayload("roomSession")
+        }
+        guard let gameId = roomSnapshot.room.activeGameId ?? transportGameStates[client.roomId]?.gameId else {
+            throw RoomCLIAdapterError.transportGameNotStarted(client.roomId)
+        }
+
+        let currentGameState = resolveTransportGameState(
+            roomId: client.roomId,
+            gameId: gameId,
+            fallbackStateVersion: max(session.lastSeenStateVersion ?? 0, payload.expectedStateVersion ?? 0)
+        )
+        let gapSnapshot = try fetchProjectionSnapshot(
+            authorityRelay: authorityRelay,
+            roomSnapshot: roomSnapshot,
+            viewerPlayerId: client.playerId,
+            gameState: currentGameState,
+            snapshotReason: .gapDetected
+        )
+        let snapshotEventId = nextGameEventID(for: client.roomId)
+        let lastAckedGameEventId = payload.lastEventId
+            ?? payload.lastSeen?.gameEventId
+            ?? session.lastAckedGameEventId
+        let lastSeenStateVersion = payload.expectedStateVersion
+            ?? payload.lastSeen?.stateVersion
+            ?? session.lastSeenStateVersion
+            ?? currentGameState.stateVersion
+        let gapRecoveryHint = makeGapRecoveryHintPayload(
+            client: client,
+            session: session,
+            snapshotEventId: snapshotEventId,
+            authoritativeStateVersion: gapSnapshot.snapshotStateVersion,
+            lastAckedGameEventId: lastAckedGameEventId,
+            lastSeenStateVersion: lastSeenStateVersion
+        )
+
+        enqueue(
+            envelope: makeTransportEnvelope(
+                type: "gapRecoveryHint",
+                roomId: client.roomId,
+                sessionId: client.sessionId,
+                roomSequence: roomSnapshot.room.lastRoomSequence,
+                payload: gapRecoveryHint
+            ),
+            for: client.clientId
+        )
+        enqueueGameEvent(
+            engineEvent: makeEngineEventEnvelope(
+                traceId: payload.traceId,
+                roomId: client.roomId,
+                gameId: gameId,
+                eventId: snapshotEventId,
+                stateVersion: gapSnapshot.snapshotStateVersion,
+                causedByActionId: payload.actionId,
+                eventName: .stateSnapshot,
+                payload: try requireJSONObject(from: gapSnapshot)
+            ),
+            roomId: client.roomId,
+            clientId: client.clientId,
+            roomSequence: roomSnapshot.room.lastRoomSequence
+        )
+
+        transportGameStates[client.roomId] = RoomTransportGameState(
+            roomId: client.roomId,
+            gameId: gameId,
+            stateVersion: gapSnapshot.snapshotStateVersion,
+            lastEventOrdinal: parseEventOrdinal(from: snapshotEventId),
+            lastEventId: snapshotEventId,
+            lastTurnId: gapSnapshot.state.turnId
+        )
+
+        return success(
+            action: action,
+            data: [
+                "transportAction": payload.action,
+                "gapRecoveryHint": gapRecoveryHint,
+                "authoritativeStateVersion": gapSnapshot.snapshotStateVersion,
+                "authoritativeEventId": snapshotEventId,
+                "queuedEnvelopeCount": transportMailboxes[client.clientId]?.count ?? 0,
+            ]
+        )
     }
 
     private func disconnectTimeoutForfeitingPlayerId(
@@ -2772,6 +2961,143 @@ final class RoomCoordinatorCLIAdapter {
             data["session"] = serializeSession(session)
         }
         return data
+    }
+
+    private func bootstrapScopedData(
+        _ data: [String: Any],
+        stage: String,
+        currentAction: String,
+        futurePublicRoute: String
+    ) -> [String: Any] {
+        var scoped = data
+        scoped["bootstrapBoundary"] = bootstrapBoundary(
+            stage: stage,
+            currentAction: currentAction,
+            futurePublicRoute: futurePublicRoute
+        )
+        return scoped
+    }
+
+    private func bootstrapBoundary(
+        stage: String,
+        currentAction: String,
+        futurePublicRoute: String
+    ) -> [String: Any] {
+        // Keep locked parity fields stable; add freeze metadata only outside the locked nested objects.
+        [
+            "surfaceKind": "publicBootstrapFacade",
+            "boundaryVersion": "room-bootstrap.v1",
+            "stage": stage,
+            "currentBoundary": [
+                "mode": "concreteCommandFacade",
+                "createAction": "room_bootstrap_create",
+                "lookupInviteAction": "room_bootstrap_lookup_invite",
+                "joinAction": "room_bootstrap_join",
+                "prepareGameStartAction": "room_bootstrap_prepare_game_start",
+            ],
+            "currentCommandAction": currentAction,
+            "futurePublicSplit": [
+                "status": "placeholder",
+                "route": futurePublicRoute,
+            ],
+            "recommendedNextActions": bootstrapRecommendedNextActions(for: stage),
+            "gameplayTransportBoundary": [
+                "connectAction": "room_transport_connect",
+                "sendAction": "room_transport_send",
+                "receiveAction": "room_transport_receive",
+                "helloAction": "hello",
+            ],
+            "gapRecoveryShapeAction": "room_gap_recovery_shape",
+            "gapRecovery": [
+                "shapeAction": "room_gap_recovery_shape",
+                "transportTriggerAction": "triggerGapRecovery",
+            ],
+        ]
+    }
+
+    private func gapRecoveryShape() -> [String: Any] {
+        // Keep the preflight shape backward compatible; live-hook details stay additive.
+        [
+            "mode": "artifactOnly",
+            "transportFlag": [
+                "name": "gapDetected",
+                "status": "placeholder",
+                "currentEmission": false,
+                "futureTrigger": "missingGameEventOrStateVersionGap",
+            ],
+            "artifact": [
+                "name": "gapRecoveryHint",
+                "inputLockRequired": true,
+                "snapshotReason": "gapDetected",
+                "minimumFields": [
+                    "roomId",
+                    "sessionId",
+                    "lastAckedGameEventId",
+                    "lastSeenStateVersion",
+                    "authoritativeEventId",
+                    "authoritativeStateVersion",
+                ],
+            ],
+            "recoveryEnvelope": [
+                "type": "gameEvent",
+                "eventName": "stateSnapshot",
+                "reason": "gapDetected",
+            ],
+            "relatedActions": [
+                "bootstrapPrepareAction": "room_bootstrap_prepare_game_start",
+                "debugStaleHookAction": "room_set_mp008_hook",
+            ],
+            "liveHook": [
+                "transportAction": "room_transport_send(action=triggerGapRecovery)",
+                "recoveryEnvelopeType": "gapRecoveryHint",
+            ],
+        ]
+    }
+
+    private func bootstrapRecommendedNextActions(for stage: String) -> [String] {
+        switch stage {
+        case "createRoom":
+            return ["room_transport_connect", "room_transport_send(action=hello)"]
+        case "lookupInvite":
+            return ["room_bootstrap_join"]
+        case "joinRoom":
+            return ["room_transport_connect", "room_transport_send(action=hello)", "room_set_ready"]
+        case "prepareGameStart":
+            return ["room_transport_receive"]
+        default:
+            return []
+        }
+    }
+
+    private func makeGapRecoveryHintPayload(
+        client: RoomTransportClientState,
+        session: RoomSession,
+        snapshotEventId: String,
+        authoritativeStateVersion: Int,
+        lastAckedGameEventId: String?,
+        lastSeenStateVersion: Int
+    ) -> [String: Any] {
+        [
+            "artifactVersion": "gapRecoveryHint.v1",
+            "transportFlag": [
+                "name": "gapDetected",
+                "value": true,
+            ],
+            "inputLockRequired": true,
+            "roomId": client.roomId,
+            "sessionId": session.sessionId,
+            "targetClientId": client.clientId,
+            "lastAckedGameEventId": lastAckedGameEventId ?? NSNull(),
+            "lastSeenStateVersion": lastSeenStateVersion,
+            "authoritativeEventId": snapshotEventId,
+            "authoritativeStateVersion": authoritativeStateVersion,
+            "snapshotReason": MultiplayerSnapshotReason.gapDetected.rawValue,
+            "recoveryEnvelope": [
+                "type": "gameEvent",
+                "eventName": "stateSnapshot",
+                "reason": MultiplayerSnapshotReason.gapDetected.rawValue,
+            ],
+        ]
     }
 
     private func mutationResponse(_ mutation: RoomCoordinatorMutation) -> [String: Any] {

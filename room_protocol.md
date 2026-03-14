@@ -3,8 +3,8 @@
 ## Meta
 - **Owner**: Agent 2
 - **Primary Consumers**: Agent 1, Agent 3, Agent 4
-- **Status**: Phase 7 Draft
-- **Last Updated**: 2026-03-12
+- **Status**: Phase 0 Shipped
+- **Last Updated**: 2026-03-14
 - **Related Docs**:
   - `multiplayer_contract.md`
   - `multiplayer_ui_flow.md`
@@ -42,7 +42,7 @@
 | --- | --- | --- | --- | --- |
 | room size | 2 players fixed | Agent 2 | Locked | first release |
 | admission modes | `invite`, `quickMatch`가 같은 state machine 사용 | Agent 2 | Locked | `joinPolicy`만 다름 |
-| transport split | current product path는 websocket command boundary를 create/join/bootstrap/live 전부에 사용 | Agent 2 | Locked | cleaner REST bootstrap split은 placeholder follow-up |
+| transport split | current product path는 concrete bootstrap facade `room_bootstrap_*` + gameplay websocket `room_transport_*`로 분리한다 | Agent 2 | Locked | future REST split은 current facade의 1:1 public projection |
 | room start trigger | 두 플레이어가 모두 ready 되면 auto-start | Agent 2 | Locked | public `startGame` 없음 |
 | `inGame` transition control | `.starting` 이후 `recordGameStarted` explicit step 유지 | Agent 2 | Locked | ready는 `.starting`까지만, bootstrap fetch context는 `recordGameStarted` metadata로 노출 |
 | reconnect restore shape | `roomSnapshot` + Agent 1 `stateSnapshot(reason=resume)` | Agent 2 | Locked | delta resume는 Phase 1 이후 |
@@ -57,11 +57,21 @@
 | terminal forwarder | `recordMatchEnded` metadata에 terminal relay request를 싣고 result consumer까지 fan-out | Agent 2 | Locked | `forfeitingPlayerId`, winner/loser, settlement summary 포함 |
 | authority player mapping | room seat/session lookup가 room `playerId -> authority playerId`를 internal mapping한다 | Agent 2 | Locked | room envelope는 room `playerId`, nested engine payload는 authority `playerId` 유지 |
 | invite/share identifier | product-facing join/share identifier는 `inviteCode` 유지 | Agent 2 | Locked | Phase 0에서는 `inviteCode == roomId`, 별도 share token 없음 |
+| public bootstrap facade | `room_bootstrap_create|lookup_invite|join|prepare_game_start`가 current public bootstrap boundary다 | Agent 2 | Locked | create/join/invite lookup/pre-bootstrap fetch는 bootstrap facade가, attach/resume/gameplay/result는 websocket transport가 담당 |
 | transport spike surface | CLI `room_transport_connect/send/receive`를 websocket-equivalent spike로 사용 | Agent 2 | Locked | gameplay relay, stale heartbeat, invalid resume reject code parity 유지, passive TCP EOF / websocket close도 same adapter path 사용 |
 | gameplay relay over transport | `playCard`, `submitChoice`, `quit`, `leaveRoom`를 room transport action으로 노출 | Agent 2 | Locked | app-facing adapter는 이 gameplay command surface를 직접 사용한다 |
-| timeout relay over transport | explicit `disconnect`와 passive close가 same adapter disconnect path를 공유하고 `reapExpiredState`가 timeout completion을 재현 | Agent 2 | Locked | grace expiry는 terminal fan-out, later result expiry는 `roomClosed`만 emit |
-| server binding spike | `GoStopCLI --room-transport-websocket-server [--port PORT]` actual websocket path가 shared server boundary + serial frame send queue 위에서 same transport adapter를 재사용 | Agent 2 | Locked | create/join/bootstrap current source도 이 command boundary이며, legacy TCP `--room-transport-server`는 parity smoke용 fallback으로 유지 |
+| timeout relay over transport | explicit `disconnect`와 passive close가 same adapter disconnect path를 공유하고 server-owned sweep이 timeout completion을 자동 진행 | Agent 2 | Locked | manual `reapExpiredState`는 debug/test hook, grace expiry는 terminal fan-out, later result expiry는 `roomClosed`만 emit |
+| server binding spike | `GoStopCLI --room-transport-websocket-server [--port PORT]` actual websocket path가 shared server boundary + serial frame send queue + automatic expiry sweep 위에서 same transport adapter를 재사용 | Agent 2 | Locked | create/join/bootstrap current source도 이 command boundary이며, legacy TCP `--room-transport-server`는 parity smoke용 fallback으로 유지 |
 | MP-008 deterministic hook | stale `expectedStateVersion` override | Agent 2 | Locked | per-session outbound queue가 없는 현 구조에서는 `dropNextGameEvent`보다 구현/검증이 단순함 |
+| gap recovery shape | `room_gap_recovery_shape` + `room_transport_send(action=triggerGapRecovery)`가 dropped-event gap recovery minimum shape를 고정 | Agent 2 | Locked | live hook은 on-demand debug path, future automatic gap detection은 follow-up |
+
+## Phase 0 Shipped Boundary
+- shipped bootstrap boundary는 `room_bootstrap_create`, `room_bootstrap_lookup_invite`, `room_bootstrap_join`, `room_bootstrap_prepare_game_start`다.
+- shipped gameplay transport boundary는 `room_transport_connect`, `room_transport_send`, `room_transport_receive`다.
+- shipped live gap recovery naming은 `triggerGapRecovery -> gapRecoveryHint -> stateSnapshot(reason=gapDetected)`로 고정한다.
+- Phase 0 안에서는 bootstrap/gap surface를 더 넓히지 않는다. additive metadata는 허용하되, locked parity fields와 envelope ordering은 바꾸지 않는다.
+- final validation baseline은 Agent 4 `final-validation` suite(`MP-001`, `MP-002`, `MP-004`, `MP-007`, `MP-008`, `MP-013`, `MP-014`)다.
+- round17 fixup-only 기준 Agent 2 추가 transport blocker는 없고, 이 boundary를 shipped scope final wording으로 유지한다.
 
 ## Entities
 
@@ -293,12 +303,13 @@
   - projection helper request는 compatibility를 위해 `snapshotReason`와 `reason`를 함께 싣고, live stale recovery에서는 `reason=resync`만 사용한다.
   - terminal path는 `terminalSummaryRelayRequest`와 actual `get_multiplayer_terminal_summary` payload를 함께 반환하며, `roundEnded` / `matchEnded` required field를 검증한 뒤 fan-out한다.
 - CLI transport spike note:
+  - bootstrap-only facade는 `room_bootstrap_create`, `room_bootstrap_lookup_invite`, `room_bootstrap_join`, `room_bootstrap_prepare_game_start`다. 이 4개가 current public bootstrap boundary이고, gameplay websocket path인 `room_transport_*`와 책임을 나눈다.
   - `room_transport_connect`는 logical socket mailbox를 연다.
-  - `room_transport_send`는 `hello|ack|pong|disconnect|setReady|snapshot|reapExpiredState|playCard|submitChoice|quit|leaveRoom|recordGameStartedAndPrepareBootstrap|recordMatchEndedAndFetchTerminalSummary` action을 지원한다.
+  - `room_transport_send`는 `hello|ack|pong|disconnect|setReady|snapshot|triggerGapRecovery|reapExpiredState|playCard|submitChoice|quit|leaveRoom|recordGameStartedAndPrepareBootstrap|recordMatchEndedAndFetchTerminalSummary` action을 지원한다.
   - `room_transport_receive`는 queued envelope를 drain한다.
   - `hello`/`ack`는 기존 `performRoomHello(...)` / `recordHeartbeat(_:)`를 그대로 써서 `invalidResumeState`, `staleConnectionId` semantics를 유지한다.
   - `disconnect`는 session을 `disconnectedGrace`로 내리고, actual TCP EOF / websocket close도 마지막 successful `hello.connectionId` binding 기준으로 같은 disconnect helper를 탄다.
-  - `reapExpiredState { asOf }`는 grace/result TTL expiry mutation을 same mailbox path로 fan-out한다.
+  - runtime semantics는 shared server-owned automatic expiry sweep이다. `reapExpiredState { asOf }`는 같은 adapter path를 타는 debug/test hook으로만 남긴다.
   - gameplay action에 `actionId`가 있으면 transport layer는 exact duplicate를 prior result replay로, conflicting reuse를 `actionRejected(code=actionIdConflict)`로 노출한다.
   - gameplay/terminal relay는 seat-based internal identity mapping을 먼저 resolve하므로 room `playerId`와 authority `playerId`가 달라도 `actionAccepted`, `actionRejected`, `roundEnded`, `matchEnded`, `terminalSummary` path가 흔들리지 않는다.
 
@@ -306,7 +317,16 @@
 - spike transport boundary:
   - request frame은 `CommandRequest { action, data }`
   - websocket은 text frame 1개당 request 1개, TCP는 newline-delimited JSON request 1개다.
-  - current product bootstrap boundary는 여전히 이 websocket command surface다. `room_create`, `room_join`, `room_record_game_started*`가 current source-of-truth이고, cleaner REST split은 placeholder follow-up이다.
+  - current product bootstrap boundary는 `room_bootstrap_*` command facade다. create/join/invite lookup/pre-bootstrap fetch context는 bootstrap facade가 담당하고, live attach/resume/gameplay/result는 websocket `room_transport_*`에 남긴다.
+  - 이 command facade가 shipped Phase 0 boundary다. Round 17 validation은 이 shape를 그대로 기준으로 삼는다.
+  - future REST split은 current bootstrap facade의 1:1 public projection이다. public route split이 와도 bootstrap stage/action/handoff contract는 유지한다.
+- public bootstrap facade:
+  - `room_bootstrap_create { hostPlayerId, deviceId, roomType, joinPolicy }`
+  - `room_bootstrap_lookup_invite { inviteCode }`
+  - `room_bootstrap_join { roomId, playerId, deviceId }`
+  - `room_bootstrap_prepare_game_start { roomId, gameId }`
+  - response는 기존 payload에 `bootstrapBoundary`를 추가한다.
+  - `bootstrapBoundary`는 `boundaryVersion`, `currentBoundary`, `recommendedNextActions`, `futurePublicSplit.route`, `gameplayTransportBoundary`, `gapRecovery.transportTriggerAction`를 함께 실어 current bootstrap ownership과 websocket handoff를 concrete하게 드러낸다.
 - lifecycle minimum:
   - `room_create { hostPlayerId, roomType, joinPolicy, now? }`
   - `room_join { roomId, playerId, deviceId, now? }`
@@ -316,6 +336,7 @@
   - `room_transport_receive { clientId }`
 - response minimum:
   - `room_create` / `room_join`는 `room`, `session`, `websocket`, `mutation`을 반환한다.
+  - `room_bootstrap_lookup_invite`는 `inviteCode`, `roomSummary`, `websocket`, `bootstrapBoundary`를 반환한다.
   - invite room payload에는 `room.inviteCode`가 포함되고, Phase 0에서는 `room.inviteCode == room.roomId`다.
   - `room_transport_send(action=hello)`는 immediate ack payload 대신 mailbox에 `helloAck -> roomSnapshot -> roomEvent/gameEvent*`를 queue하고 command response에는 `client`, `metadata`, `queuedEnvelopeCount`만 반환한다.
   - app source는 `room_transport_receive`의 `envelopes[]`를 inbound stream source of truth로 본다.
@@ -324,6 +345,13 @@
   - `room_transport_send { clientId, action:\"submitChoice\", actionId, expectedStateVersion, commandPayload:{ choiceId, optionCode, choiceCommandName? }, requestId?, traceId? }`
   - `room_transport_send { clientId, action:\"quit\", actionId, expectedStateVersion, commandPayload:{ reason }, requestId?, traceId? }`
   - exact duplicate `actionId`는 same result + same envelope `eventId` replay를 허용하고, conflicting reuse는 `actionRejected(code=actionIdConflict)`를 queue한다.
+- gap future-extension shape:
+  - `room_gap_recovery_shape`
+  - `room_transport_send { clientId, action:"triggerGapRecovery", expectedStateVersion?, lastEventId?, traceId? }`
+  - current mode는 `artifactOnly`
+  - live transport는 `gapRecoveryHint` envelope 뒤에 `gameEvent(stateSnapshot reason=gapDetected)`를 같은 mailbox에 queue한다
+  - transport flag는 `gapDetected`, artifact는 `gapRecoveryHint`
+  - `gapRecoveryHint` minimum fields는 `roomId`, `sessionId`, `lastAckedGameEventId`, `lastSeenStateVersion`, `authoritativeEventId`, `authoritativeStateVersion`, `inputLockRequired`, `snapshotReason`이다
 
 ### DEBUG App Local Service
 - DEBUG app code는 `MultiplayerDebugServices.roomCoordinator` singleton으로 같은 `InMemoryRoomCoordinator` 골격을 직접 호출할 수 있다.
@@ -485,7 +513,9 @@
   - `action=ack|pong`는 existing bound `connectionId`만 허용하며, stale/replaced/disconnected heartbeat는 `invalidResumeState` 또는 `staleConnectionId` error를 즉시 반환한다.
   - `action=disconnect`는 transport-owned session을 `disconnectedGrace`로 내리고 `roomEvent(playerDisconnected)`를 queue한다.
   - passive TCP EOF / websocket close도 same disconnect helper를 타며, current active owner는 마지막 successful `room_transport_send(action=hello)`를 보낸 physical connection 기준으로만 판정한다.
-  - `action=reapExpiredState`는 `{ asOf }`를 받아 timeout/result TTL mutation을 transport mailbox에 fan-out한다.
+  - server runtime automatic sweep가 real clock 기준으로 timeout/result TTL mutation을 transport mailbox에 fan-out한다.
+  - `action=reapExpiredState`는 `{ asOf }`를 받아 같은 adapter timeout/result TTL mutation path를 강제로 실행하는 debug/test hook이다.
+  - `action=triggerGapRecovery`는 on-demand live gap hook이다. target client mailbox에 `gapRecoveryHint` envelope를 먼저 넣고, 이어서 `gameEvent(stateSnapshot reason=gapDetected)`를 queue한다.
   - gameplay action은 공통 envelope field `requestId?`, `traceId?`, `actionId`, `expectedStateVersion`, `commandPayload`를 받는다.
   - `action=playCard` payload는 `{ cardId, source }`다.
   - `action=submitChoice` payload는 `{ choiceId, optionCode, choiceCommandName? }`다.
@@ -497,10 +527,39 @@
 - receive:
   - `room_transport_receive { clientId }`는 queued envelopes를 drain한다.
 - parity rule:
+  - bootstrap-only facade alias(`room_bootstrap_*`)는 websocket gameplay transport ordering을 바꾸지 않는다. create/join/bootstrap payload만 분리하고, attach/resume/gameplay/result lifecycle은 계속 `room_transport_*`가 담당한다.
+  - bootstrap concrete boundary는 `room_bootstrap_create|lookup_invite|join|prepare_game_start`만 소유한다. transport connect/hello 이후 lifecycle은 bootstrap facade가 아니라 websocket transport 책임이다.
   - `room_transport_send(action=hello)`와 `room_hello`는 같은 `performRoomHello(...)`를 탄다.
   - `room_transport_send(action=ack|pong)`와 `room_ack|room_pong`는 같은 `recordHeartbeat(_:)`를 탄다.
   - 따라서 stale heartbeat/no-owner ack는 `staleConnectionId`, invalid resume path는 `invalidResumeState`를 유지하며 silent ignore로 바꾸지 않는다.
   - `room_transport_send(action=playCard|submitChoice|quit)`와 websocket/TCP binding은 같은 `RoomCoordinatorCLIAdapter` gameplay relay를 탄다.
+
+### Gap Recovery Shape
+- action:
+  - `room_gap_recovery_shape`
+- response minimum:
+  - `mode=artifactOnly`
+  - `transportFlag.name=gapDetected`
+  - `artifact.name=gapRecoveryHint`
+  - `artifact.minimumFields=roomId, sessionId, lastAckedGameEventId, lastSeenStateVersion, authoritativeEventId, authoritativeStateVersion`
+  - `recoveryEnvelope=gameEvent(stateSnapshot reason=gapDetected)`
+  - `liveHook.transportAction=room_transport_send(action=triggerGapRecovery)`
+- intended use:
+  - Agent 4 preflight/artifact contract source
+  - on-demand live dropped-event gap smoke bootstrap
+  - future automatic gap detection의 transport flag / artifact field naming lock
+
+### Final Validation Entry
+1. `room_bootstrap_create`
+2. `room_bootstrap_lookup_invite`
+3. `room_bootstrap_join`
+4. `room_transport_connect`
+5. `room_transport_send(action=hello)` for host and guest
+6. `room_transport_send(action=setReady, ready=true)` for host and guest
+7. `room_transport_send(action=recordGameStartedAndPrepareBootstrap, gameId=...)`
+8. `room_transport_send(action=triggerGapRecovery, expectedStateVersion=..., lastEventId=..., traceId=...)`
+9. `room_transport_receive`
+10. assert `gapRecoveryHint -> gameEvent(stateSnapshot reason=gapDetected)` ordering
 
 ### Gameplay Relay Ordering
 1. accepted command baseline은 `gameEvent(actionAccepted)`를 먼저 queue한다.
@@ -508,10 +567,11 @@
 3. semantic follow-up은 phase에 따라 `turnChanged`, `choiceRequested`, `roundEnded`, `matchEnded`가 뒤따른다.
 4. stale `expectedStateVersion` reject path는 `gameEvent(actionRejected code=staleStateVersion)` 뒤에 `gameEvent(stateSnapshot reason=resync)`를 queue한다.
 5. `quit` baseline은 `gameEvent(actionAccepted) -> gameEvent(roundEnded) -> gameEvent(matchEnded) -> roomEvent(playerForfeited/roomStateChanged) -> terminalSummary`다.
-6. reconnect grace expiry가 active match를 끝내면 transport는 same authority relay 위에서 synthetic `quit(reason=disconnectTimeout)`를 emit하고 위 `quit` baseline을 그대로 따른다.
-7. timeout path의 `roomClosed`는 terminal summary보다 먼저 오지 않는다. 이후 `leaveRoom` 또는 `reapExpiredState(result TTL)`에서 별도 `roomEvent(roomClosed)`로만 닫힌다.
+6. reconnect grace expiry가 active match를 끝내면 transport는 server-owned automatic sweep에서 same authority relay 위의 synthetic `quit(reason=disconnectTimeout)`를 emit하고 위 `quit` baseline을 그대로 따른다.
+7. timeout path의 `roomClosed`는 terminal summary보다 먼저 오지 않는다. 이후 `leaveRoom` 또는 automatic result TTL expiry에서 별도 `roomEvent(roomClosed)`로만 닫힌다.
 8. result dismissal baseline은 `room_transport_send(action=leaveRoom)` 후 `roomEvent(memberLeft)`와 final `roomEvent(roomClosed)`를 authoritative close signal로 사용한다.
 9. exact duplicate `actionId` replay는 prior `eventId`를 유지하고, conflicting reuse는 state mutation 없이 `gameEvent(actionRejected code=actionIdConflict)`만 추가한다.
+10. on-demand gap recovery baseline은 `gapRecoveryHint -> gameEvent(stateSnapshot reason=gapDetected)`다. 이 경로는 additive debug/live hook이며 accepted gameplay ordering을 바꾸지 않는다.
 
 ### Server Binding Boundary
 - startup selection:
@@ -522,6 +582,7 @@
   - 따라서 stdin CLI와 같은 `CommandRequest { action, data }` payload, envelope ordering, `invalidResumeState` / `staleConnectionId` error code를 유지한다.
   - websocket은 per-connection serial frame send queue를 써서 request 처리 순서와 response frame 순서를 같게 유지한다.
   - TCP EOF / websocket close는 shared server runtime이 마지막 successful `hello.connectionId` owner만 authoritative disconnect 대상으로 삼아 same adapter `disconnectMember -> grace tracking` path로 연결한다.
+  - shared server runtime은 1초 cadence automatic expiry sweep를 돌려 disconnect grace/result TTL expiry를 같은 adapter `reapExpiredState` relay path로 진행한다.
 - websocket entrypoint:
   - `GoStopCLI --room-transport-websocket-server`
   - `GoStopCLI --room-transport-websocket-server --port 9092`
@@ -748,10 +809,16 @@
 - [x] invite room payload가 `inviteCode`를 노출하고, Phase 0에서는 `inviteCode == roomId`로 고정된다
 - [x] passive TCP/WebSocket close가 explicit `disconnect`와 같은 authoritative disconnect helper로 연결된다
 - [x] socket parity `MP-007`이 passive close timeout path에서 PASS다
+- [x] shared server runtime automatic expiry sweep가 manual `reapExpiredState` 없이도 timeout completion을 진행한다
+- [x] bootstrap concrete facade가 create/invite lookup/join/prepare-game-start current surface와 websocket handoff를 함께 노출한다
+- [x] `room_gap_recovery_shape`가 dropped-event gap future extension의 flag/artifact minimum shape를 문서/CLI 레벨에서 고정한다
+- [x] `room_transport_send(action=triggerGapRecovery)`가 live mailbox에 `gapRecoveryHint -> stateSnapshot(reason=gapDetected)`를 executable하게 노출한다
 
-## Open Questions
-- implementation follow-up:
-  - background lifecycle sweep 없이도 timeout completion을 자동 발생시키는 server-owned timer는 아직 없다. 현재 authoritative timeout completion trigger는 same adapter `reapExpiredState`다.
+## Deferred Beyond Phase 0
+- 아래 항목은 merge blocker가 아니라 accepted deferred backlog다.
+- public REST bootstrap split
+- automatic dropped-event detection 대신 explicit `triggerGapRecovery`를 대체하는 path
+- current TCP/WebSocket command boundary를 넘어서는 새 transport architecture
 
 ## Change Log
 - 2026-03-08: skeleton replaced with Phase 0 draft for room/session lifecycle, websocket envelope, reconnect, heartbeat, timeout, and Agent 1 dependency list

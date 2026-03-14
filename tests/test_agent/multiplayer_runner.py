@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -8,10 +9,24 @@ from multiplayer.runner import MultiplayerScenarioRunner
 from multiplayer.scenarios import ALL_SCENARIOS, P0_SCENARIOS, SCENARIO_REGISTRY, SCENARIO_SUITES
 
 
-def _default_output_root() -> Path:
+def _base_output_root() -> Path:
     script_dir = Path(__file__).resolve().parent
     repo_root = script_dir.parent.parent
     return repo_root / "test_artifacts" / "multiplayer"
+
+
+def _default_output_root(suite: str | None, mode: str, transport: str) -> Path:
+    root = _base_output_root()
+    if suite != "final-validation":
+        return root
+
+    if mode == "socket":
+        bucket = "socket_compare" if transport == "compare" else f"socket_{transport}"
+    elif mode == "fixture":
+        bucket = "fixture"
+    else:
+        bucket = "scaffold"
+    return root / "round17_final_validation" / bucket
 
 
 def _parse_args() -> argparse.Namespace:
@@ -20,7 +35,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--suite",
         choices=sorted(SCENARIO_SUITES),
-        help="Run a predefined suite (`smoke`, `socket-smoke`, `socket-parity`, `socket-duplicate`, `socket-review-fixups`, `review-fixups`, `all`).",
+        help="Run a predefined suite (`smoke`, `socket-smoke`, `socket-parity`, `socket-duplicate`, `socket-review-fixups`, `review-fixups`, `final-validation`, `all`).",
     )
     parser.add_argument(
         "--scenario",
@@ -48,8 +63,7 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--output-root",
-        default=str(_default_output_root()),
-        help="Artifact root directory",
+        help="Artifact root directory. `final-validation` defaults to test_artifacts/multiplayer/round17_final_validation/<mode>[_<transport>].",
     )
     parser.add_argument(
         "--save-replay",
@@ -85,6 +99,85 @@ def _selected_scenarios(args: argparse.Namespace):
     raise SystemExit("Specify --list, --all-p0, --suite, or at least one --scenario.")
 
 
+def _resolved_output_root(args: argparse.Namespace) -> Path:
+    if args.output_root:
+        return Path(args.output_root)
+    return _default_output_root(args.suite, args.mode, args.transport)
+
+
+def _write_suite_summary(
+    output_root: Path,
+    suite_name: str,
+    mode: str,
+    transport: str,
+    results,
+) -> None:
+    output_root.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "suite": suite_name,
+        "mode": mode,
+        "transport": transport,
+        "scenarioIds": [result.scenario.scenario_id for result in results],
+        "results": [result.to_dict() for result in results],
+    }
+    if suite_name == "final-validation":
+        payload["expectedPassCriteria"] = {
+            "allStatuses": "PASS",
+            "requiredScenarios": ["MP-001", "MP-002", "MP-004", "MP-007", "MP-008", "MP-013", "MP-014"],
+            "requiredArtifacts": {
+                "MP-001": ["bootstrap_boundary_probe.json", "transport_parity.json"],
+                "MP-002": ["transport_parity.json", "replay/replay_manifest.json"],
+                "MP-004": ["duplicate_probe.json", "transport_parity.json"],
+                "MP-007": ["timeout_probe.json", "transport_parity.json"],
+                "MP-008": [
+                    "replay/injection_manifest.json",
+                    "replay/gap_recovery_shape.json",
+                    "replay/gap_recovery_probe.json",
+                    "replay/gap_injection_plan.json",
+                ],
+                "MP-013": ["transport_parity.json", "snapshots/player_a_initial.json", "snapshots/player_b_initial.json"],
+                "MP-014": ["heartbeat_probe.json", "stale_heartbeat_code_probe.json", "transport_parity.json"],
+            },
+        }
+
+    (output_root / "suite_summary.json").write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+    lines = [
+        f"# {suite_name} Suite Summary",
+        "",
+        f"- Mode: {mode}",
+        f"- Transport: {transport}",
+        f"- Scenario Count: {len(results)}",
+        "",
+        "## Results",
+    ]
+    for result in results:
+        lines.extend(
+            [
+                f"- {result.scenario.scenario_id}: {result.status.value}",
+                f"  artifactRoot: {result.artifact_root}",
+                f"  summary: {result.summary}",
+            ]
+        )
+        for blocker in result.blocking_reasons:
+            lines.append(f"  blocker: {blocker}")
+    if suite_name == "final-validation":
+        lines.extend(
+            [
+                "",
+                "## Expected PASS Criteria",
+                "- MP-001: bootstrap_boundary_probe.json locks boundaryVersion/currentBoundary/recommendedNextActions and paired gameStarted/stateSnapshot(reason=gameStarted).",
+                "- MP-002: terminal lifecycle reaches roundEnded, matchEnded, terminalSummary, roomClosed on both transports.",
+                "- MP-004: duplicate_probe.json shows exactReplay for exact resend and actionIdConflict for conflicting reuse.",
+                "- MP-007: timeout_probe.json shows passiveClose + manualReapUsed=false + progressionMode=automaticExpirySweep.",
+                "- MP-008: injection_manifest, gap_recovery_shape, gap_recovery_probe, and gap_injection_plan all exist and live recovery reaches stateSnapshot(reason=resync|gapDetected) as expected.",
+                "- MP-013: actor/non-actor projection artifacts preserve shake redaction.",
+                "- MP-014: heartbeat_probe.json and stale_heartbeat_code_probe.json preserve invalidResumeState/staleConnectionId parity.",
+            ]
+        )
+    (output_root / "suite_summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def main() -> int:
     args = _parse_args()
     if args.list:
@@ -93,8 +186,9 @@ def main() -> int:
         return 0
 
     scenarios = _selected_scenarios(args)
+    output_root = _resolved_output_root(args)
     runner = MultiplayerScenarioRunner(
-        output_root=Path(args.output_root),
+        output_root=output_root,
         mode=args.mode,
         save_replay=args.save_replay,
         binary_path=Path(args.binary) if args.binary else None,
@@ -110,6 +204,8 @@ def main() -> int:
         )
         for blocker in result.blocking_reasons:
             print(f"  blocker: {blocker}")
+    if args.suite:
+        _write_suite_summary(output_root, args.suite, args.mode, args.transport, results)
     return 0
 
 

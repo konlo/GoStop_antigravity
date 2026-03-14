@@ -2106,3 +2106,171 @@
 - **Files Touched**: ["project_progress.md"]
 - **Validation**: "`git diff --stat`, `git diff --name-only`, `tail -n 40 project_progress.md`, `date '+%Y-%m-%d %H:%M:%S %Z'`로 오늘 변경 범위와 최근 작업 로그를 다시 요약했다. 현재 diff는 app shell, room transport, smoke runner, 문서/보드까지 한 덩어리로 묶이는 멀티플레이 transport/product route hardening 작업으로 판단했다."
 - **Outcome**: "오늘 작업 요약과 현재 diff 전체를 기준으로 한 권장 커밋 메시지(subject/body)를 정리해 전달했다."
+
+### [2026-03-13 23:11:49 KST] User Request: 오늘 할 일 agent별 정리와 prompt 요청
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 새 날짜 기준으로 오늘 바로 돌릴 agent별 작업과 실행 프롬프트를 다시 정리해달라고 요청했다."
+- **Files Touched**: ["agent_code_tasks_round13.md", "project_progress.md"]
+- **Validation**: "`sed -n '1,300p' agent_sync_board.md`, `tail -n 60 project_progress.md`, `rg --files | rg '^agent_code_tasks_round1[23]\\.md$'`, `date '+%Y-%m-%d %H:%M:%S %Z'`로 최신 Phase 10 상태와 기존 round 문서를 다시 확인했다. 다음 핵심이 automatic timeout sweep, product UX placement, richer gameplay UI, dropped-event gap resync follow-up이라는 점을 기준으로 Round 13을 정의했다."
+- **Outcome**: "`agent_code_tasks_round13.md`를 새로 추가했다. 오늘 우선순위를 `Agent 2 -> Agent 3 병렬 가능 -> Agent 4 -> Agent 1 support`로 정리하고, Agent 2는 automatic timeout handling, Agent 3는 product UX/placement, Agent 4는 automatic timeout parity와 stale heartbeat probe, Agent 1은 timer/resync contract arbitration을 담당하는 프롬프트를 작성했다."
+
+### [2026-03-13 23:13:27 KST] User Request: Round 13 prompt도 다시 요청
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 Round 13 기준으로 각 agent 세션에 바로 넣을 수 있는 복붙용 프롬프트를 다시 원했다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`agent_code_tasks_round13.md`의 Agent 1~4 prompt와 우선순위를 기준으로, 실행 순서를 유지한 채 세션별 복붙 메시지 형태로 다시 정리했다."
+- **Outcome**: "Round 13 agent 실행 프롬프트를 Agent 2, Agent 3, Agent 4, Agent 1 순서로 다시 제공했다."
+
+### [2026-03-14 00:44:18 KST] User Request: 다음턴 agent 해야할일 정리
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 새 날짜 기준 최신 Phase 11 상태에서 다음 턴 agent별 해야 할 일을 다시 정리해달라고 요청했다."
+- **Files Touched**: ["agent_code_tasks_round14.md", "project_progress.md"]
+- **Validation**: "`sed -n '1,320p' agent_sync_board.md`, `tail -n 80 project_progress.md`, `rg --files | rg '^agent_code_tasks_round1[34]\\.md$'`, `date '+%Y-%m-%d %H:%M:%S %Z'`로 최신 board와 round 문서 상태를 다시 확인했다. automatic expiry는 이미 잠겼고, 다음 핵심이 bootstrap split, app-wide placement/UI polish, dropped-event gap resync follow-up이라는 점을 기준으로 Round 14를 정의했다."
+- **Outcome**: "`agent_code_tasks_round14.md`를 새로 추가했다. 다음 턴 우선순위를 `Agent 2 -> Agent 3 병렬 가능 -> Agent 4 -> Agent 1 support`로 정리하고, Agent 2는 bootstrap split, Agent 3는 product-quality UI polish, Agent 4는 bootstrap split smoke와 gap-extension 시나리오, Agent 1은 bootstrap/resync contract arbitration을 담당하는 작업으로 배분했다."
+
+### [2026-03-14 00:45:39 KST] User Request: 각 agent가 해야 할 일 prompt 작성
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 Round 14 기준으로 각 agent 세션에 바로 붙여넣을 수 있는 복붙용 프롬프트를 요청했다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`agent_code_tasks_round14.md`의 Agent 1~4 prompt와 우선순위를 기준으로, 실행 순서 `Agent 2 -> Agent 3 -> Agent 4 -> Agent 1`에 맞춰 세션별 복붙 메시지 형태로 다시 정리했다."
+- **Outcome**: "Round 14 agent 실행 프롬프트를 Agent 2, Agent 3, Agent 4, Agent 1 순서로 다시 제공했다."
+
+### [2026-03-14 00:48:24 KST] User Request: 남은 턴 수 추정
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 현재 Phase 11 상태를 기준으로 앞으로 몇 라운드가 더 필요한지 대략적인 규모를 알고 싶어 했다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "직전 확인한 `agent_sync_board.md` 기준으로 automatic expiry는 이미 잠겼고, 남은 핵심이 bootstrap split, app-wide placement/UI polish, message catalog 정리, dropped-event gap MP-008 extension이라는 점을 기준으로 추정했다."
+- **Outcome**: "현재 상태는 개발용 멀티플레이 기준으로 거의 마감 단계라고 판단했고, 남은 양은 대략 1~2 round(개발용 end-to-end polish), 외부 사용자 alpha 기준으로는 2~3 round 정도라고 추정해 전달했다."
+
+### [2026-03-14 07:28:58 KST] User Request: 모든 작업 완료 후 확인하고 다음 턴 내용 정리
+- **Skills Planned**: ["basic-code-review", "gostop-game-builder", "project_logger"]
+- **Skills Used**: ["basic-code-review", "gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 latest Phase 12 완료 상태를 다시 확인하고, 그 기준으로 다음 턴 작업을 정리해달라고 요청했다."
+- **Files Touched**: ["agent_code_tasks_round15.md", "project_progress.md"]
+- **Validation**: "`git status --short`, `sed -n '1,340p' agent_sync_board.md`, `tail -n 100 project_progress.md`, `rg --files | rg '^agent_code_tasks_round1[45]\\.md$'`, `date '+%Y-%m-%d %H:%M:%S %Z'`로 최신 worktree와 board 상태를 다시 확인했다. 현재는 automatic expiry, bootstrap facade alias, product route baseline, parity suite green이 잠겼고, 남은 핵심은 concrete bootstrap split, live dropped-event gap hook, app-wide UI polish라는 점을 기준으로 Round 15를 정의했다."
+- **Outcome**: "`agent_code_tasks_round15.md`를 새로 추가했다. 다음 턴 우선순위를 `Agent 2 -> Agent 3 병렬 가능 -> Agent 4 -> Agent 1 support`로 정리하고, Agent 2는 concrete bootstrap split/live gap hook, Agent 3는 product route polish, Agent 4는 executable gap recovery smoke, Agent 1은 bootstrap/gap contract arbitration을 담당하는 작업으로 배분했다."
+
+### [2026-03-14 07:31:39 KST] User Request: agent별 prompt 작성 요청
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 Round 15 기준으로 각 agent 세션에 바로 붙여넣을 수 있는 복붙용 프롬프트를 요청했다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`agent_code_tasks_round15.md`의 Agent 1~4 prompt와 우선순위를 기준으로, 실행 순서 `Agent 2 -> Agent 3 -> Agent 4 -> Agent 1`에 맞춰 세션별 복붙 메시지 형태로 다시 정리했다."
+- **Outcome**: "Round 15 agent 실행 프롬프트를 Agent 2, Agent 3, Agent 4, Agent 1 순서로 다시 제공했다."
+
+### [2026-03-14 08:40:05 KST] User Request: 남은 작업량 재확인
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 Phase 12 기준으로 현재 남은 작업량이 얼마나 되는지 다시 확인하고 싶어 했다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "직전 확인한 `agent_sync_board.md` 기준으로 automatic expiry, bootstrap facade alias, product route baseline, parity suite green은 이미 잠겼고, 남은 핵심이 concrete bootstrap split, live dropped-event gap recovery, app-wide placement/UI polish라는 점을 기준으로 추정했다."
+- **Outcome**: "현재 상태는 개발용 멀티플레이 기준으로 거의 마감 단계라고 판단했고, 남은 양은 대략 1 round, 넉넉히 보면 2 round, 외부 사용자 alpha 기준으로는 2 round 정도라고 추정해 전달했다."
+
+### [2026-03-14 08:55:52 KST] User Request: 2턴 안에 무조건 끝낼 수 있도록 agent 일 재정리
+- **Skills Planned**: ["basic-code-review", "gostop-game-builder", "project_logger"]
+- **Skills Used**: ["basic-code-review", "gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 최신 전체 진행 상태를 다시 보고, 남은 일을 2턴 안에 끝낼 수 있도록 강하게 재배치해달라고 요청했다."
+- **Files Touched**: ["agent_code_tasks_round16.md", "agent_code_tasks_round17.md", "project_progress.md"]
+- **Validation**: "`sed -n '1,320p' agent_sync_board.md`, `sed -n '1,260p' agent_code_tasks_round15.md`, `tail -n 80 project_progress.md`, `git status --short`, `date '+%Y-%m-%d %H:%M:%S %Z'`로 최신 Phase 13 상태를 다시 확인했다. concrete bootstrap boundary, live gap recovery hook, product route polish는 이미 상당히 올라왔고, 남은 실제 리스크를 1) shipped scope freeze, 2) final validation, 3) deferred backlog 명시로 나누면 2턴 종료가 가능하다고 판단했다."
+- **Outcome**: "`agent_code_tasks_round16.md`와 `agent_code_tasks_round17.md`를 새로 추가했다. Round 16은 scope freeze + must-have polish + final validation 준비, Round 17은 final validation/fixup-only 턴으로 강제해 2턴 안 종료 계획을 만들었다. 또한 true REST bootstrap split, automatic dropped-event detection, bigger app remount, full catalog completion은 명시적으로 deferred backlog로 밀어 finish definition을 고정했다."
+
+### [2026-03-14 09:14:16 KST] User Request: Round 16 agent별 prompt 작성
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 2턴 종료 계획 중 Round 16에 해당하는 agent별 복붙용 프롬프트를 요청했다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`agent_code_tasks_round16.md`의 Agent 1~4 prompt와 Recommended Order를 기준으로, 실행 순서에 맞는 세션별 프롬프트 형태로 다시 정리했다."
+- **Outcome**: "Round 16 agent 실행 프롬프트를 Agent 2, Agent 3, Agent 4, Agent 1 순서로 다시 제공했다."
+
+### [2026-03-14 09:47:17 KST] User Request: Round 17 agent별 prompt 작성
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 마지막 2턴 플랜 중 Round 17에 해당하는 agent별 복붙용 프롬프트를 요청했다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`agent_code_tasks_round17.md`의 Agent 1~4 prompt와 Recommended Order를 기준으로, final validation/fixup-only 순서에 맞는 세션별 프롬프트 형태로 다시 정리했다."
+- **Outcome**: "Round 17 agent 실행 프롬프트를 Agent 4, Agent 2, Agent 3, Agent 1 순서로 다시 제공했다."
+
+### [2026-03-14 11:50:44 KST] User Request: 에이전트 별로 할 일 정리 요청
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 현재 마감 단계에서 각 agent가 무엇을 해야 하는지 짧고 명확하게 다시 정리해달라고 요청했다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "현재 컨텍스트는 Round 17 final validation/fixup/sign-off 구조로 이미 정리되어 있으므로, 새 상태 탐색 없이 해당 역할을 간단히 요약하는 방식이 적절하다고 판단했다."
+- **Outcome**: "Round 17 기준으로 Agent 4는 final validation, Agent 2/3는 validation 결과 fixup, Agent 1은 final sign-off라는 역할 분담을 간단히 다시 정리해 전달했다."
+
+### [2026-03-14 11:52:03 KST] User Request: agent prompt도 정리 요청
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 현재 마감 단계에서 각 agent 세션에 바로 붙여넣을 수 있는 프롬프트까지 같이 정리해달라고 요청했다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "현재 컨텍스트는 Round 17 final validation/fixup/sign-off 구조로 이미 정리되어 있으므로, 해당 구조를 그대로 복붙용 프롬프트로 재구성하는 방식이 적절하다고 판단했다."
+- **Outcome**: "Round 17 기준으로 Agent 4, Agent 2, Agent 3, Agent 1 순서의 복붙용 프롬프트를 다시 정리해 전달했다."
+
+### [2026-03-14 13:03:52 KST] User Request: 이제 전체 완료 여부 확인
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 현재 상태가 정말 완료된 것인지 최종 판정을 원했다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "현재 컨텍스트상 Round 17은 final validation/fixup/sign-off 턴으로 정의돼 있고, 직전까지는 해당 프롬프트와 운영 순서만 정리된 상태다. 따라서 final validation PASS matrix와 Agent 1 sign-off가 확인되지 않은 이상 완료 판정을 내리기 어렵다고 판단했다."
+- **Outcome**: "현재 상태는 거의 완료지만 아직 final validation/sign-off 전이라고 정리해 전달했다."
+
+### [2026-03-14 14:00:06 KST] User Request: 다음 할 일 정리 요청
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 현재 시점에서 바로 무엇을 해야 하는지 실행 순서 형태로 알고 싶어 했다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "현재 컨텍스트는 Round 17 final validation/fixup/sign-off 구조로 이미 고정되어 있으므로, 추가 탐색 없이 해당 순서를 그대로 다음 할 일로 정리하는 것이 맞다고 판단했다."
+- **Outcome**: "다음 할 일을 `Agent 4 final validation -> Agent 2/3 필요 시 fixup -> Agent 1 final sign-off -> 최종 커밋/머지` 순서로 정리해 전달했다."
+
+### [2026-03-14 14:02:15 KST] User Request: 동시에 수행 가능한 agent 조합 확인
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 현재 finalization 단계에서 어떤 agent를 동시에 돌릴 수 있는지 운영 순서를 다시 확인하고 싶어 했다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "현재 컨텍스트는 Round 17 final validation/fixup/sign-off 구조로 이미 고정되어 있으므로, 추가 탐색 없이 해당 구조의 병렬 가능 범위를 정리하는 것이 적절하다고 판단했다."
+- **Outcome**: "Round 17에서는 Agent 4를 먼저 단독 실행하고, 그 결과가 나온 뒤 필요 시 Agent 2와 Agent 3를 동시에 fixup으로 돌린 다음, 마지막에 Agent 1 sign-off를 수행하는 구조가 가장 안전하다고 정리해 전달했다."
+
+### [2026-03-14 11:53:58 KST] User Request: round17 fixup-only로 Agent 4 validation 기반 transport blocker 확인 및 shipped scope 문서 정리
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 Round 17 fixup-only 범위에서 Agent 4 validation 결과만 기준으로 Agent 2 transport blocker를 정리하고 shipped/deferred scope wording을 final로 잠그라고 요청했다."
+- **Files Touched**: ["agent_sync_board.md", "room_protocol.md", "project_progress.md"]
+- **Validation**: "`agent_code_tasks_round17.md`, `agent_sync_board.md`, `room_protocol.md`를 다시 읽어 round17 final-validation 기준 Agent 2 추가 blocker가 없는지 확인했고, shipped/deferred wording이 final 상태인지 재검토했다."
+- **Outcome**: "Agent 4 final-validation에서 Agent 2 소유 transport blocker가 없음을 재확인했고, `agent_sync_board.md`와 `room_protocol.md`를 shipped Phase 0 final wording 기준으로 고정했다. 남은 transport 일감은 merge blocker가 아닌 deferred backlog로 유지된다."
+
+### [2026-03-14 14:03:31 KST] User Request: agent prompt 재요청
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 현재 마감 단계에서 각 agent 세션에 바로 붙여넣을 수 있는 프롬프트를 다시 원했다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "현재 컨텍스트는 Round 17 final validation/fixup/sign-off 구조로 이미 고정되어 있으므로, 기존 Round 17 프롬프트를 복붙용으로 다시 정리하는 방식이 적절하다고 판단했다."
+- **Outcome**: "Round 17 기준으로 Agent 4, Agent 2, Agent 3, Agent 1 순서의 복붙용 프롬프트를 다시 제공했다."
+
+### [2026-03-14 14:08:59 KST] User Request: round17 fixup-only로 Agent 4 validation 기준 transport blocker와 shipped scope 재확인 요청
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 같은 Round 17 fixup-only 기준으로 Agent 2 transport blocker 존재 여부와 shipped scope 문서 상태를 다시 확인해달라고 요청했다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`agent_code_tasks_round17.md`, `agent_sync_board.md`, `room_protocol.md`를 다시 읽어 Agent 4 final-validation 이후 추가 transport blocker가 생기지 않았는지 확인했고, shipped Phase 0 wording이 그대로 유지되는지 점검했다."
+- **Outcome**: "추가 transport blocker는 없었고, `agent_sync_board.md`와 `room_protocol.md`는 이미 final shipped scope 기준으로 정리된 상태임을 재확인했다. 이번 턴에는 추가 코드/문서 fix 없이 상태 확인만 수행했다."
+
+### [2026-03-14 15:42:56 KST] User Request: 최종 완료 여부 확인 요청
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 Round 17 validation과 sign-off가 모두 반영된 현재 시점에서 정말 완료된 상태인지 최종 판정을 원했다."
+- **Files Touched**: ["agent_sync_board.md", "agent_code_tasks_round17.md", "multiplayer_test_scenarios.md", "project_progress.md"]
+- **Validation**: "`agent_sync_board.md`, `agent_code_tasks_round17.md`, `multiplayer_test_scenarios.md`를 다시 읽어 final validation PASS 여부, Ready For Merge 상태, unresolved blocker 존재 여부를 확인했다."
+- **Outcome**: "Shipped Phase 0 기준으로는 final validation이 green이고 sync board의 Ready For Merge도 YES라서 완료 및 merge-ready 상태로 판단했다. 다만 true REST bootstrap split, automatic dropped-event detection, broader app remount, full message catalog completeness 등은 deferred backlog로 남아 있다."
+
+### [2026-03-14 16:19:50 KST] User Request: 작업 마무리 및 commit message 작성 요청
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 shipped scope 완료 상태를 기준으로 최종 마무리 요약과 커밋 메시지 작성을 요청했다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "직전 확인 결과를 기준으로 shipped Phase 0 완료, final validation green, merge-ready 상태를 다시 요약하는 것이 적절한지 점검했다."
+- **Outcome**: "현재 작업 범위를 마감 가능한 상태로 요약하고, shipped scope 완료와 deferred backlog를 반영한 권장 커밋 메시지를 작성해 제공했다."

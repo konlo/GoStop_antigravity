@@ -23,10 +23,10 @@
   - Agent 1/2 contract는 window 외 변경 금지
 
 ## Global Status
-- **Date**: 2026-03-12
-- **Current Phase**: Phase 10 / Passive Close Lock
+- **Date**: 2026-03-14
+- **Current Phase**: Phase 17 / Final Contract Sign-Off
 - **Integration Branch**: `codex/multiplayer-integration`
-- **Top Goal**: passive socket close를 authoritative disconnect path에 묶고 current product transport boundary를 명확히 잠근다
+- **Top Goal**: shipped Phase 0 boundary를 final sign-off wording으로 잠그고 merge-ready 상태를 유지한다
 - **Critical Risks**:
   - shake choice payload가 상대에게 숨겨야 할 hand 정보를 노출하면 multiplayer contract가 바로 깨짐
   - engine projection이 `isConnected/isReady`를 항상 true로 채우면 room/session truth와 UI가 어긋남
@@ -61,7 +61,7 @@
 ## Contract Questions
 
 ### Open
-- 없음. passive socket close도 same authority `quit(reason=disconnectTimeout)` terminal invariants로 수렴한다는 owner ruling까지 잠겼고, 남은 일은 Agent 2/4 transport implementation parity 유지다.
+- 없음. current concrete bootstrap facade와 explicit live gap recovery hook이 Phase 0 shipped contract로 잠겼고, true REST bootstrap split과 automatic dropped-event detection은 deferred scope로 분리됐다.
 
 ### Resolved
 - [x] `stateVersion`은 accepted command transaction 중 game state mutation이 발생할 때만 1 증가한다
@@ -93,10 +93,17 @@
 - [x] reconnect grace expiry는 `quit(reason=disconnectTimeout)` same authority path를 타며, timeout forfeit의 `roundEnded` / `matchEnded` / `terminalSummary` invariants와 `roomClosed` terminal correlation fields는 prior terminal authority payload와 일치해야 한다
 - [x] stale heartbeat / pong / ack는 room-owned liveness signal이며, replaced/expired/mismatched connection에서는 explicit reject(`staleConnectionId` / `invalidResumeState`)가 source-of-truth다. audit log는 additive-only다
 - [x] passive socket close / transport teardown도 disconnect tracking 이후 same authority `quit(reason=disconnectTimeout)` terminal invariants와 `roomClosed` correlation rule로 수렴해야 한다
+- [x] server-owned automatic expiry sweep / timer path도 manual `reapExpiredState`나 passive close와 같은 downstream authority `quit(reason=disconnectTimeout)` terminal invariants로 수렴해야 한다
+- [x] dropped-event gap 기반 MP-008 future extension이 들어와도 authority minimum recovery contract는 input lock + full `stateSnapshot(reason=gapDetected)` 1회로 유지된다
+- [x] future public bootstrap split / bootstrap-only facade가 들어와도 canonical authority bootstrap pair는 `gameStarted` + paired `stateSnapshot(reason=gameStarted)`이며 visible state source-of-truth는 snapshot이다
+- [x] gap future extension artifact는 cursor/debug metadata를 additive로 붙일 수 있지만, authority recovery payload는 계속 `stateSnapshot(reason=gapDetected)` minimum shape를 유지한다
+- [x] concrete bootstrap facade(`room_bootstrap_*`)와 concrete live gap hook(`room_gap_recovery_shape`, `gapRecoveryHint`, `gapDetected` flag)은 room-owned metadata surface일 뿐이며 authority bootstrap pair / recovery payload를 대체하지 않는다
+- [x] current concrete bootstrap facade(`room_bootstrap_create`, `room_bootstrap_lookup_invite`, `room_bootstrap_join`, `room_bootstrap_prepare_game_start`)와 explicit live gap recovery hook(`triggerGapRecovery -> gapRecoveryHint -> stateSnapshot(reason=gapDetected)`)이 shipped Phase 0 boundary다
+- [x] true public REST bootstrap split과 automatic dropped-event detection은 current shipped contract 바깥 deferred scope다
 
 ## Agent 1: Core Engine / Game Authority
 - **Owner**: Agent 1
-- **Current Task**: passive socket close도 same disconnectTimeout authority path로 수렴한다는 owner ruling을 유지하고, passive-disconnect parity mismatch artifact에 contract owner 판정을 내린다
+- **Current Task**: round17 final sign-off. final-validation 결과 기준 authority contract drift가 없는지 확정하고, shipped/deferred wording을 최종 고정한다
 - **Files In Scope**:
   - `GoStop/Core/`
   - `GoStopCLI/`
@@ -121,11 +128,11 @@
   - [x] MP-008 `staleStateVersion -> resync` typed detail contract 추가
   - [x] `MultiplayerTerminalSummaryPayload` 및 enriched `get_multiplayer_terminal_summary` metadata 추가
   - [x] authority replay retention policy `privilegedDebugOnly` 결정
-- **Latest Update**: round12 기준 contract drift는 없다고 판단했다. passive socket close는 room-owned disconnect detection일 뿐이고, grace expiry로 terminal closure가 생기면 explicit disconnect와 같은 authority transaction인 `quit(reason=disconnectTimeout)`로 수렴해야 한다. 따라서 `actionAccepted.playerId`, `roundEnded.summary.forfeitingPlayerId`, `matchEnded.forfeitingPlayerId`, `terminalSummary.lastEventId/summaryStateVersion`, `roomClosed.gameId/summaryStateVersion/lastTerminalEventId/endReason/forfeitingPlayerId`는 passive path에서도 그대로 맞아야 한다. stale heartbeat는 계속 explicit room-level reject(`staleConnectionId` / `invalidResumeState`)가 source-of-truth고, audit-only는 additive logging으로만 허용된다.
+- **Latest Update**: round17 final-validation locked set(`MP-001`, `MP-002`, `MP-004`, `MP-007`, `MP-008`, `MP-013`, `MP-014`)이 green이므로 Agent 1은 authority contract drift가 없다고 sign-off한다. shipped Phase 0 bootstrap boundary는 current concrete facade(`room_bootstrap_create`, `room_bootstrap_lookup_invite`, `room_bootstrap_join`, `room_bootstrap_prepare_game_start`)이고, authority source-of-truth는 계속 canonical `gameStarted` + paired `stateSnapshot(reason=gameStarted)`다. shipped Phase 0 live gap recovery path는 explicit `triggerGapRecovery -> gapRecoveryHint -> stateSnapshot(reason=gapDetected)`이며, recovery minimum contract는 input lock + full snapshot 1회로 유지된다. true REST bootstrap split과 automatic dropped-event detection은 deferred backlog이고, 이를 current shipped scope처럼 요구하는 artifact는 implementation drift 또는 out-of-scope로 판정한다.
 
 ## Agent 2: Backend / Lobby / Reconnect
 - **Owner**: Agent 2
-- **Current Task**: passive socket close를 shared transport disconnect path에 묶고 Agent 4 live smoke handoff를 정리한다
+- **Current Task**: round17 fixup-only 범위에서 shipped Phase 0 transport scope final wording sync를 완료했고, merge-ready 상태를 유지한다
 - **Files In Scope**:
   - `GoStopCLI/`
   - `room_protocol.md`
@@ -133,9 +140,8 @@
 - **Depends On**:
   - Agent 1 `stateSnapshot` / `gameStarted` / `matchEnded` contract
 - **Blocks**:
-  - background lifecycle sweep 없이도 timeout completion을 자동 발생시키는 server-owned timer는 아직 없다. 현재 authoritative trigger는 same adapter `reapExpiredState`다
-  - create/join/bootstrap current product source는 여전히 websocket command boundary이고, cleaner REST split은 아직 placeholder다
-- **Ready For Merge**: `NO`
+  - 없음. 남은 일은 final validation과 merge packaging뿐이다.
+- **Ready For Merge**: `YES`
 - **Validation**:
   - [x] room/session Swift model 타입 추가
   - [x] `InMemoryRoomCoordinator`에 create/join/ready/attach/leave/close/disconnect/resume/heartbeat/game start/end/expiry skeleton 반영
@@ -177,11 +183,18 @@
   - [x] `MP-002` socket compare PASS
   - [x] passive TCP/WebSocket close가 last successful `hello.connectionId` owner 기준 same adapter `disconnectMember` path로 자동 연결된다
   - [x] `MP-007` socket compare PASS
-- **Latest Update**: round12 기준 TCP/WebSocket server는 shared `RoomTransportServerRuntime`에서 passive close owner를 tracking하고, actual socket close 시 same adapter disconnect helper를 호출한다. 이 binding은 explicit `room_transport_send(action=disconnect)`와 room/session semantics를 공유하며, 이후 same adapter `reapExpiredState`가 active match면 synthetic `quit(reason=disconnectTimeout)` -> `roundEnded` -> `matchEnded` -> `terminalSummary`, later result TTL에서는 `roomClosed` ordering으로 이어진다. stale heartbeat reject와 `inviteCode == roomId` 결정은 유지된다.
+  - [x] shared `RoomTransportServerRuntime` automatic expiry sweep가 1초 cadence로 disconnect grace/result TTL expiry를 same adapter relay path에서 진행한다
+  - [x] `room_bootstrap_create`, `room_bootstrap_lookup_invite`, `room_bootstrap_join`, `room_bootstrap_prepare_game_start`가 current public bootstrap boundary로 노출된다
+  - [x] bootstrap responses가 `bootstrapBoundary.boundaryVersion/currentBoundary/recommendedNextActions/gameplayTransportBoundary`를 함께 노출한다
+  - [x] `room_gap_recovery_shape`가 live `triggerGapRecovery` hook까지 포함한 flag/artifact minimum shape를 고정한다
+  - [x] `room_transport_send(action=triggerGapRecovery)`가 `gapRecoveryHint -> gameEvent(stateSnapshot reason=gapDetected)` ordering을 mailbox에 queue한다
+  - [x] round15 final rebuild에서 `socket-parity` suite `MP-001`, `MP-002`, `MP-004`, `MP-007`, `MP-008`, `MP-013`, `MP-014` 전부 PASS
+  - [x] Agent 4 round17 `final-validation` suite PASS, Agent 2 추가 transport fix 불필요 확인
+- **Latest Update**: round17 기준 Agent 4 final-validation에서 Agent 2 소유 transport blocker는 나오지 않았다. shipped Phase 0 bootstrap boundary는 `room_bootstrap_create`, `room_bootstrap_lookup_invite`, `room_bootstrap_join`, `room_bootstrap_prepare_game_start` 그대로 유지하고, gameplay lifecycle은 `room_transport_*` sole owner로 둔다. shipped live recovery path도 계속 `triggerGapRecovery -> gapRecoveryHint -> stateSnapshot(reason=gapDetected)`다. 남은 transport 일감은 merge blocker가 아니라 deferred backlog다.
 
 ## Agent 3: iOS Multiplayer Client / UX
 - **Owner**: Agent 3
-- **Current Task**: multiplayer product route를 실제 app root에 올리고, transport-backed live gameplay surface를 더 플레이 가능한 수준으로 다듬기
+- **Current Task**: round17 fixup-only sign-off. Agent 4 final-validation에서 드러난 UI blocker를 확인하고, shipped alpha / deferred-after-alpha wording을 final로 잠그기
 - **Files In Scope**:
   - `GoStop/Views/`
   - `GoStop/ViewModels/`
@@ -191,11 +204,12 @@
   - Agent 1 payload fields
   - Agent 2 room/websocket envelope
 - **Blocks**:
-  - final REST bootstrap split은 아직 안 붙었다. 현재 first real source는 Agent 2 websocket command boundary(`room_create`, `room_join`, `room_transport_*`)를 사용한다
-  - `match.end.*`, `match.result.leave.*`, `room.closed.*`, `match.choice.shake.actor_only_waiting` key 중 일부는 message catalog entry가 아직 없어 shell fallback copy에 의존한다
-  - main app route는 now root sheet로 mount됐지만, deeper in-app tab/menu placement policy는 아직 follow-up이다
-  - gameplay transport는 concrete하고 hand-targeted UI도 붙었지만, card-art driven hand/table interaction과 richer choice visuals는 아직 follow-up이다
-- **Ready For Merge**: `NO`
+  - none inside the shipped alpha boundary
+  - deferred: public REST bootstrap split beyond the current command boundary
+  - deferred: app-wide remount beyond the current root-sheet launcher baseline
+  - deferred: final direct target semantics / full final board parity
+  - deferred: full message catalog completeness
+- **Ready For Merge**: `YES`
 - **Validation**:
   - [x] room 진입 흐름 문서화
   - [x] reconnect 중 input lock / overlay 해제 조건 문서화
@@ -228,14 +242,31 @@
   - [x] `MultiplayerTransportMountMode.productPreparation(inviteCode:)`로 future product join route boundary 고정
   - [x] banner/result note rendering에서 raw key 직접 노출 제거, shell fallback copy 우선화
   - [x] `MultiplayerProductMultiplayerRouteView`로 shared transport host를 product-facing multiplayer entry wrapper까지 끌어올림
+  - [x] `MultiplayerProductMultiplayerRouteView`가 shared store 기반 product sheet route로 동작하고, in-sheet placement를 `Home / Play / Session`까지 끌어올림
+  - [x] `MultiplayerLiveShellView`가 snapshot-backed `CardView` 자산으로 hand / table / choice preview를 렌더하고, selected hand card 기준 table highlight를 제공
   - [x] `MultiplayerWebSocketCommandNetworkingAdapter`가 `MultiplayerShellGameplayNetworkingAdapter` concrete path로 `playCard`, `submitChoice`, `quit`를 전송
   - [x] `ContentView` root에서 `MultiplayerProductMultiplayerRouteView`를 실제 sheet route로 mount
   - [x] `MultiplayerLiveShellView`가 hand-targeted `playCard`, option-level `submitChoice`, authoritative `quit` action surface를 직접 렌더
-- **Latest Update**: product multiplayer route는 now app root `ContentView`에서 바로 sheet로 열리고, `MP Lab`과 분리된 실제 main-app 진입점을 가진다. `MultiplayerProductMultiplayerRouteView`는 same transport-backed host/store factory를 재사용하고, `Create Room`, `Join Invite`, `Resume`, result dismissal은 계속 `helloAck`, `roomSnapshot`, `leaveAcknowledged`, `roomClosed` authoritative lifecycle에만 반응한다. live screen은 `cardId` chip 기반이지만 hand-targeted `playCard`, option-level `submitChoice`, `quit`를 view 안에서 직접 보낼 수 있게 됐고, catalog miss 구간은 shell fallback copy로 자연스럽게 덮는다.
+  - [x] `MultiplayerShellMapper.liveState`가 `players[].captured`와 `table.monthBuckets`를 shell state로 투영
+  - [x] `MultiplayerLiveShellView`가 opponent/local captured zones, inspect-only month-bucket focus, richer board composition을 product route에 렌더
+  - [x] `MultiplayerProductSessionView`가 `Home Launcher / Mode Tab / Quick Access` app placement candidates를 product-facing code로 노출
+  - [x] round14 UX polish 이후 `GoStop` iOS target `BUILD SUCCEEDED` 재확인
+  - [x] `MultiplayerProductMultiplayerRouteView`가 `Home / Play / Session` product tab split으로 올라가고, `Home`이 in-sheet launcher 역할을 담당
+  - [x] `MultiplayerShellMapper.liveState`가 player display name, score, go count, deck remaining count까지 shell state로 투영
+  - [x] `MultiplayerLiveShellView`가 score/go/deck strip, direct table card focus, focused-option affordance, bilingual captured group labels를 렌더
+  - [x] `match.end.*`와 `match.reject.*` fallback copy 확장, camelCase code humanize 개선
+  - [x] round15 UI polish 이후 `GoStop` iOS target `BUILD SUCCEEDED` 재확인
+  - [x] root-sheet launcher + in-sheet `Home / Play / Session`을 shipped alpha placement로 고정
+  - [x] `MultiplayerProductSessionView`가 remount work를 deferred-after-alpha 항목으로 명시
+  - [x] live board에 local focus summary / clear focus / animated inspect interactions 추가
+  - [x] entry error banner detail도 localized fallback 경로로 정리해 raw key 노출 축소
+  - [x] round16 alpha polish 이후 `GoStop` iOS target `BUILD SUCCEEDED` 재확인
+  - [x] round17 fixup에서 stale blocker wording 제거 및 shipped/deferred scope final wording sync 완료
+- **Latest Update**: Agent 4 round17 final-validation 기준 Agent 3 소유 actual UI blocker는 나오지 않았다. shipped alpha는 current root-sheet launcher baseline + in-sheet `Home / Play / Session`으로 최종 고정했고, larger remount와 bootstrap split은 deferred-after-alpha로 분리했다. `Create Room`, `Join Invite`, `Resume`, result dismissal은 계속 `helloAck`, `roomSnapshot`, `leaveAcknowledged`, `roomClosed` authoritative lifecycle에만 반응한다. live board는 score/go/deck strip, captured grouping, focused table/hand summary, clear-focus action, focused choice hint까지 포함하는 shipped alpha surface로 sign-off했다.
 
 ## Agent 4: Debugging / Test Scenarios / Observability
 - **Owner**: Agent 4
-- **Current Task**: fixture/CLI/socket green 상태를 유지하면서 passive-close timeout hardening과 TCP fallback vs websocket parity smoke를 계속 잠근다
+- **Current Task**: Round 17 final-validation suite와 fixed artifact bucket을 유지하고, deferred dropped-event auto-detection만 out-of-scope로 남긴다
 - **Files In Scope**:
   - `tests/test_agent/multiplayer_runner.py`
   - `tests/test_agent/multiplayer/`
@@ -244,9 +275,9 @@
 - **Depends On**:
   - 없음
 - **Blocks**:
-  - websocket debug connect 경로의 stale heartbeat error envelope가 CLI ingress와 같은 code를 유지하는지 확인 필요
-  - dropped-event gap 기반 MP-008 future extension은 아직 live transport에 연결되지 않았다
-- **Ready For Merge**: `NO`
+  - true dropped-event gap auto detection은 아직 live transport에 연결되지 않았다. current executable path는 explicit `triggerGapRecovery` hook까지다
+  - 위 항목은 deferred scope이며 Round 17 final validation blocker는 아니다
+- **Ready For Merge**: `YES`
 - **Validation**:
   - [x] `MP-001 ~ MP-008` 상세 draft 작성
   - [x] multiplayer runner/helper separate entrypoint 추가
@@ -287,9 +318,22 @@
   - [x] `MP-007` live TCP/WebSocket timeout parity PASS
   - [x] actual passive socket close 기반 `MP-007` live parity PASS
   - [x] `MP-014` explicit reject heartbeat parity(`invalidResumeState`, `staleConnectionId`) PASS
-  - [x] `timeout_probe.json`, `heartbeat_probe.json`, `replay/gap_injection_plan.json` artifact output 추가
-- **Latest Update**: round12 cached build(`/tmp/gostop_cli_round12_agent2/Build/Products/Debug/GoStopCLI`) 기준 `tests/test_agent/multiplayer_runner.py --scenario MP-007 --mode socket --transport compare --skip-build`가 PASS로 닫혔다. guest actual socket close 뒤 `playerDisconnected`가 host/guest mailbox에 fan-out되고, same adapter `reapExpiredState`가 synthetic `quit(reason=disconnectTimeout)`를 relay해 `actionAccepted -> roundEnded -> matchEnded -> roomEvent(playerForfeited/roomStateChanged) -> terminalSummary`, 이후 second reap에서 `roomClosed`까지 TCP fallback / websocket parity를 맞췄다. `tests/test_agent/multiplayer_runner.py --suite socket-parity --mode socket --transport compare --skip-build`는 `MP-001`, `MP-002`, `MP-004`, `MP-007`, `MP-008`, `MP-013`, `MP-014` PASS를 재확인했고, `python3 scripts/run_multiplayer_cli_two_player_smoke.py --scenario all --skip-build`도 round12 cached root를 자동 재사용해 PASS를 유지했다. stale/replaced heartbeat는 계속 explicit reject(`invalidResumeState`, `staleConnectionId`)로 잠겼고, dropped-event gap MP-008 future extension은 tighter `replay/gap_injection_plan.json` preflight로만 남겨 두었다.
-  - latest cached root priority는 `/tmp/gostop_cli_round12_agent2`, `/tmp/gostop_cli_round11_agent4`, `/tmp/gostop_cli_round10_agent4`, `/tmp/gostop_cli_agent4_round7_recheck`, `/tmp/gostop_cli_round7_review`를 우선 사용하도록 정리했다.
+  - [x] `timeout_probe.json`, `heartbeat_probe.json`, `stale_heartbeat_code_probe.json`, `replay/gap_injection_plan.json` artifact output 추가
+  - [x] `MP-007` timer-driven automatic expiry parity(`manualReapUsed=false`) PASS
+  - [x] websocket debug connect stale heartbeat error envelope parity probe PASS
+  - [x] `room_bootstrap_create` / `room_bootstrap_join` smoke를 actual runner/CLI bootstrap path에 반영
+  - [x] `room_bootstrap_lookup_invite` smoke와 concrete bootstrap boundary fields(`boundaryVersion`, `currentBoundary`, `recommendedNextActions`)를 actual runner/CLI artifact에 반영
+  - [x] `room_bootstrap_prepare_game_start` facade preflight와 `bootstrap_boundary_probe.json` artifact 추가
+  - [x] `room_gap_recovery_shape` preflight와 `replay/gap_recovery_shape.json` artifact 추가
+  - [x] `MP-008` live `triggerGapRecovery -> gapRecoveryHint -> stateSnapshot(reason=gapDetected)` probe를 socket/CLI smoke에 연결
+  - [x] `replay/gap_recovery_probe.json` artifact와 tightened `replay/gap_injection_plan.json` output 추가
+  - [x] `final-validation` suite alias를 `MP-001`, `MP-002`, `MP-004`, `MP-007`, `MP-008`, `MP-013`, `MP-014` locked regression set으로 추가
+  - [x] `tests/test_agent/multiplayer_runner.py --suite final-validation --mode socket --transport compare` default root를 `test_artifacts/multiplayer/round17_final_validation/socket_compare/`로 고정
+  - [x] `suite_summary.json` / `suite_summary.md`를 final-validation run root index로 추가
+  - [x] `scripts/run_multiplayer_cli_two_player_smoke.py --scenario all --final-validation --skip-build` default root를 `test_artifacts/multiplayer_cli_smoke/round17_final_validation/`로 고정
+  - [x] Round 17 final validation checklist와 expected PASS criteria를 `multiplayer_test_scenarios.md`에 문서화
+- **Latest Update**: round16 최종 검증 준비를 actual run까지 포함해 잠갔다. `python3 tests/test_agent/multiplayer_runner.py --suite final-validation --mode socket --transport compare --skip-build --binary /tmp/gostop_cli_round15_agent4/Build/Products/Debug/GoStopCLI`가 PASS였고, locked scenario set(`MP-001`, `MP-002`, `MP-004`, `MP-007`, `MP-008`, `MP-013`, `MP-014`) 전부 `test_artifacts/multiplayer/round17_final_validation/socket_compare/` 아래에서 green이었다. 같은 root의 `suite_summary.json` / `suite_summary.md`가 round17 socket final-validation index다. CLI ingress도 `python3 scripts/run_multiplayer_cli_two_player_smoke.py --scenario all --final-validation --skip-build --binary /tmp/gostop_cli_round15_agent4/Build/Products/Debug/GoStopCLI` 기준 PASS였고 artifact는 `/tmp/gostop_round16_cli_final_validation/cli_smoke_20260314_093701`에 남겼다. frozen bootstrap boundary는 `room_bootstrap_create/lookup_invite/join/prepare_game_start`, frozen live recovery path는 `triggerGapRecovery -> gapRecoveryHint -> stateSnapshot(reason=gapDetected)`다. Round 17 blocker는 없고, 남은 deferred item은 actual dropped-event auto-detection용 per-session event-drop hook 하나다.
+  - latest cached root priority는 `/tmp/gostop_cli_round16_agent2`, `/tmp/gostop_cli_round16_agent4`, `/tmp/gostop_cli_round15_agent2`, `/tmp/gostop_cli_round15_agent4`, `/tmp/gostop_cli_round14_agent2`, `/tmp/gostop_cli_round13_agent2`, `/tmp/gostop_cli_round12_agent2`, `/tmp/gostop_cli_round11_agent4`, `/tmp/gostop_cli_round10_agent4`, `/tmp/gostop_cli_agent4_round7_recheck`, `/tmp/gostop_cli_round7_review`를 우선 사용하도록 정리했다.
 
 ## Handoff Notes
 
@@ -324,6 +368,10 @@
   - Agent 2/4 parity artifact ruling을 추가: exact resend가 `exactReplay` + prior authoritative replay가 아니거나 conflicting reuse가 `actionIdConflict` reject가 아니면 implementation drift로 본다
   - reconnect-timeout terminal invariants와 `roomClosed` terminal correlation carry-through rule, stale heartbeat explicit-reject vs audit-only owner ruling을 추가
   - passive socket close가 explicit disconnect와 같은 downstream authority `quit(reason=disconnectTimeout)` terminal invariants로 수렴해야 한다는 owner ruling을 추가
+  - server-owned automatic expiry sweep과 dropped-event gap future extension도 각각 same disconnectTimeout invariants / same `stateSnapshot(reason=gapDetected)` minimum recovery contract를 유지해야 한다는 owner ruling을 추가
+  - bootstrap split이 들어와도 authoritative bootstrap pair는 계속 `gameStarted` + paired `stateSnapshot(reason=gameStarted)`이고, gap artifact cursor metadata는 additive-only라는 owner ruling을 추가
+  - concrete bootstrap facade(`room_bootstrap_*`)와 concrete live gap hook(`room_gap_recovery_shape`, `gapRecoveryHint`, `gapDetected` flag)도 room-owned metadata surface일 뿐 authority pair/recovery payload를 대체하지 못한다는 owner ruling을 추가
+  - current concrete bootstrap facade와 explicit `triggerGapRecovery -> gapRecoveryHint -> stateSnapshot(reason=gapDetected)` path를 shipped Phase 0 boundary로 잠그고, true REST bootstrap split / automatic dropped-event detection을 deferred로 분리
 - 미완료 항목:
   - actual websocket/server binding이 same `playerIdentityBindings`와 `resync` rule을 유지하는지 live parity 확인
 - 리스크:
@@ -388,15 +436,15 @@
   - socket runner / CLI smoke에 cached binary reuse 우선 경로 추가
   - local debug manual checklist를 `create/join/ready/start/live/disconnect/resume` 단계로 재정리
   - `Join Invite` unsupported/error path를 explicit validation point로 추가
-  - socket mode `MP-007` passive-close timeout parity PASS 및 `timeout_probe.json` artifact 추가
+  - socket mode `MP-007` automatic timeout parity PASS 및 `timeout_probe.json` artifact 추가
   - socket/CLI heartbeat hardening을 explicit reject policy(`invalidResumeState`, `staleConnectionId`) 기준으로 잠금
-  - `replay/gap_injection_plan.json`으로 dropped-event gap MP-008 future extension preflight를 `plannedTargetClientId`, `plannedDropCount`, `lastDeliveredEventId`, `gapDetected` recovery cursor 기준으로 문서화
+  - websocket debug connect stale heartbeat envelope를 `stale_heartbeat_code_probe.json`으로 CLI ingress baseline과 비교 가능하게 잠금
+  - `replay/gap_injection_plan.json`으로 dropped-event gap MP-008 future extension preflight를 `plannedTargetClientId`, `plannedDropCount`, `plannedDropAfterEventName`, `plannedFollowUpActionId`, `lastDeliveredEventId`, `nextAuthoritativeEventId`, `gapDetected` recovery cursor 기준으로 문서화
 - 미완료 항목:
   - actual websocket binding으로 `room_transport_*` spike smoke를 치환
-  - websocket debug connect 경로에서 `MP-013/014` parity를 다시 잠금
+  - websocket debug connect 경로에서 `MP-013` parity를 다시 잠금
   - dropped-event gap 기반 MP-008 future extension live smoke 추가
 - 리스크:
-  - websocket debug connect 경로가 CLI ingress와 다른 stale heartbeat error envelope를 쓰면 `MP-014` 실제 transport smoke가 다시 어긋날 수 있음
   - shake privacy 회귀는 hidden-info leak이므로 actor/non-actor projection pair artifact를 항상 남겨야 안전함
   - current socket smoke는 GoStopCLI TCP facade 기준이므로, future external websocket room->engine relay path가 끼어들면 별도 parity smoke가 필요함
   - live projection이 authority `playerId`를 사용해 `playCard` path가 아직 room `playerId`와 직접 맞지 않는다

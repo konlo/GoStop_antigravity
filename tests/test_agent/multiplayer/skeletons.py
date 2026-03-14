@@ -123,21 +123,23 @@ def _mp001() -> ScenarioSkeleton:
         scenario_id="MP-001",
         purpose="Room create/join/ready auto-start path reaches live bootstrap without a public start command.",
         steps=[
-            command("c01", "Host creates room", "player_a", "createRoom", {"roomType": "invite", "joinPolicy": "inviteCode"}),
+            command("c01", "Host creates room through bootstrap facade", "player_a", "room_bootstrap_create", {"roomType": "invite", "joinPolicy": "inviteCode"}),
             expect("e01", "Room snapshot seeds waitingForPlayers", "roomSnapshot", {"roomState": "waitingForPlayers"}),
-            command("c02", "Guest joins room", "player_b", "joinRoom", {}),
+            command("c02", "Host resolves invite through concrete bootstrap lookup", "player_a", "room_bootstrap_lookup_invite", {}),
+            command("c03", "Guest joins room through bootstrap facade", "player_b", "room_bootstrap_join", {}),
             expect("e02", "Guest join is broadcast", "roomEvent.memberJoined", {"playerId": "player_b"}),
-            command("c03", "Host attaches socket", "player_a", "hello", {"resumeMode": "fresh"}),
-            command("c04", "Guest attaches socket", "player_b", "hello", {"resumeMode": "fresh"}),
-            command("c05", "Host marks ready", "player_a", "setReady", {"ready": True}),
-            command("c06", "Guest marks ready", "player_b", "setReady", {"ready": True}),
+            command("c04", "Host attaches socket", "player_a", "hello", {"resumeMode": "fresh"}),
+            command("c05", "Guest attaches socket", "player_b", "hello", {"resumeMode": "fresh"}),
+            command("c06", "Host marks ready", "player_a", "setReady", {"ready": True}),
+            command("c07", "Guest marks ready", "player_b", "setReady", {"ready": True}),
             expect("e03", "Ready update is emitted", "roomEvent.memberReadyChanged", {"ready": True}),
             expect("e04", "Room enters starting", "roomEvent.roomStateChanged", {"toState": "starting"}),
             expect("e05", "Game bootstrap event arrives", "gameEvent.engineEvent:gameStarted", {}),
             expect("e06", "Authoritative bootstrap snapshot arrives", "gameEvent.engineEvent:stateSnapshot", {"reason": "gameStarted"}),
             snapshot("s01", "Capture player A initial projection", "initial", "player", actor="player_a"),
             snapshot("s02", "Capture player B initial projection", "initial", "player", actor="player_b"),
-            artifact("a01", "Persist replay manifest", "replay/replay_manifest.json"),
+            artifact("a01", "Persist bootstrap split boundary probe", "bootstrap_boundary_probe.json"),
+            artifact("a02", "Persist replay manifest", "replay/replay_manifest.json"),
         ],
         required_artifacts=[
             "manifest.json",
@@ -145,6 +147,7 @@ def _mp001() -> ScenarioSkeleton:
             "timeline/events.ndjson",
             "snapshots/player_a_initial.json",
             "snapshots/player_b_initial.json",
+            "bootstrap_boundary_probe.json",
             "replay/replay_manifest.json",
         ],
     )
@@ -270,22 +273,27 @@ def _mp006() -> ScenarioSkeleton:
 def _mp007() -> ScenarioSkeleton:
     return ScenarioSkeleton(
         scenario_id="MP-007",
-        purpose="Reconnect grace expires and room transitions into a terminal forfeit outcome.",
+        purpose="Reconnect grace expires through automatic timeout progression and room transitions into a terminal forfeit outcome.",
         steps=[
             command("c01", "Bootstrap live match", "system", "bootstrapLiveMatch", {"seed": 42}),
-            command("c02", "Drop player B transport", "player_b", "disconnectMember", {}),
+            command("c02", "Passively close player B transport", "player_b", "disconnectMember", {"mode": "passiveClose"}),
             expect("e01", "Grace countdown starts", "roomEvent.playerDisconnected", {"playerId": "player_b"}),
-            wait("w01", "Advance beyond reconnect grace", 31000),
+            wait("w01", "Allow automatic reconnect grace expiry", 31000, note="No manual reapExpiredState call is allowed in the locked live path."),
+            expect("e02", "Automatic timeout drives terminal match end", "gameEvent.engineEvent:actionAccepted|roundEnded|matchEnded", {}),
             command("c03", "Attempt stale resume", "player_b", "hello", {"resumeMode": "resume"}),
-            expect("e02", "resumeExpired is emitted", "error", {"errorCode": "resumeExpired"}),
-            expect("e03", "Terminal forfeit signal is emitted", "roomEvent.playerForfeited|gameEvent.engineEvent:matchEnded", {}),
+            expect("e03", "resumeExpired is emitted", "error", {"errorCode": "resumeExpired"}),
+            expect("e04", "Terminal forfeit signal is emitted", "roomEvent.playerForfeited|terminalSummary", {}),
+            wait("w02", "Allow automatic result retention expiry", 61000),
+            expect("e05", "roomClosed is emitted after retention", "roomEvent.roomClosed", {}),
             snapshot("s01", "Capture terminal authority state", "terminal", "authority"),
+            artifact("a01", "Persist timeout parity probe", "timeout_probe.json"),
         ],
         required_artifacts=[
             "manifest.json",
             "timeline/steps.ndjson",
             "timeline/events.ndjson",
             "snapshots/latest_server.json",
+            "timeout_probe.json",
             "anomaly_report.md",
         ],
     )
@@ -294,7 +302,7 @@ def _mp007() -> ScenarioSkeleton:
 def _mp008() -> ScenarioSkeleton:
     return ScenarioSkeleton(
         scenario_id="MP-008",
-        purpose="Stale expectedStateVersion deterministically triggers actionRejected and resync through authoritative snapshot.",
+        purpose="Stale expectedStateVersion and explicit gap recovery hook both converge on authoritative snapshot-based recovery.",
         steps=[
             command("c01", "Bootstrap live match at known stateVersion", "system", "bootstrapLiveMatch", {"seed": 42}),
             command(
@@ -305,12 +313,19 @@ def _mp008() -> ScenarioSkeleton:
                 {"injectedMismatchMode": "staleExpectedStateVersion", "expectedStateVersion": 14},
             ),
             artifact("a01", "Persist injection manifest", "replay/injection_manifest.json"),
+            command("c02b", "Fetch dropped-event gap recovery shape preflight", "system", "room_gap_recovery_shape", {}),
             command("c03", "Send next gameplay command with stale expectedStateVersion", "player_a", "playCard|quit", {"expectedStateVersion": 14}),
             expect("e01", "staleStateVersion reject arrives", "gameEvent.engineEvent:actionRejected", {"rejectCode": "staleStateVersion"}),
             expect("e02", "Authoritative resync snapshot arrives", "gameEvent.engineEvent:stateSnapshot", {"reason": "resync"}),
+            command("c03b", "Trigger live gap recovery hook on the same transport", "player_a", "triggerGapRecovery", {"expectedStateVersion": 13}),
+            expect("e02b", "gapRecoveryHint is emitted before recovery snapshot", "gapRecoveryHint", {"inputLockRequired": True}),
+            expect("e02c", "gapDetected recovery snapshot arrives", "gameEvent.engineEvent:stateSnapshot", {"reason": "gapDetected"}),
             artifact("a02", "Persist mismatch timeline", "timeline/mismatch.ndjson"),
+            artifact("a03", "Persist gap recovery shape contract", "replay/gap_recovery_shape.json"),
+            artifact("a04", "Persist live gap recovery probe", "replay/gap_recovery_probe.json"),
+            artifact("a05", "Persist gap-injection future-extension plan", "replay/gap_injection_plan.json"),
             snapshot("s01", "Capture post-resync authority state", "resync", "authority"),
-            artifact("a03", "Persist replay manifest", "replay/replay_manifest.json"),
+            artifact("a06", "Persist replay manifest", "replay/replay_manifest.json"),
         ],
         required_artifacts=[
             "manifest.json",
@@ -320,6 +335,9 @@ def _mp008() -> ScenarioSkeleton:
             "timeline/mismatch.ndjson",
             "snapshots/latest_server.json",
             "replay/injection_manifest.json",
+            "replay/gap_recovery_shape.json",
+            "replay/gap_recovery_probe.json",
+            "replay/gap_injection_plan.json",
             "replay/replay_manifest.json",
         ],
         notes=[
@@ -327,6 +345,9 @@ def _mp008() -> ScenarioSkeleton:
             "timeline/mismatch.ndjson and replay/injection_manifest.json are mandatory even on early reject or partial resync.",
             "Socket mode now executes the live stale-version probe with a deterministic quit command after start_game warmup.",
             "playCard remains a separate live mapping probe because the projection still exposes authority playerId values.",
+            "gap_recovery_shape.json locks the current gapRecoveryHint minimum fields plus the stateSnapshot(reason=gapDetected) recovery envelope shape.",
+            "gap_recovery_probe.json records the executable triggerGapRecovery -> gapRecoveryHint -> stateSnapshot(reason=gapDetected) live hook result.",
+            "gap_injection_plan.json now narrows the remaining future dropped-event probe down to a concrete drop point, follow-up actionId, and expected gapDetected recovery cursor set.",
         ],
     )
 
@@ -372,6 +393,8 @@ def _mp014() -> ScenarioSkeleton:
             "timeline/commands.ndjson",
             "timeline/events.ndjson",
             "snapshots/latest_server.json",
+            "heartbeat_probe.json",
+            "stale_heartbeat_code_probe.json",
         ],
     )
 

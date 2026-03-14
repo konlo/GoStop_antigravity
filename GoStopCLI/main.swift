@@ -383,6 +383,10 @@ class CLIEngine {
             expectedConnectionId: expectedConnectionId
         )
     }
+
+    func handleAutomaticTransportExpirySweep(asOf: Date) throws -> Int {
+        try roomCLIAdapter.handleTransportExpirySweep(asOf: asOf).count
+    }
 }
 
 private struct RoomTransportServerBindingUpdate {
@@ -396,9 +400,23 @@ private final class RoomTransportServerRuntime {
     private var clientIDsByConnection: [ObjectIdentifier: Set<String>] = [:]
     private var activeConnectionKeyByClientID: [String: ObjectIdentifier] = [:]
     private var activeLogicalConnectionIDByClientID: [String: String] = [:]
+    private var automaticExpiryTimer: DispatchSourceTimer?
 
     init(engine: CLIEngine) {
         self.engine = engine
+    }
+
+    func startAutomaticExpirySweep(on queue: DispatchQueue) {
+        guard automaticExpiryTimer == nil else {
+            return
+        }
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now() + .seconds(1), repeating: .seconds(1))
+        timer.setEventHandler { [weak self] in
+            self?.runAutomaticExpirySweep()
+        }
+        automaticExpiryTimer = timer
+        timer.resume()
     }
 
     func handlePacket(_ data: Data, on connection: NWConnection) -> [String: Any] {
@@ -491,6 +509,17 @@ private final class RoomTransportServerRuntime {
     private func isSuccessful(_ response: [String: Any]) -> Bool {
         (response["status"] as? String) != "error"
     }
+
+    private func runAutomaticExpirySweep() {
+        do {
+            let mutationCount = try engine.handleAutomaticTransportExpirySweep(asOf: Date())
+            if mutationCount > 0 {
+                writeStderr("RoomTransportServerRuntime automatic expiry applied mutations=\(mutationCount)\n")
+            }
+        } catch {
+            writeStderr("RoomTransportServerRuntime automatic expiry failed: \(error)\n")
+        }
+    }
 }
 
 final class RoomTransportTCPServer {
@@ -508,6 +537,7 @@ final class RoomTransportTCPServer {
     }
 
     func start() {
+        runtime.startAutomaticExpirySweep(on: queue)
         listener.stateUpdateHandler = { state in
             switch state {
             case .ready:
@@ -613,6 +643,7 @@ final class RoomTransportWebSocketServer {
     }
 
     func start() {
+        runtime.startAutomaticExpirySweep(on: queue)
         listener.stateUpdateHandler = { state in
             switch state {
             case .ready:

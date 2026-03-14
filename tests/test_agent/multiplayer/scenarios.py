@@ -15,6 +15,7 @@ def _p0_scenarios() -> list[ScenarioDefinition]:
             description="Create room, join guest, set both players ready, and verify auto-start bootstrap into live match.",
             steps=[
                 "Host creates room and persists room/session metadata.",
+                "Host resolves invite through room_bootstrap_lookup_invite and preserves the concrete bootstrap boundary metadata.",
                 "Guest joins room and both clients attach via hello/helloAck.",
                 "Both players call setReady and observe memberReadyChanged.",
                 "Room transitions waitingForPlayers -> waitingForReady -> starting -> inGame.",
@@ -29,6 +30,7 @@ def _p0_scenarios() -> list[ScenarioDefinition]:
             ],
             observability=[
                 "roomSequence timeline for roomStateChanged",
+                "bootstrap boundaryVersion/currentBoundary/recommendedNextActions",
                 "first eventId and stateVersion",
                 "initial snapshot hash per player scope",
             ],
@@ -45,6 +47,7 @@ def _p0_scenarios() -> list[ScenarioDefinition]:
                 "timeline/events.ndjson",
                 "snapshots/player_a_initial.json",
                 "snapshots/player_b_initial.json",
+                "bootstrap_boundary_probe.json",
                 "replay/replay_manifest.json",
             ],
             transport_sequence=[
@@ -58,6 +61,7 @@ def _p0_scenarios() -> list[ScenarioDefinition]:
             notes=[
                 "CLI smoke explicitly drives room_record_game_started and then fetches get_multiplayer_game_started_bootstrap to assert the paired bootstrap payload.",
                 "Socket mode validates the same paired bootstrap contract through both GoStopCLI TCP fallback and websocket transport facades.",
+                "round15 smoke also locks the concrete bootstrap boundary through room_bootstrap_create/lookup_invite/join plus room_bootstrap_prepare_game_start preflight metadata, while keeping the canonical live bootstrap pair unchanged.",
             ],
         ),
         ScenarioDefinition(
@@ -251,25 +255,27 @@ def _p0_scenarios() -> list[ScenarioDefinition]:
             scenario_id="MP-007",
             name="Reconnect expiry triggers forfeit path",
             priority="P0",
-            automation="Scaffolded + fixture + socket passive-close timeout parity smoke",
-            focus="passive disconnect binding + resumeExpired + terminal forfeit ordering",
-            description="Close the live transport connection, let reconnect grace expire, and verify resume rejection plus terminal forfeit handling.",
+            automation="Scaffolded + fixture + socket automatic-timeout parity smoke",
+            focus="passive disconnect binding + automatic expiry sweep + terminal forfeit ordering",
+            description="Close the live transport connection, let the server-owned expiry sweep advance grace/retention automatically, and verify resume rejection plus terminal forfeit handling.",
             steps=[
                 "Close one player's actual transport connection in starting or inGame.",
-                "Advance beyond the 30 second reconnect grace.",
+                "Advance beyond the 30 second reconnect grace without manually calling reapExpiredState.",
                 "Attempt resume with the last valid session credentials.",
                 "Persist resumeExpired plus synthetic quit(reason=disconnectTimeout) terminal room/game outcome.",
-                "Reap result retention later and verify roomClosed completion.",
+                "Wait for result retention expiry and verify roomClosed completion without manual transport mutations.",
             ],
             assertions=[
                 "Passive close emits roomEvent(playerDisconnected) before timeout fan-out.",
                 "Resume attempt is rejected after grace expiry.",
                 "starting/inGame expiry leads to a forfeit path instead of silent closure.",
                 "Terminal path emits actionAccepted, roundEnded, matchEnded, terminalSummary, and later roomClosed.",
+                "Automatic expiry preserves the same terminal ordering on both TCP fallback and websocket transports.",
                 "Terminal summary captures timeout/forfeit reason and affected actor.",
             ],
             observability=[
-                "disconnectAt, graceDeadlineAt, resumeAttemptAt",
+                "passiveCloseAt, disconnectObservedAt, terminalObservedAt, roomClosedObservedAt",
+                "graceDeadlineAt, resumeAttemptAt",
                 "terminal roomSequence, eventId, stateVersion",
                 "resumeExpired error code and terminal summary reason",
             ],
@@ -292,37 +298,43 @@ def _p0_scenarios() -> list[ScenarioDefinition]:
             ],
             notes=[
                 "Socket mode now binds actual passive socket close to the same timeout path and records the resulting disconnect/terminal/roomClosed ordering in timeout_probe.json.",
-                "Expected live ordering is playerDisconnected after passive close, then synthetic quit(reason=disconnectTimeout) -> actionAccepted -> roundEnded -> matchEnded -> terminalSummary, and a later reap closes the room.",
+                "The locked live path is passiveClose -> playerDisconnected -> automatic expiry sweep -> actionAccepted -> roundEnded -> matchEnded -> roomEvent(playerForfeited/roomStateChanged) -> terminalSummary, then later roomClosed.",
+                "manualReapUsed=false and progressionMode=automaticExpirySweep are now part of the timeout probe contract.",
             ],
         ),
         ScenarioDefinition(
             scenario_id="MP-008",
-            name="StateVersion mismatch recovers through authoritative snapshot",
+            name="StateVersion mismatch and gap recovery both converge on authoritative snapshots",
             priority="P0",
             automation="Scaffolded + fixture-backed stale-version resync + socket gameplay smoke",
-            focus="staleStateVersion reject + authoritative resync snapshot path",
-            description="Inject stale expectedStateVersion deterministically and recover via stateSnapshot(reason=resync).",
+            focus="staleStateVersion reject + gapRecoveryHint/gapDetected recovery path",
+            description="Inject stale expectedStateVersion deterministically and exercise the live gap recovery hook so both resync paths converge on authoritative snapshots.",
             steps=[
                 "Persist injectedMismatchMode=staleExpectedStateVersion and the fixed mismatch cursor before the command is sent.",
                 "Send the next gameplay command with a stale expectedStateVersion override.",
                 "Detect mismatch by actionRejected(rejectCode=staleStateVersion).",
                 "Suspend input and wait for a resync snapshot.",
-                "Resume live play after the snapshot hash matches the server hash.",
+                "Fetch room_gap_recovery_shape and trigger the live gap recovery hook on the same transport session.",
+                "Observe gapRecoveryHint followed by stateSnapshot(reason=gapDetected) and persist the recovery cursor.",
             ],
             assertions=[
                 "Mismatch logs expose client/expected/authoritative versions plus authoritativeEventId.",
                 "Input remains locked during resync.",
                 "Resync snapshot restores hash equality before play resumes.",
-                "Injection manifest is sufficient to replay the exact stale-version fault path.",
+                "gapRecoveryHint carries the minimum recovery fields plus inputLockRequired before gapDetected snapshot delivery.",
+                "Injection manifest plus gap recovery probe are sufficient to replay the exact stale-version and gap-recovery fault paths.",
             ],
             observability=[
                 "injectedMismatchMode and fixed mismatch cursor",
                 "mismatch trigger reason",
                 "resync latency",
+                "gapRecoveryHint minimum field contract and live hint payload",
             ],
             required_events=[
                 "gameEvent:actionRejected",
-                "gameEvent:stateSnapshot",
+                "gameEvent:stateSnapshot(reason=resync)",
+                "gapRecoveryHint",
+                "gameEvent:stateSnapshot(reason=gapDetected)",
             ],
             required_artifacts=[
                 "manifest.json",
@@ -332,15 +344,18 @@ def _p0_scenarios() -> list[ScenarioDefinition]:
                 "snapshots/latest_server.json",
                 "replay/replay_manifest.json",
                 "replay/injection_manifest.json",
+                "replay/gap_recovery_shape.json",
+                "replay/gap_recovery_probe.json",
                 "replay/gap_injection_plan.json",
             ],
             notes=[
-                "The locked deterministic path is stale expectedStateVersion override; dropped event gap remains a future extension.",
+                "The locked deterministic mismatch path is stale expectedStateVersion override; live gap recovery now uses the explicit triggerGapRecovery hook.",
                 "MP-008 should generate replay/injection_manifest.json plus timeline/mismatch.ndjson even when the run fails early.",
                 "Socket mode now executes the live stale-version probe over TCP using a deterministic quit command after start_game warmup.",
-                "Current live socket smoke asserts actionRejected(staleStateVersion) plus stateSnapshot(reason=resync) on the same transport run.",
+                "Current live socket smoke asserts actionRejected(staleStateVersion) plus stateSnapshot(reason=resync), then triggerGapRecovery plus stateSnapshot(reason=gapDetected) on the same transport run.",
                 "playCard mapping drift is no longer a blocker for the locked P0 quit-based resync path.",
-                "The tighter future-extension plan is a per-session dropGameEvents preflight that records targetClientId, droppedEnvelopeCount, lastDeliveredEventId, and expected gapDetected recovery snapshot fields before any live transport probe is attempted.",
+                "round15 smoke also executes the live triggerGapRecovery hook and persists replay/gap_recovery_probe.json so the gapRecoveryHint minimum fields and stateSnapshot(reason=gapDetected) recovery envelope are no longer preflight-only.",
+                "The remaining future-extension plan is deterministic dropped-event injection that records targetClientId, droppedEnvelopeCount, lastDeliveredEventId, nextAuthoritativeEventId, dropAfterEnvelopeType/gameEventName, follow-up actionId, and expected gapDetected recovery snapshot fields before any auto-detection probe is attempted.",
             ],
         ),
     ]
@@ -419,10 +434,13 @@ def _review_regression_scenarios() -> list[ScenarioDefinition]:
                 "timeline/events.ndjson",
                 "snapshots/latest_server.json",
                 "heartbeat_probe.json",
+                "stale_heartbeat_code_probe.json",
             ],
             notes=[
                 "Agent 2 locked Phase 0 heartbeat handling to explicit reject, not audit-only ignore.",
                 "Socket compare smoke keeps invalidResumeState and staleConnectionId parity on both TCP fallback and websocket transports.",
+                "The websocket debug-connect baseline is the same command surface used by MultiplayerWebSocketCommandNetworkingAdapter: room_transport_send(action=ack).",
+                "stale_heartbeat_code_probe.json stores the raw websocket command error envelopes alongside the CLI ingress baseline codes so drift is visible immediately.",
             ],
         ),
     ]
@@ -440,6 +458,7 @@ SOCKET_PARITY_SCENARIOS = [
     SCENARIO_REGISTRY[scenario_id]
     for scenario_id in ("MP-001", "MP-002", "MP-004", "MP-007", "MP-008", "MP-013", "MP-014")
 ]
+FINAL_VALIDATION_SCENARIOS = list(SOCKET_PARITY_SCENARIOS)
 SOCKET_DUPLICATE_SCENARIOS = [SCENARIO_REGISTRY["MP-004"]]
 SOCKET_REVIEW_FIXUP_SCENARIOS = [SCENARIO_REGISTRY[scenario_id] for scenario_id in ("MP-013", "MP-014")]
 REVIEW_FIXUP_SCENARIOS = [SCENARIO_REGISTRY[scenario_id] for scenario_id in ("MP-013", "MP-014")]
@@ -450,6 +469,7 @@ SCENARIO_SUITES = {
     "socket-duplicate": SOCKET_DUPLICATE_SCENARIOS,
     "socket-review-fixups": SOCKET_REVIEW_FIXUP_SCENARIOS,
     "review-fixups": REVIEW_FIXUP_SCENARIOS,
+    "final-validation": FINAL_VALIDATION_SCENARIOS,
     "all": ALL_SCENARIOS,
 }
 

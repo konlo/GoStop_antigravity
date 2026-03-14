@@ -3,8 +3,8 @@
 ## Meta
 - **Owner**: Agent 1
 - **Primary Consumers**: Agent 2, Agent 3, Agent 4
-- **Status**: Draft
-- **Last Updated**: 2026-03-12
+- **Status**: Phase 0 Final Sign-Off
+- **Last Updated**: 2026-03-14
 - **Related Docs**:
   - `room_protocol.md`
   - `multiplayer_ui_flow.md`
@@ -28,6 +28,29 @@
 - room/lobby/session lifecycle 상세
 - iOS 화면 레이아웃
 - test runner 구현 상세
+
+## Phase 0 Shipped Boundary
+- shipped bootstrap boundary:
+  - `room_bootstrap_create`
+  - `room_bootstrap_lookup_invite`
+  - `room_bootstrap_join`
+  - `room_bootstrap_prepare_game_start`
+- shipped bootstrap authority source:
+  - canonical pair `gameStarted` + paired `stateSnapshot(reason=gameStarted)`
+  - typed baseline `MultiplayerGameStartedBootstrapPayload`
+- shipped live gap recovery boundary:
+  - `triggerGapRecovery -> gapRecoveryHint -> gameEvent(stateSnapshot reason=gapDetected)`
+- shipped boundary drift ruling:
+  - Agent 2/4 artifact가 위 shipped boundary와 다르면 contract ambiguity가 아니라 implementation drift로 본다.
+
+## Deferred Backlog Beyond Phase 0
+- true public REST bootstrap split
+- automatic dropped-event detection instead of explicit live gap hook
+
+## Final Sign-Off
+- round17 final-validation locked set(`MP-001`, `MP-002`, `MP-004`, `MP-007`, `MP-008`, `MP-013`, `MP-014`)이 green이고, shipped Phase 0 boundary 안에서 authority contract drift는 관찰되지 않았다.
+- final sign-off 기준 artifact root는 `test_artifacts/multiplayer/round17_final_validation/socket_compare/`이며, TCP/WebSocket compare parity와 CLI smoke가 모두 shipped boundary 판단과 일치해야 한다.
+- shipped scope 바깥 요구사항이 artifact에 나타나면 blocker가 아니라 deferred backlog 또는 implementation drift로 분류한다.
 
 ## Key Decisions
 
@@ -259,6 +282,7 @@
 - live stale-version recovery snapshot reason은 `resync`만 허용된다. `localPreview`는 local bridge / debug preview helper에서만 허용되며 live room/game transport에서는 사용할 수 없다.
 - passive socket close / transport teardown은 engine command가 아니라 room-owned disconnect signal이다. passive close 감지 자체는 engine `actionAccepted` / `actionRejected` / `stateSnapshot`을 만들지 않고, room layer disconnect tracking으로만 들어가야 한다.
 - explicit `room_transport_send(action=disconnect)`와 passive socket close는 disconnect tracking 이후 동일한 downstream authority path를 공유해야 한다. reconnect grace expiry가 실제 terminal closure를 만들 때는 두 path 모두 `quit(reason=disconnectTimeout)` same authority transaction으로 수렴해야 한다.
+- server-owned timeout sweep / automatic expiry timer도 동일한 room-owned trigger다. manual `reapExpiredState`, passive close grace expiry, runtime timer sweep 중 어떤 경로가 timeout completion을 시작하더라도 engine-visible terminal transaction은 같은 `quit(reason=disconnectTimeout)` authority path여야 한다.
 - stale heartbeat / pong / ack는 engine command가 아니라 room-owned liveness signal이다. replaced/expired/mismatched connection에서 온 stale heartbeat는 explicit room-level reject(`staleConnectionId` 또는 `invalidResumeState`)가 source-of-truth고, audit log는 additive-only다.
 - stale heartbeat handling은 `actionRejected`, `stateSnapshot`, `roundEnded`, `matchEnded` 같은 engine envelope를 emit하거나 `stateVersion`을 바꾸면 안 된다. silent audit-only로 내려버리는 것도 contract drift다.
 
@@ -1071,10 +1095,15 @@ Authoritative reject:
 | `matchEnded` | room match complete | final result, settlement summary | Agent 2, 3, 4 |
 
 ### Bootstrap Rules
+- Phase 0 shipped bootstrap boundary는 current concrete command facade(`room_bootstrap_create`, `room_bootstrap_lookup_invite`, `room_bootstrap_join`, `room_bootstrap_prepare_game_start`)다.
 - fresh start bootstrap source of truth는 `stateSnapshot(reason=gameStarted)`다.
 - `gameStarted`는 semantic marker이며, client는 visible state를 `gameStarted` payload만으로 구성하지 않는다.
 - `gameStarted` payload는 paired snapshot을 가리키는 correlation metadata만 담는다.
 - Agent 2 room layer는 fresh start에서 `gameEvent(gameStarted)`와 `gameEvent(stateSnapshot reason=gameStarted)`를 둘 다 전달해야 한다.
+- future public bootstrap split / REST facade가 들어와도 canonical authority bootstrap order는 바뀌지 않는다. room layer가 bootstrap transport를 gameplay websocket과 분리하더라도 authoritative pair는 여전히 `gameStarted` + paired `stateSnapshot(reason=gameStarted)`다.
+- split bootstrap response는 custom room DTO만으로 visible game state를 대체하면 안 된다. bootstrap-only facade를 만들더라도 authority payload baseline은 `MultiplayerGameStartedBootstrapPayload` 또는 same-field wrapper여야 하고, `gameStarted.snapshotId == stateSnapshot.snapshotId`, `gameStarted.snapshotStateVersion == stateSnapshot.snapshotStateVersion` correlation을 유지해야 한다.
+- concrete bootstrap route/facade 이름(`room_bootstrap_create`, `room_bootstrap_join`, `room_bootstrap_prepare_game_start`, future public REST bootstrap endpoint 등)은 room-owned surface일 뿐이다. route 이름이나 bootstrap boundary metadata가 concrete해져도 authority bootstrap payload baseline과 chronology는 바뀌지 않는다.
+- true public REST bootstrap split은 deferred scope다. Phase 0 shipped contract는 current command facade boundary를 기준으로 본다.
 - Agent 3/4 consumer는 bootstrap state를 snapshot에서 읽고, `gameStarted`는 timeline/analytics/UX trigger 용도로만 사용한다.
 - local debug/in-process bootstrap minimum set은 `MultiplayerGameStartedBootstrapPayload`이며, shape는 `{ gameStarted: MultiplayerGameStartedPayload, stateSnapshot: MultiplayerSnapshot }`다.
 - Agent 3 `showLive` handoff minimum type은 `MultiplayerLiveBootstrapPayload`이며, shape는 `{ activeGameId, gameStarted, stateSnapshot }`다.
@@ -1106,6 +1135,7 @@ Authoritative reject:
   - `matchEnded.eventId == terminalSummary.lastEventId`
   - `winnerPlayerId`, `loserPlayerId`, `finalScores[]`, `roundIndex`, `isDraw`는 `roundEnded.summary`, `matchEnded`, `terminalSummary.payload.roundEnded.summary`, `terminalSummary.payload.matchEnded`에서 동일해야 한다
 - passive socket close -> timeout expiry path에서도 위 invariants는 그대로 유지된다. close detection mechanism이 TCP/WebSocket/passive teardown인지 여부는 authority payload shape를 바꾸지 못한다.
+- server-owned automatic expiry sweep path에서도 위 invariants는 그대로 유지된다. timer cadence, sweep owner, manual debug hook 여부는 authority terminal payload shape나 correlation fields를 바꾸지 못한다.
 - `roomClosed`는 room-owned cleanup signal이며 authority result source가 아니다. room layer가 timeout cleanup 후 terminal correlation metadata를 싣는다면 최소 `gameId`, `lastTerminalEventId`, `summaryStateVersion`, `endReason`, `forfeitingPlayerId`를 prior terminal authority payload와 일치시켜야 한다. `winnerPlayerId` / `loserPlayerId` / `finalScores[]`를 복사한다면 `matchEnded`와 byte-for-byte 같은 값이어야 하고, 아니면 생략하는 편이 낫다.
 - passive disconnect cleanup에서도 `roomClosed` correlation fields는 동일하다. passive close 때문에 `gameId`, `summaryStateVersion`, `lastTerminalEventId`, `endReason`, `forfeitingPlayerId` naming이나 값이 달라지면 contract drift다.
 
@@ -1910,8 +1940,14 @@ Authoritative reject:
 - `stateVersion`이 같고 `eventId`만 앞서는 event를 받는 경우 semantic event만 처리하고 state patch 중복 적용은 피한다.
 - command stale reject path에서는 `actionRejected(code=staleStateVersion)` 뒤에 `stateSnapshot(reason=resync)`가 recovery baseline이다.
 - patch base mismatch 또는 dropped game event를 client가 감지한 path에서는 input을 잠그고 `stateSnapshot(reason=gapDetected)`를 기다리는 것이 baseline이다.
+- Phase 0 shipped live gap recovery path는 explicit hook `triggerGapRecovery -> gapRecoveryHint -> stateSnapshot(reason=gapDetected)`다.
 - MP-008 P0 deterministic validation은 stale `expectedStateVersion` override만 사용한다. dropped game event hook은 future extension으로 남긴다.
 - `dropGameEvents`는 다음 phase smoke hook으로 올리지 않는다. stale gameplay transport resync smoke가 안정화될 때까지 future extension으로 유지한다.
+- dropped-event gap 기반 future extension이 추가되더라도 authority minimum recovery contract는 바뀌지 않는다. baseline은 계속 input lock + full `stateSnapshot(reason=gapDetected)` 1회이며, partial replay-only recovery나 patch-only recovery는 필수 contract가 아니다.
+- gap-based future extension이 executable hook으로 올라와도 authority가 요구하는 minimum ambiguity-free cursor set은 `lastDeliveredEventId`, `nextAuthoritativeEventId`, recovery snapshot의 `lastIncludedEventId`, `snapshotStateVersion`이다. room/test artifact는 여기에 `plannedTargetClientId`, `plannedDropCount`, `plannedDropAfterEventName`, `plannedFollowUpActionId`를 additive로 붙일 수 있지만 engine recovery payload shape는 바꾸지 않는다.
+- gapDetected recovery completion 기준은 client가 input lock 상태에서 authoritative `stateSnapshot(reason=gapDetected)`를 적용하고, 그 snapshot의 `lastIncludedEventId`가 first missing authoritative cursor 이상임을 확인하는 것이다. 그 전에는 patch replay나 later semantic event만으로 recovery 완료로 간주하면 안 된다.
+- concrete live gap hook surface(`room_gap_recovery_shape`, `gapRecoveryHint`, `gapDetected` transport flag 등)는 room/test hint일 뿐이다. 이 metadata가 먼저 노출되더라도 recovery start/completion source-of-truth는 여전히 live `gameEvent(stateSnapshot reason=gapDetected)`다.
+- automatic dropped-event detection은 deferred scope다. Phase 0에서는 explicit live gap hook이 없는데도 spontaneous `gapDetected` recovery가 시작되기를 요구하지 않는다.
 - stale reject recovery pair에서는 `rejectReason.details.authoritativeStateVersion`과 뒤이은 `stateSnapshot.payload.snapshotStateVersion`이 같아야 하고, `rejectReason.details.authoritativeEventId`와 `stateSnapshot.payload.lastIncludedEventId`가 같은 authoritative head를 가리켜야 한다.
 - live transport stale-version recovery snapshot은 `stateSnapshot.reason = resync`만 허용한다. `localPreview`는 preview/helper contract 전용이며 `gameEvent(stateSnapshot)` live relay에서는 invalid다.
 
@@ -2075,6 +2111,9 @@ Authoritative reject:
   }
 }
 ```
+- dropped-event gap future extension에서도 위 `stateSnapshot(reason=gapDetected)`가 recovery baseline이다. future artifact나 timer-driven transport change가 들어와도 minimum required fields는 `snapshotId`, `reason=gapDetected`, `snapshotStateVersion`, `lastIncludedEventId`, `scope`, full player-scoped `state`로 유지된다.
+- gapDetected path는 stale command reject처럼 paired `actionRejected`를 필수로 요구하지 않는다. client는 input을 잠그고 위 snapshot을 authoritative recovery source로 적용하면 된다.
+- bootstrap split이나 room-owned preflight hook이 추가돼도 gapDetected recovery는 live `gameEvent(stateSnapshot)` authority payload를 기준으로 판정한다. room artifact는 cursor/debug metadata를 덧붙일 수 있지만 `stateSnapshot(reason=gapDetected)`를 대체할 수 없다.
 
 ## Player Identity Mapping Contract
 - engine authority payload는 room `playerId`를 알지 못하며, `playerId`/`currentPlayerId`/`winnerPlayerId`/`forfeitingPlayerId` 등 game payload의 identity field는 모두 authority `playerId`다.
@@ -2234,3 +2273,7 @@ Authoritative reject:
 - 2026-03-12: duplicate `actionId` live parity artifact ruling을 추가해 exact resend/conflicting reuse의 source-of-truth 판정을 다시 명시
 - 2026-03-12: reconnect-timeout terminal invariants, `roomClosed` terminal correlation carry-through rule, stale heartbeat explicit-reject owner ruling을 추가
 - 2026-03-12: passive socket close도 same `quit(reason=disconnectTimeout)` terminal invariants와 cleanup correlation rule로 수렴해야 한다는 owner ruling을 추가
+- 2026-03-14: server-owned timeout sweep도 same `quit(reason=disconnectTimeout)` terminal invariants로 수렴하고, dropped-event gap future extension도 same `stateSnapshot(reason=gapDetected)` minimum recovery contract를 유지한다는 owner ruling을 추가
+- 2026-03-14: bootstrap split이 들어와도 authoritative bootstrap pair와 snapshot source-of-truth는 유지되고, gap future extension cursor metadata는 additive-only라는 owner ruling을 추가
+- 2026-03-14: concrete bootstrap facade와 live gap hook surface가 생겨도 room-owned metadata일 뿐이며 authority pair/recovery payload는 대체할 수 없다는 owner ruling을 추가
+- 2026-03-14: current concrete bootstrap facade와 explicit live gap recovery hook을 Phase 0 shipped boundary로 잠그고, REST bootstrap split / automatic dropped-event detection을 deferred scope로 명시

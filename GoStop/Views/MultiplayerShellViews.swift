@@ -348,14 +348,52 @@ struct MultiplayerRoomShellState {
     let banner: MultiplayerBannerState?
 }
 
+struct MultiplayerRenderableCardShellState: Identifiable, Equatable {
+    let cardId: String
+    let month: Int
+    let kind: String
+    let imageIndex: Int
+    let selectedRole: String?
+    let zone: String?
+
+    var id: String { cardId }
+}
+
+struct MultiplayerTableMonthBucketShellState: Identifiable {
+    let month: Int
+    let cards: [MultiplayerRenderableCardShellState]
+
+    var id: Int { month }
+}
+
+struct MultiplayerCapturedGroupShellState: Identifiable {
+    let kind: String
+    let title: String
+    let cards: [MultiplayerRenderableCardShellState]
+
+    var id: String { kind }
+}
+
+struct MultiplayerCapturedZoneShellState: Identifiable {
+    let playerId: String
+    let isLocalPlayer: Bool
+    let groups: [MultiplayerCapturedGroupShellState]
+
+    var id: String { playerId }
+}
+
 struct MultiplayerChoiceOptionShellState: Identifiable {
     let optionCode: String
     let labelKey: String
-    let cardIds: [String]
+    let cards: [MultiplayerRenderableCardShellState]
     let scoreDeltaPreviewSelf: Int
     let scoreDeltaPreviewOpponent: Int
 
     var id: String { optionCode }
+
+    var cardIds: [String] {
+        cards.map(\.cardId)
+    }
 }
 
 struct MultiplayerChoiceShellState {
@@ -386,6 +424,7 @@ struct MultiplayerLiveShellState {
     let roomId: String
     let gameId: String
     let localPlayerId: String
+    let localPlayerDisplayName: String
     let stateVersion: Int
     let currentPlayerId: String
     let phase: MultiplayerGamePhase
@@ -393,9 +432,20 @@ struct MultiplayerLiveShellState {
     let turnDeadlineAt: Date?
     let serverTime: Date
     let opponentPlayerId: String
+    let opponentPlayerDisplayName: String
     let opponentHandCount: Int
     let localHandCount: Int
+    let localScore: Int
+    let opponentScore: Int
+    let localGoCount: Int
+    let opponentGoCount: Int
+    let deckRemainingCount: Int
     let localPlayableCardIds: [String]
+    let localHandCards: [MultiplayerRenderableCardShellState]
+    let tableCards: [MultiplayerRenderableCardShellState]
+    let tableMonthBuckets: [MultiplayerTableMonthBucketShellState]
+    let localCapturedZone: MultiplayerCapturedZoneShellState
+    let opponentCapturedZone: MultiplayerCapturedZoneShellState
     let pendingChoice: MultiplayerChoiceShellState?
     let lastReject: MultiplayerRejectShellState?
     let connectionBanner: MultiplayerBannerState?
@@ -575,6 +625,7 @@ struct MultiplayerShellPreviewShowcaseState {
             roomId: "room_001",
             gameId: "game_001",
             localPlayerId: "player_a",
+            localPlayerDisplayName: "You",
             stateVersion: 13,
             currentPlayerId: "player_a",
             phase: .choicePending,
@@ -582,9 +633,162 @@ struct MultiplayerShellPreviewShowcaseState {
             turnDeadlineAt: Date.now.addingTimeInterval(14),
             serverTime: Date.now,
             opponentPlayerId: "player_b",
+            opponentPlayerDisplayName: "Guest",
             opponentHandCount: 7,
             localHandCount: 6,
+            localScore: 5,
+            opponentScore: 2,
+            localGoCount: 1,
+            opponentGoCount: 0,
+            deckRemainingCount: 18,
             localPlayableCardIds: ["card_03_ribbon_red_poem", "card_04_junk_a"],
+            localHandCards: [
+                MultiplayerRenderableCardShellState(
+                    cardId: "card_03_ribbon_red_poem",
+                    month: 3,
+                    kind: "ribbon",
+                    imageIndex: 9,
+                    selectedRole: nil,
+                    zone: "hand"
+                ),
+                MultiplayerRenderableCardShellState(
+                    cardId: "card_04_junk_a",
+                    month: 4,
+                    kind: "junk",
+                    imageIndex: 11,
+                    selectedRole: nil,
+                    zone: "hand"
+                )
+            ],
+            tableCards: [
+                MultiplayerRenderableCardShellState(
+                    cardId: "card_03_junk_a",
+                    month: 3,
+                    kind: "junk",
+                    imageIndex: 11,
+                    selectedRole: nil,
+                    zone: "table"
+                ),
+                MultiplayerRenderableCardShellState(
+                    cardId: "card_03_junk_b",
+                    month: 3,
+                    kind: "junk",
+                    imageIndex: 10,
+                    selectedRole: nil,
+                    zone: "table"
+                ),
+                MultiplayerRenderableCardShellState(
+                    cardId: "card_08_animal_geese",
+                    month: 8,
+                    kind: "animal",
+                    imageIndex: 3,
+                    selectedRole: nil,
+                    zone: "table"
+                )
+            ],
+            tableMonthBuckets: [
+                MultiplayerTableMonthBucketShellState(
+                    month: 3,
+                    cards: [
+                        MultiplayerRenderableCardShellState(
+                            cardId: "card_03_junk_a",
+                            month: 3,
+                            kind: "junk",
+                            imageIndex: 11,
+                            selectedRole: nil,
+                            zone: "table"
+                        ),
+                        MultiplayerRenderableCardShellState(
+                            cardId: "card_03_junk_b",
+                            month: 3,
+                            kind: "junk",
+                            imageIndex: 10,
+                            selectedRole: nil,
+                            zone: "table"
+                        )
+                    ]
+                ),
+                MultiplayerTableMonthBucketShellState(
+                    month: 8,
+                    cards: [
+                        MultiplayerRenderableCardShellState(
+                            cardId: "card_08_animal_geese",
+                            month: 8,
+                            kind: "animal",
+                            imageIndex: 3,
+                            selectedRole: nil,
+                            zone: "table"
+                        )
+                    ]
+                )
+            ],
+            localCapturedZone: MultiplayerCapturedZoneShellState(
+                playerId: "player_a",
+                isLocalPlayer: true,
+                groups: [
+                    MultiplayerCapturedGroupShellState(kind: "bright", title: "Bright", cards: []),
+                    MultiplayerCapturedGroupShellState(kind: "animal", title: "Animal", cards: []),
+                    MultiplayerCapturedGroupShellState(
+                        kind: "ribbon",
+                        title: "Ribbon",
+                        cards: [
+                            MultiplayerRenderableCardShellState(
+                                cardId: "card_01_ribbon_red",
+                                month: 1,
+                                kind: "ribbon",
+                                imageIndex: 2,
+                                selectedRole: nil,
+                                zone: "captured"
+                            )
+                        ]
+                    ),
+                    MultiplayerCapturedGroupShellState(
+                        kind: "junk",
+                        title: "Junk",
+                        cards: [
+                            MultiplayerRenderableCardShellState(
+                                cardId: "card_02_junk_a",
+                                month: 2,
+                                kind: "junk",
+                                imageIndex: 11,
+                                selectedRole: nil,
+                                zone: "captured"
+                            ),
+                            MultiplayerRenderableCardShellState(
+                                cardId: "card_05_junk_a",
+                                month: 5,
+                                kind: "junk",
+                                imageIndex: 11,
+                                selectedRole: nil,
+                                zone: "captured"
+                            )
+                        ]
+                    )
+                ]
+            ),
+            opponentCapturedZone: MultiplayerCapturedZoneShellState(
+                playerId: "player_b",
+                isLocalPlayer: false,
+                groups: [
+                    MultiplayerCapturedGroupShellState(kind: "bright", title: "Bright", cards: []),
+                    MultiplayerCapturedGroupShellState(
+                        kind: "animal",
+                        title: "Animal",
+                        cards: [
+                            MultiplayerRenderableCardShellState(
+                                cardId: "card_08_animal_geese",
+                                month: 8,
+                                kind: "animal",
+                                imageIndex: 3,
+                                selectedRole: nil,
+                                zone: "captured"
+                            )
+                        ]
+                    ),
+                    MultiplayerCapturedGroupShellState(kind: "ribbon", title: "Ribbon", cards: []),
+                    MultiplayerCapturedGroupShellState(kind: "junk", title: "Junk", cards: [])
+                ]
+            ),
             pendingChoice: MultiplayerChoiceShellState(
                 choiceId: "choice_0007",
                 choiceKind: .capture,
@@ -597,14 +801,48 @@ struct MultiplayerShellPreviewShowcaseState {
                     MultiplayerChoiceOptionShellState(
                         optionCode: "capture_pair_left",
                         labelKey: "match.choice.capture.take_pair",
-                        cardIds: ["card_03_ribbon_red_poem", "card_03_junk_a"],
+                        cards: [
+                            MultiplayerRenderableCardShellState(
+                                cardId: "card_03_ribbon_red_poem",
+                                month: 3,
+                                kind: "ribbon",
+                                imageIndex: 9,
+                                selectedRole: nil,
+                                zone: "hand"
+                            ),
+                            MultiplayerRenderableCardShellState(
+                                cardId: "card_03_junk_a",
+                                month: 3,
+                                kind: "junk",
+                                imageIndex: 11,
+                                selectedRole: nil,
+                                zone: "table"
+                            )
+                        ],
                         scoreDeltaPreviewSelf: 0,
                         scoreDeltaPreviewOpponent: 0
                     ),
                     MultiplayerChoiceOptionShellState(
                         optionCode: "capture_pair_right",
                         labelKey: "match.choice.capture.take_pair",
-                        cardIds: ["card_03_ribbon_red_poem", "card_03_junk_b"],
+                        cards: [
+                            MultiplayerRenderableCardShellState(
+                                cardId: "card_03_ribbon_red_poem",
+                                month: 3,
+                                kind: "ribbon",
+                                imageIndex: 9,
+                                selectedRole: nil,
+                                zone: "hand"
+                            ),
+                            MultiplayerRenderableCardShellState(
+                                cardId: "card_03_junk_b",
+                                month: 3,
+                                kind: "junk",
+                                imageIndex: 10,
+                                selectedRole: nil,
+                                zone: "table"
+                            )
+                        ],
                         scoreDeltaPreviewSelf: 0,
                         scoreDeltaPreviewOpponent: 0
                     )
@@ -678,8 +916,8 @@ struct MultiplayerShellPreviewShowcaseState {
             leavePolicy: .leaveAvailable,
             integrationNotes: [
                 "Player display names still need mapping from room member payload.",
-                "The main app currently mounts multiplayer as a root sheet. Deeper tab or menu placement is still follow-up work.",
-                "Gameplay transport is wired for playCard, submitChoice, and quit, but the live action area still renders cardId chips instead of final card art."
+                "The product route now uses an in-sheet Home / Play / Session split, but the main app still presents it from a root sheet launcher.",
+                "Gameplay transport is wired for playCard, submitChoice, and quit, and the live surface now renders snapshot-backed card art, captured zones, and month-bucket board focus. Direct table-target gestures and fuller board parity are still follow-up."
             ]
         )
     )
@@ -925,6 +1163,8 @@ struct MultiplayerLiveShellView: View {
     let onQuitTapped: (() -> Void)?
 
     @State private var selectedCardId: String?
+    @State private var selectedTableCardId: String?
+    @State private var inspectedMonth: Int?
 
     init(
         state: MultiplayerLiveShellState,
@@ -939,7 +1179,7 @@ struct MultiplayerLiveShellView: View {
     }
 
     var body: some View {
-        MultiplayerShellSurface(title: "Live Match", subtitle: "The board stays projection-only, but transport-backed play, choice, and quit actions now run from this screen.") {
+        MultiplayerShellSurface(title: "Live Match", subtitle: "Transport-backed play, choice, and quit stay authoritative, while the live shell now renders a fuller hand, table, and captured board composition.") {
             VStack(alignment: .leading, spacing: 18) {
                 HStack(spacing: 12) {
                     MultiplayerStatusBadge(
@@ -957,38 +1197,45 @@ struct MultiplayerLiveShellView: View {
                     MultiplayerBannerView(state: connectionBanner)
                 }
 
-                HStack(spacing: 16) {
-                    MultiplayerBoardZoneCard(
-                        title: "Opponent Projection",
-                        accentColor: Color(red: 0.25, green: 0.77, blue: 0.98),
-                        rows: [
-                            ("Player", shortIdentifier(state.opponentPlayerId)),
-                            ("Hand Count", "\(state.opponentHandCount)"),
-                            ("Turn Owner", state.currentPlayerId == state.opponentPlayerId ? "Yes" : "No")
-                        ]
-                    )
+                ViewThatFits {
+                    HStack(spacing: 16) {
+                        projectionSummaryCard(
+                            title: "Opponent Projection",
+                            accentColor: Color(red: 0.25, green: 0.77, blue: 0.98),
+                            rows: opponentProjectionRows
+                        )
+                        projectionSummaryCard(
+                            title: "Table Projection",
+                            accentColor: Color(red: 0.93, green: 0.73, blue: 0.20),
+                            rows: tableProjectionRows
+                        )
+                        projectionSummaryCard(
+                            title: "My Projection",
+                            accentColor: Color(red: 0.32, green: 0.82, blue: 0.52),
+                            rows: localProjectionRows
+                        )
+                    }
 
-                    MultiplayerBoardZoneCard(
-                        title: "Table Projection",
-                        accentColor: Color(red: 0.93, green: 0.73, blue: 0.20),
-                        rows: [
-                            ("Room", shortIdentifier(state.roomId)),
-                            ("Phase", state.phase.label),
-                            ("Input", inputModeLabel),
-                            ("Actor", state.currentPlayerId == state.localPlayerId ? "You" : "Opponent")
-                        ]
-                    )
-
-                    MultiplayerBoardZoneCard(
-                        title: "My Projection",
-                        accentColor: Color(red: 0.32, green: 0.82, blue: 0.52),
-                        rows: [
-                            ("Player", shortIdentifier(state.localPlayerId)),
-                            ("Hand Count", "\(state.localHandCount)"),
-                            ("Turn Owner", state.currentPlayerId == state.localPlayerId ? "Yes" : "No")
-                        ]
-                    )
+                    VStack(spacing: 12) {
+                        projectionSummaryCard(
+                            title: "Opponent Projection",
+                            accentColor: Color(red: 0.25, green: 0.77, blue: 0.98),
+                            rows: opponentProjectionRows
+                        )
+                        projectionSummaryCard(
+                            title: "Table Projection",
+                            accentColor: Color(red: 0.93, green: 0.73, blue: 0.20),
+                            rows: tableProjectionRows
+                        )
+                        projectionSummaryCard(
+                            title: "My Projection",
+                            accentColor: Color(red: 0.32, green: 0.82, blue: 0.52),
+                            rows: localProjectionRows
+                        )
+                    }
                 }
+
+                boardCompositionCard
 
                 MultiplayerPanelCard {
                     VStack(alignment: .leading, spacing: 14) {
@@ -1010,31 +1257,31 @@ struct MultiplayerLiveShellView: View {
                             Spacer(minLength: 0)
 
                             MultiplayerStatusBadge(
-                                title: canPlayHandCard ? "Playable" : "Locked",
+                                title: canPlayHandCard ? "Play Card" : "Locked",
                                 accentColor: canPlayHandCard ? Color(red: 0.32, green: 0.82, blue: 0.52) : Color(red: 0.49, green: 0.53, blue: 0.58)
                             )
                         }
 
-                        if state.localPlayableCardIds.isEmpty {
-                            Text("No authoritative hand card ids are available for local play yet.")
+                        if state.localHandCards.isEmpty {
+                            Text("No authoritative hand cards are available for local play yet.")
                                 .font(.system(size: 13, weight: .medium, design: .rounded))
                                 .foregroundStyle(.white.opacity(0.60))
                         } else {
                             LazyVGrid(columns: handColumns, alignment: .leading, spacing: 10) {
-                                ForEach(state.localPlayableCardIds, id: \.self) { cardId in
-                                    handCardButton(cardId)
+                                ForEach(state.localHandCards) { card in
+                                    handCardButton(card)
                                 }
                             }
                         }
 
                         MultiplayerPrimaryButton(
-                            title: selectedCardId == nil ? "Select A Card" : "Play Selected Card",
-                            subtitle: selectedCardId.map { "Send \($0) through the authoritative playCard transport command." } ?? handActionSubtitle,
+                            title: selectedHandCard.map { "Play \(cardDisplayTitle($0))" } ?? "Select A Card",
+                            subtitle: selectedHandActionSubtitle,
                             isBusy: false,
                             accentColor: Color(red: 0.32, green: 0.82, blue: 0.52)
                         ) {
-                            guard let selectedCardId else { return }
-                            onPlayCard?(selectedCardId)
+                            guard let selectedHandCard else { return }
+                            onPlayCard?(selectedHandCard.cardId)
                         }
                         .disabled(selectedCardId == nil || !canPlayHandCard)
                     }
@@ -1073,11 +1320,9 @@ struct MultiplayerLiveShellView: View {
                                             )
                                                 .font(.system(size: 15, weight: .semibold, design: .rounded))
                                                 .foregroundStyle(.white.opacity(0.8))
-                                            if let localizedRedaction = localizedShellText(pendingChoice.redactionMessageKey) {
-                                                Text(localizedRedaction)
-                                                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                                                    .foregroundStyle(.white.opacity(0.56))
-                                            }
+                                            Text("Non-actor viewers only keep a waiting state here. The choice tray does not open until the authoritative resolution lands.")
+                                                .font(.system(size: 12, weight: .medium, design: .rounded))
+                                                .foregroundStyle(.white.opacity(0.58))
                                         }
                                         Spacer()
                                     }
@@ -1129,16 +1374,19 @@ struct MultiplayerLiveShellView: View {
                 if let lastReject = state.lastReject {
                     MultiplayerPanelCard {
                         VStack(alignment: .leading, spacing: 10) {
-                            Text("Last Reject: \(lastReject.code)")
+                            Text("Last Reject: \(friendlyShellIdentifier(lastReject.code))")
                                 .font(.system(size: 16, weight: .black, design: .rounded))
                                 .foregroundStyle(Color(red: 0.99, green: 0.62, blue: 0.28))
                             Text(localizedShellText(lastReject.messageKey, fallback: lastReject.messageKey))
                                 .font(.system(size: 12, weight: .semibold, design: .rounded))
                                 .foregroundStyle(.white.opacity(0.72))
+                            Text("Code \(lastReject.code)")
+                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                .foregroundStyle(.white.opacity(0.50))
 
                             ForEach(lastReject.detailRows) { row in
                                 HStack(spacing: 10) {
-                                    Text(row.key)
+                                    Text(friendlyShellIdentifier(row.key))
                                         .font(.system(size: 12, weight: .semibold, design: .rounded))
                                         .foregroundStyle(.white.opacity(0.62))
                                     Spacer(minLength: 0)
@@ -1164,10 +1412,13 @@ struct MultiplayerLiveShellView: View {
         .onChange(of: state.localPlayableCardIds.joined(separator: "|")) { _ in
             syncSelectedCardIfNeeded()
         }
+        .onChange(of: state.tableCards.map(\.cardId).joined(separator: "|")) { _ in
+            syncFocusedTableCardIfNeeded()
+        }
     }
 
     private var handColumns: [GridItem] {
-        [GridItem(.adaptive(minimum: 150), spacing: 10, alignment: .leading)]
+        [GridItem(.adaptive(minimum: 132), spacing: 10, alignment: .leading)]
     }
 
     private var actionableChoice: MultiplayerChoiceShellState? {
@@ -1181,10 +1432,61 @@ struct MultiplayerLiveShellView: View {
         return pendingChoice
     }
 
+    private var selectedHandCard: MultiplayerRenderableCardShellState? {
+        guard let selectedCardId else { return nil }
+        return state.localHandCards.first(where: { $0.cardId == selectedCardId })
+    }
+
+    private var selectedTableCard: MultiplayerRenderableCardShellState? {
+        guard let selectedTableCardId else { return nil }
+        return state.tableCards.first(where: { $0.cardId == selectedTableCardId })
+    }
+
+    private var focusedTableMonth: Int? {
+        selectedHandCard?.month ?? selectedTableCard?.month ?? inspectedMonth
+    }
+
+    private var matchedTableCards: Set<String> {
+        guard let selectedHandCard else { return [] }
+        return Set(
+            state.tableCards
+                .filter { $0.month == selectedHandCard.month }
+                .map(\.cardId)
+        )
+    }
+
+    private var focusedTableCardIds: Set<String> {
+        if let selectedTableCardId {
+            return [selectedTableCardId]
+        }
+        guard let focusedTableMonth else { return [] }
+        return Set(
+            state.tableCards
+                .filter { $0.month == focusedTableMonth }
+                .map(\.cardId)
+        )
+    }
+
+    private var renderedTableMonthBuckets: [MultiplayerTableMonthBucketShellState] {
+        if !state.tableMonthBuckets.isEmpty {
+            return state.tableMonthBuckets
+        }
+
+        let grouped = Dictionary(grouping: state.tableCards, by: \.month)
+        return grouped
+            .map { bucket in
+                MultiplayerTableMonthBucketShellState(
+                    month: bucket.key,
+                    cards: bucket.value
+                )
+            }
+            .sorted(by: { $0.month < $1.month })
+    }
+
     private var canPlayHandCard: Bool {
         onPlayCard != nil &&
         state.currentPlayerId == state.localPlayerId &&
-        !state.localPlayableCardIds.isEmpty &&
+        !state.localHandCards.isEmpty &&
         actionableChoice == nil
     }
 
@@ -1207,7 +1509,7 @@ struct MultiplayerLiveShellView: View {
             return "Choice resolution is blocking hand play. Finish the authoritative choice first."
         }
         if canPlayHandCard {
-            return "Tap a card id below, then send it through the transport-backed playCard command."
+            return "Select a hand card, inspect a matching table card if needed, then send the authoritative playCard command."
         }
         if state.currentPlayerId != state.localPlayerId {
             return "Hand play is locked because the authoritative turn owner is the opponent."
@@ -1215,33 +1517,307 @@ struct MultiplayerLiveShellView: View {
         return "Hand play is waiting for authoritative card ids or reconnect recovery."
     }
 
-    private func handCardButton(_ cardId: String) -> some View {
-        Button {
-            selectedCardId = selectedCardId == cardId ? nil : cardId
-        } label: {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(cardDisplayTitle(cardId))
-                    .font(.system(size: 13, weight: .black, design: .rounded))
-                    .foregroundStyle(.white)
-                Text(cardId)
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.66))
-                    .lineLimit(2)
+    private var selectedHandActionSubtitle: String {
+        guard let selectedHandCard else { return handActionSubtitle }
+        if matchedTableCards.isEmpty {
+            return "Play \(cardDisplayTitle(selectedHandCard)) to resolve an unmatched line through the authoritative server."
+        }
+        return "Play \(cardDisplayTitle(selectedHandCard)) against \(matchedTableCards.count) visible same-month table card(s)."
+    }
+
+    private var tableActionSubtitle: String {
+        if let selectedTableCard {
+            if let selectedHandCard, selectedHandCard.month == selectedTableCard.month {
+                return "Targeting \(cardDisplayTitle(selectedTableCard)) against \(cardDisplayTitle(selectedHandCard)). The authoritative server still resolves the final legal line."
             }
-            .padding(12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(selectedCardId == cardId ? Color(red: 0.32, green: 0.82, blue: 0.52).opacity(0.24) : Color.white.opacity(0.06))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(selectedCardId == cardId ? Color(red: 0.32, green: 0.82, blue: 0.52) : Color.white.opacity(0.08), lineWidth: 1)
+            return "Inspecting \(cardDisplayTitle(selectedTableCard)) on the table. This focus is local-only and does not send a command."
+        }
+        guard let selectedHandCard else {
+            if let inspectedMonth {
+                return "Inspecting month \(String(format: "%02d", inspectedMonth)) while waiting for a playable hand card selection."
+            }
+            return "Select a hand card to highlight matching month cards on the table before sending playCard."
+        }
+        if matchedTableCards.isEmpty {
+            return "\(cardDisplayTitle(selectedHandCard)) has no visible same-month table card. The server will resolve the resulting line."
+        }
+        return "\(cardDisplayTitle(selectedHandCard)) currently matches \(matchedTableCards.count) table card(s)."
+    }
+
+    private var boardCompositionCard: some View {
+        MultiplayerPanelCard {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .top, spacing: 12) {
+                    MultiplayerGlyphBadge(
+                        systemName: "square.grid.3x2.fill",
+                        accentColor: Color(red: 0.93, green: 0.73, blue: 0.20)
+                    )
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Board Composition")
+                            .font(.system(size: 20, weight: .black, design: .rounded))
+                            .foregroundStyle(.white)
+                        Text(tableActionSubtitle)
+                            .font(.system(size: 13, weight: .medium, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.72))
+                    }
+
+                    Spacer(minLength: 0)
+
+                    MultiplayerStatusBadge(
+                        title: boardFocusStatusTitle,
+                        accentColor: focusedTableMonth == nil ? Color(red: 0.93, green: 0.73, blue: 0.20) : Color(red: 0.32, green: 0.82, blue: 0.52)
+                    )
+                }
+
+                HStack(spacing: 12) {
+                    MultiplayerStatPill(label: state.opponentPlayerDisplayName, value: "\(state.opponentScore)P / Go \(state.opponentGoCount)")
+                    MultiplayerStatPill(label: "Deck", value: "\(state.deckRemainingCount)")
+                    MultiplayerStatPill(label: state.localPlayerDisplayName, value: "\(state.localScore)P / Go \(state.localGoCount)")
+                }
+
+                if hasBoardFocus {
+                    HStack(alignment: .center, spacing: 10) {
+                        MultiplayerStatusBadge(
+                            title: "Local Focus",
+                            accentColor: Color(red: 0.25, green: 0.77, blue: 0.98)
+                        )
+                        Text(boardFocusDetail)
+                            .font(.system(size: 13, weight: .medium, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.76))
+                        Spacer(minLength: 0)
+                        Button("Clear Focus") {
+                            clearBoardFocus()
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 12, weight: .black, design: .rounded))
+                        .foregroundStyle(Color(red: 0.25, green: 0.77, blue: 0.98))
+                    }
+                }
+
+                capturedZoneSection(
+                    title: "Opponent Captured",
+                    subtitle: "Score categories stay visible while you inspect table lines and wait for the next authoritative update.",
+                    zone: state.opponentCapturedZone,
+                    accentColor: Color(red: 0.25, green: 0.77, blue: 0.98)
+                )
+
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 10) {
+                        Text("Table Month Buckets")
+                            .font(.system(size: 16, weight: .black, design: .rounded))
+                            .foregroundStyle(.white)
+                        MultiplayerStatusBadge(
+                            title: focusedTableMonth.map { "Month \(String(format: "%02d", $0))" } ?? "\(state.tableCards.count) Table Cards",
+                            accentColor: focusedTableMonth == nil ? Color.white.opacity(0.18) : Color(red: 0.32, green: 0.82, blue: 0.52)
+                        )
+                        Spacer(minLength: 0)
+                    }
+
+                    Text("Tap a month bucket to inspect it. This only changes board focus; it never sends a gameplay command.")
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.64))
+
+                    if let selectedTableCard {
+                        HStack(spacing: 10) {
+                            MultiplayerStatusBadge(
+                                title: "Focused Card",
+                                accentColor: Color(red: 0.25, green: 0.77, blue: 0.98)
+                            )
+                            Text(cardDisplayTitle(selectedTableCard))
+                                .font(.system(size: 13, weight: .bold, design: .rounded))
+                                .foregroundStyle(.white)
+                            Spacer(minLength: 0)
+                        }
+                    }
+
+                    if renderedTableMonthBuckets.isEmpty {
+                        Text("No table month buckets are available yet. The next authoritative snapshot should fill this board surface.")
+                            .font(.system(size: 13, weight: .medium, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.60))
+                    } else {
+                        VStack(spacing: 10) {
+                            ForEach(renderedTableMonthBuckets) { bucket in
+                                monthBucketButton(bucket)
+                            }
+                        }
+                    }
+                }
+
+                capturedZoneSection(
+                    title: "My Captured",
+                    subtitle: "Review what is already banked before committing the next playCard or choice submit.",
+                    zone: state.localCapturedZone,
+                    accentColor: Color(red: 0.32, green: 0.82, blue: 0.52)
+                )
+            }
+        }
+    }
+
+    private func handCardButton(_ card: MultiplayerRenderableCardShellState) -> some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.18)) {
+                if selectedCardId == card.cardId {
+                    selectedCardId = nil
+                } else {
+                    inspectedMonth = nil
+                    selectedTableCardId = nil
+                    selectedCardId = card.cardId
+                }
+            }
+        } label: {
+            MultiplayerGameplayCardTile(
+                card: card,
+                scale: 0.56,
+                emphasis: selectedCardId == card.cardId ? .selected : .subtle,
+                showsZoneBadge: false
             )
         }
         .disabled(!canPlayHandCard)
         .buttonStyle(.plain)
         .opacity(canPlayHandCard ? 1 : 0.72)
+    }
+
+    private func monthBucketButton(_ bucket: MultiplayerTableMonthBucketShellState) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Button {
+                    focusMonth(bucket.month)
+                } label: {
+                    Text("Month \(String(format: "%02d", bucket.month))")
+                        .font(.system(size: 15, weight: .black, design: .rounded))
+                        .foregroundStyle(.white)
+                }
+                .buttonStyle(.plain)
+
+                MultiplayerStatPill(label: "Cards", value: "\(bucket.cards.count)")
+                if selectedHandCard?.month == bucket.month {
+                    MultiplayerStatusBadge(
+                        title: "Hand Match",
+                        accentColor: Color(red: 0.32, green: 0.82, blue: 0.52)
+                    )
+                } else if selectedTableCard?.month == bucket.month {
+                    MultiplayerStatusBadge(
+                        title: "Card Focus",
+                        accentColor: Color(red: 0.25, green: 0.77, blue: 0.98)
+                    )
+                } else if inspectedMonth == bucket.month {
+                    MultiplayerStatusBadge(
+                        title: "Inspecting",
+                        accentColor: Color(red: 0.25, green: 0.77, blue: 0.98)
+                    )
+                }
+                Spacer(minLength: 0)
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    ForEach(bucket.cards) { card in
+                        Button {
+                            focusTableCard(card)
+                        } label: {
+                            MultiplayerGameplayCardTile(
+                                card: card,
+                                scale: 0.44,
+                                emphasis: emphasis(forTableCard: card),
+                                showsZoneBadge: true
+                            )
+                            .frame(width: 108)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+
+            Text(monthBucketSubtitle(for: bucket))
+                .font(.system(size: 12, weight: .medium, design: .rounded))
+                .foregroundStyle(.white.opacity(0.62))
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.white.opacity(focusedTableMonth == bucket.month ? 0.12 : 0.05))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(
+                    focusedTableMonth == bucket.month
+                        ? Color(red: 0.32, green: 0.82, blue: 0.52)
+                        : Color.white.opacity(0.08),
+                    lineWidth: focusedTableMonth == bucket.month ? 1.4 : 1
+                )
+        )
+    }
+
+    private func capturedZoneSection(
+        title: String,
+        subtitle: String,
+        zone: MultiplayerCapturedZoneShellState,
+        accentColor: Color
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 10) {
+                Text(title)
+                    .font(.system(size: 16, weight: .black, design: .rounded))
+                    .foregroundStyle(.white)
+                MultiplayerStatusBadge(
+                    title: "\(capturedCardCount(in: zone)) Captured",
+                    accentColor: accentColor
+                )
+                Spacer(minLength: 0)
+            }
+
+            Text(subtitle)
+                .font(.system(size: 12, weight: .medium, design: .rounded))
+                .foregroundStyle(.white.opacity(0.64))
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], spacing: 10) {
+                ForEach(zone.groups) { group in
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 8) {
+                            Text(capturedGroupDisplayTitle(group))
+                                .font(.system(size: 13, weight: .black, design: .rounded))
+                                .foregroundStyle(.white)
+                            MultiplayerStatPill(label: "Count", value: "\(group.cards.count)")
+                            Spacer(minLength: 0)
+                        }
+
+                        if group.cards.isEmpty {
+                            Text("No captured cards yet.")
+                                .font(.system(size: 12, weight: .medium, design: .rounded))
+                                .foregroundStyle(.white.opacity(0.46))
+                        } else {
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 8) {
+                                    ForEach(group.cards) { card in
+                                        MultiplayerGameplayCardTile(
+                                            card: card,
+                                            scale: 0.36,
+                                            emphasis: focusedTableCardIds.contains(card.cardId) ? .selected : (focusedTableMonth == card.month ? .highlighted : .subtle),
+                                            showsZoneBadge: false
+                                        )
+                                        .frame(width: 92)
+                                    }
+                                }
+                                .padding(.vertical, 2)
+                            }
+                        }
+                    }
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(Color.white.opacity(0.05))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                    )
+                }
+            }
+        }
     }
 
     private func choiceOptionCard(
@@ -1262,11 +1838,10 @@ struct MultiplayerLiveShellView: View {
                 Spacer(minLength: 0)
 
                 VStack(alignment: .trailing, spacing: 4) {
-                    if !option.cardIds.isEmpty {
-                        Text(option.cardIds.joined(separator: "\n"))
-                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    if !option.cards.isEmpty {
+                        Text("\(option.cards.count) Card Preview")
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
                             .foregroundStyle(.white.opacity(0.65))
-                            .multilineTextAlignment(.trailing)
                     }
                     Text("Preview \(option.scoreDeltaPreviewSelf)/\(option.scoreDeltaPreviewOpponent)")
                         .font(.system(size: 11, weight: .medium, design: .rounded))
@@ -1274,8 +1849,27 @@ struct MultiplayerLiveShellView: View {
                 }
             }
 
+            if !option.cards.isEmpty {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 84), spacing: 8)], spacing: 8) {
+                    ForEach(option.cards) { card in
+                        MultiplayerGameplayCardTile(
+                            card: card,
+                            scale: 0.44,
+                            emphasis: optionCardEmphasis(for: card),
+                            showsZoneBadge: true
+                        )
+                    }
+                }
+            }
+
+            if optionMatchesCurrentFocus(option) {
+                Text(optionFocusDetail(option))
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundStyle(Color(red: 0.93, green: 0.73, blue: 0.20))
+            }
+
             MultiplayerSecondaryButton(
-                title: "Submit Option",
+                title: localizedShellText(option.labelKey, fallback: optionFallback(for: option)),
                 subtitle: "Send \(option.optionCode) for choice \(shortIdentifier(pendingChoice.choiceId)).",
                 accentColor: Color(red: 0.24, green: 0.72, blue: 0.96),
                 isEnabled: actionableChoice != nil,
@@ -1294,24 +1888,38 @@ struct MultiplayerLiveShellView: View {
     private func syncSelectedCardIfNeeded(reset: Bool = false) {
         if reset {
             selectedCardId = nil
+            selectedTableCardId = nil
+            inspectedMonth = nil
             return
         }
         guard let selectedCardId else {
-            self.selectedCardId = state.localPlayableCardIds.first
+            self.selectedCardId = state.localHandCards.first?.cardId ?? state.localPlayableCardIds.first
             return
         }
-        if !state.localPlayableCardIds.contains(selectedCardId) {
-            self.selectedCardId = state.localPlayableCardIds.first
+        let stillExists = state.localHandCards.contains(where: { $0.cardId == selectedCardId }) || state.localPlayableCardIds.contains(selectedCardId)
+        if !stillExists {
+            self.selectedCardId = state.localHandCards.first?.cardId ?? state.localPlayableCardIds.first
         }
     }
 
-    private func cardDisplayTitle(_ cardId: String) -> String {
-        let fragments = cardId
+    private func syncFocusedTableCardIfNeeded() {
+        guard let selectedTableCardId else { return }
+        if !state.tableCards.contains(where: { $0.cardId == selectedTableCardId }) {
+            self.selectedTableCardId = nil
+        }
+    }
+
+    private func cardDisplayTitle(_ card: MultiplayerRenderableCardShellState) -> String {
+        let kindTitle = card.kind
+            .replacingOccurrences(of: "double", with: "double ")
             .split(separator: "_")
-            .dropFirst()
-            .prefix(3)
             .map { $0.capitalized }
-        return fragments.isEmpty ? "Hand Card" : fragments.joined(separator: " ")
+            .joined(separator: " ")
+        let monthTitle = card.month > 0 ? String(format: "%02d", card.month) : "--"
+        if let selectedRole = card.selectedRole {
+            return "Month \(monthTitle) \(kindTitle) \(selectedRole.capitalized)"
+        }
+        return "Month \(monthTitle) \(kindTitle)"
     }
 
     private func choicePromptFallback(for pendingChoice: MultiplayerChoiceShellState) -> String {
@@ -1328,10 +1936,378 @@ struct MultiplayerLiveShellView: View {
     }
 
     private func optionFallback(for option: MultiplayerChoiceOptionShellState) -> String {
-        option.optionCode
+        if option.optionCode.hasPrefix("capture_pair") {
+            return "Take This Pair"
+        }
+        return option.optionCode
             .split(separator: "_")
             .map { $0.capitalized }
             .joined(separator: " ")
+    }
+
+    private var boardFocusStatusTitle: String {
+        if let selectedTableCard {
+            return cardDisplayTitle(selectedTableCard)
+        }
+        if selectedHandCard != nil {
+            return "\(matchedTableCards.count) Match"
+        }
+        if let focusedTableMonth {
+            return "Month \(String(format: "%02d", focusedTableMonth)) Focus"
+        }
+        return "Board Open"
+    }
+
+    private func monthBucketSubtitle(for bucket: MultiplayerTableMonthBucketShellState) -> String {
+        if let selectedTableCard, selectedTableCard.month == bucket.month {
+            return "\(cardDisplayTitle(selectedTableCard)) is locally focused. Tap another table card or a hand card to change focus."
+        }
+        if let selectedHandCard, selectedHandCard.month == bucket.month {
+            if bucket.cards.count == 1 {
+                return "\(cardDisplayTitle(selectedHandCard)) lines up with one visible table target."
+            }
+            return "\(cardDisplayTitle(selectedHandCard)) lines up with \(bucket.cards.count) same-month table targets."
+        }
+        if inspectedMonth == bucket.month {
+            return "Inspection only. Pick a hand card afterward to send the authoritative playCard command."
+        }
+        return "Inspect this month bucket without changing transport state."
+    }
+
+    private func capturedCardCount(in zone: MultiplayerCapturedZoneShellState) -> Int {
+        zone.groups.reduce(0) { partial, group in
+            partial + group.cards.count
+        }
+    }
+
+    private var opponentProjectionRows: [(String, String)] {
+        [
+            ("Player", state.opponentPlayerDisplayName),
+            ("Score", "\(state.opponentScore)"),
+            ("Go", "\(state.opponentGoCount)"),
+            ("Hand", "\(state.opponentHandCount)")
+        ]
+    }
+
+    private var tableProjectionRows: [(String, String)] {
+        [
+            ("Deck", "\(state.deckRemainingCount)"),
+            ("Buckets", "\(renderedTableMonthBuckets.count)"),
+            ("Focus", focusedTableProjectionLabel),
+            ("Actor", state.currentPlayerId == state.localPlayerId ? "You" : state.opponentPlayerDisplayName)
+        ]
+    }
+
+    private var localProjectionRows: [(String, String)] {
+        [
+            ("Player", state.localPlayerDisplayName),
+            ("Score", "\(state.localScore)"),
+            ("Go", "\(state.localGoCount)"),
+            ("Hand", "\(state.localHandCount)")
+        ]
+    }
+
+    private var focusedTableProjectionLabel: String {
+        if let selectedTableCard {
+            return String(format: "%02d", selectedTableCard.month)
+        }
+        if let focusedTableMonth {
+            return String(format: "%02d", focusedTableMonth)
+        }
+        return "Open"
+    }
+
+    private func projectionSummaryCard(
+        title: String,
+        accentColor: Color,
+        rows: [(String, String)]
+    ) -> some View {
+        MultiplayerBoardZoneCard(title: title, accentColor: accentColor, rows: rows)
+    }
+
+    private func focusMonth(_ month: Int) {
+        withAnimation(.easeInOut(duration: 0.18)) {
+            selectedTableCardId = nil
+            if let selectedHandCard, selectedHandCard.month == month {
+                inspectedMonth = nil
+                return
+            }
+            if inspectedMonth == month && selectedHandCard == nil {
+                inspectedMonth = nil
+                return
+            }
+            selectedCardId = nil
+            inspectedMonth = month
+        }
+    }
+
+    private func focusTableCard(_ card: MultiplayerRenderableCardShellState) {
+        withAnimation(.easeInOut(duration: 0.18)) {
+            if selectedTableCardId == card.cardId {
+                selectedTableCardId = nil
+                if selectedHandCard == nil {
+                    inspectedMonth = card.month
+                }
+                return
+            }
+            if let selectedHandCard, selectedHandCard.month != card.month {
+                selectedCardId = nil
+            }
+            inspectedMonth = card.month
+            selectedTableCardId = card.cardId
+        }
+    }
+
+    private func emphasis(forTableCard card: MultiplayerRenderableCardShellState) -> MultiplayerGameplayCardEmphasis {
+        if selectedTableCardId == card.cardId {
+            return .selected
+        }
+        if focusedTableMonth == card.month {
+            return .highlighted
+        }
+        return .subtle
+    }
+
+    private func optionCardEmphasis(for card: MultiplayerRenderableCardShellState) -> MultiplayerGameplayCardEmphasis {
+        if selectedHandCard?.cardId == card.cardId || selectedTableCardId == card.cardId {
+            return .selected
+        }
+        if focusedTableMonth == card.month {
+            return .highlighted
+        }
+        return card.zone == "hand" ? .highlighted : .subtle
+    }
+
+    private func capturedGroupDisplayTitle(_ group: MultiplayerCapturedGroupShellState) -> String {
+        switch group.kind {
+        case "bright":
+            return "Bright · 광"
+        case "animal":
+            return "Animal · 10끗"
+        case "ribbon":
+            return "Ribbon · 5끗"
+        case "junk":
+            return "Junk · 피"
+        default:
+            return group.title
+        }
+    }
+
+    private var hasBoardFocus: Bool {
+        selectedHandCard != nil || selectedTableCard != nil || inspectedMonth != nil
+    }
+
+    private var boardFocusDetail: String {
+        if let selectedHandCard, let selectedTableCard, selectedHandCard.month == selectedTableCard.month {
+            return "\(cardDisplayTitle(selectedHandCard)) + \(cardDisplayTitle(selectedTableCard)) are locally aligned."
+        }
+        if let selectedTableCard {
+            return "\(cardDisplayTitle(selectedTableCard)) is focused for local inspection."
+        }
+        if let selectedHandCard {
+            return "\(cardDisplayTitle(selectedHandCard)) is selected for the next authoritative playCard."
+        }
+        if let inspectedMonth {
+            return "Month \(String(format: "%02d", inspectedMonth)) is focused for local inspection."
+        }
+        return "No local focus is active."
+    }
+
+    private func clearBoardFocus() {
+        withAnimation(.easeInOut(duration: 0.18)) {
+            selectedCardId = nil
+            selectedTableCardId = nil
+            inspectedMonth = nil
+        }
+    }
+
+    private func optionMatchesCurrentFocus(_ option: MultiplayerChoiceOptionShellState) -> Bool {
+        if let selectedTableCardId, option.cardIds.contains(selectedTableCardId) {
+            return true
+        }
+        if let selectedHandCard, option.cardIds.contains(selectedHandCard.cardId) {
+            return true
+        }
+        return false
+    }
+
+    private func optionFocusDetail(_ option: MultiplayerChoiceOptionShellState) -> String {
+        if let selectedHandCard, let selectedTableCardId, option.cardIds.contains(selectedHandCard.cardId), option.cardIds.contains(selectedTableCardId) {
+            return "Focused hand and table cards are both part of this option."
+        }
+        if let selectedHandCard, option.cardIds.contains(selectedHandCard.cardId) {
+            return "Focused hand card is part of this option."
+        }
+        return "Focused table target is part of this option."
+    }
+}
+
+private enum MultiplayerGameplayCardEmphasis: Equatable {
+    case subtle
+    case highlighted
+    case selected
+
+    var accentColor: Color {
+        switch self {
+        case .subtle:
+            return Color.white.opacity(0.12)
+        case .highlighted:
+            return Color(red: 0.93, green: 0.73, blue: 0.20)
+        case .selected:
+            return Color(red: 0.32, green: 0.82, blue: 0.52)
+        }
+    }
+
+    var backgroundOpacity: Double {
+        switch self {
+        case .subtle:
+            return 0.06
+        case .highlighted:
+            return 0.12
+        case .selected:
+            return 0.18
+        }
+    }
+}
+
+private struct MultiplayerGameplayCardTile: View {
+    let card: MultiplayerRenderableCardShellState
+    let scale: CGFloat
+    let emphasis: MultiplayerGameplayCardEmphasis
+    let showsZoneBadge: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                if showsZoneBadge, let zoneLabel {
+                    MultiplayerStatusBadge(
+                        title: zoneLabel,
+                        accentColor: emphasis.accentColor
+                    )
+                }
+                Spacer(minLength: 0)
+                Text(card.month > 0 ? String(format: "%02d", card.month) : "--")
+                    .font(.system(size: 11, weight: .black, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.72))
+            }
+
+            cardArtwork
+                .frame(maxWidth: .infinity)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(kindLabel)
+                    .font(.system(size: 12, weight: .black, design: .rounded))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                Text(card.cardId)
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.58))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.75)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color.white.opacity(emphasis.backgroundOpacity))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(emphasis.accentColor, lineWidth: emphasis == .subtle ? 1 : 1.4)
+        )
+    }
+
+    private var cardArtwork: some View {
+        Group {
+            if let resolvedCard {
+                CardView(card: resolvedCard, scale: scale)
+            } else {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color(red: 0.94, green: 0.89, blue: 0.78))
+                    .frame(width: 64, height: 96)
+                    .overlay(
+                        VStack(spacing: 6) {
+                            Text(card.month > 0 ? String(format: "%02d", card.month) : "--")
+                                .font(.system(size: 18, weight: .black, design: .rounded))
+                                .foregroundStyle(.black.opacity(0.78))
+                            Text(kindLabel)
+                                .font(.system(size: 10, weight: .bold, design: .rounded))
+                                .foregroundStyle(.black.opacity(0.66))
+                                .multilineTextAlignment(.center)
+                        }
+                        .padding(8)
+                    )
+            }
+        }
+    }
+
+    private var kindLabel: String {
+        let base = card.kind
+            .replacingOccurrences(of: "doubleJunk", with: "Double Junk")
+            .replacingOccurrences(of: "doublePi", with: "Double Pi")
+            .split(separator: "_")
+            .map { $0.capitalized }
+            .joined(separator: " ")
+        guard let selectedRole = card.selectedRole else {
+            return base
+        }
+        return "\(base) \(selectedRole.capitalized)"
+    }
+
+    private var zoneLabel: String? {
+        switch card.zone {
+        case "hand":
+            return "Hand"
+        case "table":
+            return "Table"
+        case "captured":
+            return "Captured"
+        default:
+            return nil
+        }
+    }
+
+    private var resolvedCard: Card? {
+        guard let month = Month(rawValue: card.month),
+              let cardType = resolvedCardType else {
+            return nil
+        }
+        return Card(
+            id: card.cardId,
+            month: month,
+            type: cardType,
+            imageIndex: card.imageIndex,
+            selectedRole: resolvedRole
+        )
+    }
+
+    private var resolvedCardType: CardType? {
+        switch card.kind {
+        case "bright":
+            return .bright
+        case "animal":
+            return .animal
+        case "ribbon":
+            return .ribbon
+        case "junk":
+            return .junk
+        case "doubleJunk", "doublePi":
+            return .doubleJunk
+        default:
+            return nil
+        }
+    }
+
+    private var resolvedRole: CardRole? {
+        switch card.selectedRole {
+        case "animal":
+            return .animal
+        case "doublePi", "double_pi":
+            return .doublePi
+        default:
+            return nil
+        }
     }
 }
 
@@ -1445,6 +2421,17 @@ struct MultiplayerReconnectOverlay: View {
 struct MultiplayerResultView: View {
     let state: MultiplayerResultShellState
     let onLeaveTapped: () -> Void
+    let showsIntegrationNotes: Bool
+
+    init(
+        state: MultiplayerResultShellState,
+        showsIntegrationNotes: Bool = true,
+        onLeaveTapped: @escaping () -> Void
+    ) {
+        self.state = state
+        self.onLeaveTapped = onLeaveTapped
+        self.showsIntegrationNotes = showsIntegrationNotes
+    }
 
     var body: some View {
         MultiplayerShellSurface(title: "Match Result", subtitle: "Rendered only after an authoritative terminal summary payload is available. Dismissal waits for room lifecycle completion.") {
@@ -1477,7 +2464,7 @@ struct MultiplayerResultView: View {
                         }
 
                         HStack(spacing: 12) {
-                            MultiplayerStatPill(label: "Reason", value: state.endReasonCode)
+                            MultiplayerStatPill(label: "Reason", value: friendlyShellIdentifier(state.endReasonCode))
                             MultiplayerStatPill(
                                 label: "Reason Text",
                                 value: localizedShellText(
@@ -1547,22 +2534,24 @@ struct MultiplayerResultView: View {
                     }
                 }
 
-                MultiplayerPanelCard {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Integration Notes")
-                            .font(.system(size: 20, weight: .black, design: .rounded))
-                            .foregroundStyle(.white)
+                if showsIntegrationNotes {
+                    MultiplayerPanelCard {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Integration Notes")
+                                .font(.system(size: 20, weight: .black, design: .rounded))
+                                .foregroundStyle(.white)
 
-                        ForEach(state.integrationNotes, id: \.self) { note in
-                            HStack(alignment: .top, spacing: 10) {
-                                Circle()
-                                    .fill(Color(red: 0.95, green: 0.65, blue: 0.20))
-                                    .frame(width: 8, height: 8)
-                                    .padding(.top, 5)
-                                Text(multiplayerShellRenderableNote(note))
-                                    .font(.system(size: 14, weight: .medium, design: .rounded))
-                                    .foregroundStyle(.white.opacity(0.78))
-                                Spacer(minLength: 0)
+                            ForEach(state.integrationNotes, id: \.self) { note in
+                                HStack(alignment: .top, spacing: 10) {
+                                    Circle()
+                                        .fill(Color(red: 0.95, green: 0.65, blue: 0.20))
+                                        .frame(width: 8, height: 8)
+                                        .padding(.top, 5)
+                                    Text(multiplayerShellRenderableNote(note))
+                                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                                        .foregroundStyle(.white.opacity(0.78))
+                                    Spacer(minLength: 0)
+                                }
                             }
                         }
                     }
@@ -1896,18 +2885,53 @@ struct MultiplayerTransportRouteHostView: View {
 
 struct MultiplayerProductMultiplayerRouteView: View {
     @Environment(\.dismiss) private var dismiss
+    @StateObject private var store: MultiplayerShellStore
+    @State private var selectedTab: MultiplayerProductRouteTab = .home
+    @State private var inviteCodeInput: String
     let initialInviteCode: String?
 
+    @MainActor
     init(initialInviteCode: String? = nil) {
         self.initialInviteCode = initialInviteCode
+        let configuration = MultiplayerTransportRouteConfiguration.productPreparation(inviteCode: initialInviteCode)
+        _store = StateObject(
+            wrappedValue: MultiplayerShellStore.transportBacked(configuration: configuration)
+        )
+        _inviteCodeInput = State(initialValue: initialInviteCode ?? "")
     }
 
     var body: some View {
         NavigationStack {
-            MultiplayerTransportRouteHostView(
-                configuration: .productPreparation(inviteCode: initialInviteCode)
-            )
-            .navigationTitle("Multiplayer")
+            TabView(selection: $selectedTab) {
+                MultiplayerProductHomeView(
+                    store: store,
+                    inviteCodeInput: $inviteCodeInput,
+                    selectedTab: $selectedTab
+                )
+                .tag(MultiplayerProductRouteTab.home)
+                .tabItem {
+                    Label("Home", systemImage: "house.fill")
+                }
+
+                MultiplayerProductPlayView(
+                    store: store,
+                    inviteCodeInput: $inviteCodeInput
+                )
+                .tag(MultiplayerProductRouteTab.play)
+                .tabItem {
+                    Label("Play", systemImage: "suit.heart.fill")
+                }
+
+                MultiplayerProductSessionView(
+                    store: store,
+                    inviteCodeInput: $inviteCodeInput
+                )
+                .tag(MultiplayerProductRouteTab.session)
+                .tabItem {
+                    Label("Session", systemImage: "rectangle.stack.person.crop.fill")
+                }
+            }
+            .navigationTitle(selectedTab.title)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") {
@@ -1916,6 +2940,555 @@ struct MultiplayerProductMultiplayerRouteView: View {
                 }
             }
         }
+        .onAppear {
+            store.updateEntryJoinIdentifier(normalizedInviteCode)
+        }
+        .onChange(of: normalizedInviteCode) { newValue in
+            store.updateEntryJoinIdentifier(newValue)
+        }
+        .onChange(of: store.route) { newValue in
+            selectedTab = newValue == .entry ? .home : .play
+        }
+    }
+
+    private var normalizedInviteCode: String? {
+        let trimmed = inviteCodeInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
+private enum MultiplayerProductRouteTab: String, CaseIterable, Identifiable {
+    case home
+    case play
+    case session
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .home:
+            return "Multiplayer Home"
+        case .play:
+            return "Multiplayer"
+        case .session:
+            return "Session"
+        }
+    }
+}
+
+private struct MultiplayerProductHomeView: View {
+    @ObservedObject var store: MultiplayerShellStore
+    @Binding var inviteCodeInput: String
+    @Binding var selectedTab: MultiplayerProductRouteTab
+
+    var body: some View {
+        ZStack {
+            MultiplayerShellBackground()
+                .ignoresSafeArea()
+
+            ScrollView {
+                VStack(spacing: 16) {
+                    MultiplayerPanelCard {
+                        VStack(alignment: .leading, spacing: 14) {
+                            HStack(alignment: .top, spacing: 12) {
+                                MultiplayerGlyphBadge(
+                                    systemName: "house.fill",
+                                    accentColor: Color(red: 0.32, green: 0.82, blue: 0.52)
+                                )
+
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text("Multiplayer Home")
+                                        .font(.system(size: 22, weight: .black, design: .rounded))
+                                        .foregroundStyle(.white)
+                                    Text("This is the shipped alpha launcher inside the current root-sheet route. Create Room, Join Invite, Resume, reconnect, and result dismissal still follow the same authoritative lifecycle.")
+                                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                                        .foregroundStyle(.white.opacity(0.76))
+                                }
+
+                                Spacer(minLength: 0)
+
+                                MultiplayerStatusBadge(
+                                    title: store.route.label,
+                                    accentColor: routeAccentColor
+                                )
+                            }
+
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Invite Code")
+                                    .font(.system(size: 13, weight: .black, design: .rounded))
+                                    .foregroundStyle(.white.opacity(0.84))
+
+                                TextField("Enter invite code", text: $inviteCodeInput)
+                                    .textInputAutocapitalization(.characters)
+                                    .autocorrectionDisabled(true)
+                                    .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 12)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                            .fill(Color.black.opacity(0.22))
+                                    )
+                            }
+
+                            HStack(spacing: 12) {
+                                MultiplayerStatPill(label: "Join Invite", value: normalizedInviteCode == nil ? "Hidden" : "Ready")
+                                MultiplayerStatPill(label: "Resume", value: store.entryState.persistedResume?.isAttachReady == true ? "Ready" : "Missing")
+                                MultiplayerStatPill(label: "Placement", value: "Home Launcher")
+                            }
+                        }
+                    }
+
+                    if store.route == .entry {
+                        MultiplayerShellShowcaseView(
+                            store: store,
+                            chrome: .product,
+                            showsBackground: false
+                        )
+                    } else {
+                        MultiplayerPanelCard {
+                            VStack(alignment: .leading, spacing: 14) {
+                                HStack(alignment: .top, spacing: 12) {
+                                    MultiplayerGlyphBadge(
+                                        systemName: "arrowshape.turn.up.right.fill",
+                                        accentColor: routeAccentColor
+                                    )
+
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        Text(activeRouteTitle)
+                                            .font(.system(size: 20, weight: .black, design: .rounded))
+                                            .foregroundStyle(.white)
+                                        Text(activeRouteDetail)
+                                            .font(.system(size: 14, weight: .medium, design: .rounded))
+                                            .foregroundStyle(.white.opacity(0.74))
+                                    }
+                                    Spacer(minLength: 0)
+                                }
+
+                                HStack(spacing: 12) {
+                                    MultiplayerStatPill(label: "Route", value: store.route.label)
+                                    MultiplayerStatPill(label: "Transport", value: store.sourceLabel)
+                                    MultiplayerStatPill(label: "Invite", value: normalizedInviteCode ?? "Unset")
+                                }
+
+                                MultiplayerPrimaryButton(
+                                    title: "Open Play Surface",
+                                    subtitle: "Switch to the board-focused tab without changing any lifecycle state.",
+                                    isBusy: false,
+                                    accentColor: routeAccentColor
+                                ) {
+                                    selectedTab = .play
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(20)
+            }
+        }
+    }
+
+    private var normalizedInviteCode: String? {
+        let trimmed = inviteCodeInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private var routeAccentColor: Color {
+        switch store.route {
+        case .entry:
+            return Color(red: 0.32, green: 0.82, blue: 0.52)
+        case .room:
+            return Color(red: 0.31, green: 0.74, blue: 0.97)
+        case .live:
+            return Color(red: 0.93, green: 0.73, blue: 0.20)
+        case .result:
+            return Color(red: 0.88, green: 0.30, blue: 0.24)
+        }
+    }
+
+    private var activeRouteTitle: String {
+        switch store.route {
+        case .entry:
+            return "Ready To Launch"
+        case .room:
+            return "Room In Progress"
+        case .live:
+            return "Live Match Active"
+        case .result:
+            return "Result Retained"
+        }
+    }
+
+    private var activeRouteDetail: String {
+        switch store.route {
+        case .entry:
+            return "Use the entry actions below. The route only advances after helloAck plus roomSnapshot."
+        case .room:
+            return "The room is already attached. Move to Play to see ready, presence, and start-state changes."
+        case .live:
+            return "A live board is active. Move to Play for hand, table, captured, and authoritative gameplay actions."
+        case .result:
+            return "The terminal summary is retained. Leave still waits for leaveAcknowledged or roomClosed."
+        }
+    }
+}
+
+private enum MultiplayerProductPlacementCandidate: String, CaseIterable, Identifiable {
+    case homeLaunch
+    case modeTab
+    case quickAccessMenu
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .homeLaunch:
+            return "Home Launcher"
+        case .modeTab:
+            return "Mode Tab"
+        case .quickAccessMenu:
+            return "Quick Access"
+        }
+    }
+
+    var symbolName: String {
+        switch self {
+        case .homeLaunch:
+            return "house.fill"
+        case .modeTab:
+            return "square.grid.2x2.fill"
+        case .quickAccessMenu:
+            return "ellipsis.circle.fill"
+        }
+    }
+
+    var badgeTitle: String {
+        switch self {
+        case .homeLaunch:
+            return "Deferred Remount"
+        case .modeTab:
+            return "Deferred IA"
+        case .quickAccessMenu:
+            return "Deferred Shortcut"
+        }
+    }
+
+    var accentColor: Color {
+        switch self {
+        case .homeLaunch:
+            return Color(red: 0.32, green: 0.82, blue: 0.52)
+        case .modeTab:
+            return Color(red: 0.31, green: 0.74, blue: 0.97)
+        case .quickAccessMenu:
+            return Color(red: 0.95, green: 0.65, blue: 0.20)
+        }
+    }
+
+    var summary: String {
+        switch self {
+        case .homeLaunch:
+            return "Replace the shipped alpha root-sheet launcher with a clearer multiplayer tile on the main home surface."
+        case .modeTab:
+            return "Promote multiplayer to a first-class mode once app-level navigation grows beyond a single launcher."
+        case .quickAccessMenu:
+            return "Keep a lightweight resume or invite entry in a toolbar/menu for returning players."
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .homeLaunch:
+            return "Best next step for discovery without changing transport or lifecycle rules. Create, Join Invite, and Resume can all stay inside the same product route."
+        case .modeTab:
+            return "Works when the app gains a stable game-mode split. Until then it risks over-weighting multiplayer before surrounding IA is ready."
+        case .quickAccessMenu:
+            return "Useful after the main placement lands, but too hidden to be the only entry because invite creation and first-time join need stronger visibility."
+        }
+    }
+}
+
+private struct MultiplayerProductPlayView: View {
+    @ObservedObject var store: MultiplayerShellStore
+    @Binding var inviteCodeInput: String
+
+    var body: some View {
+        ZStack {
+            MultiplayerShellBackground()
+                .ignoresSafeArea()
+
+            VStack(spacing: 16) {
+                MultiplayerPanelCard {
+                    VStack(alignment: .leading, spacing: 14) {
+                        HStack(alignment: .top, spacing: 12) {
+                            MultiplayerGlyphBadge(
+                                systemName: "suit.heart.fill",
+                                accentColor: routeAccentColor
+                            )
+
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Current Route")
+                                    .font(.system(size: 20, weight: .black, design: .rounded))
+                                    .foregroundStyle(.white)
+                                Text("Home handles alpha entry. This tab keeps room, live, reconnect, and result surfaces front and center without bypassing any authoritative lifecycle step.")
+                                    .font(.system(size: 14, weight: .medium, design: .rounded))
+                                    .foregroundStyle(.white.opacity(0.76))
+                            }
+
+                            Spacer(minLength: 0)
+
+                            MultiplayerStatusBadge(
+                                title: store.route.label,
+                                accentColor: routeAccentColor
+                            )
+                        }
+
+                        HStack(spacing: 12) {
+                            MultiplayerStatPill(label: "Invite", value: normalizedInviteCode ?? "Unset")
+                            MultiplayerStatPill(label: "Transport", value: store.sourceLabel)
+                            MultiplayerStatPill(label: "Result Leave", value: store.route == .result ? "Ack / roomClosed" : "Idle")
+                        }
+                    }
+                }
+
+                MultiplayerShellShowcaseView(
+                    store: store,
+                    chrome: .product,
+                    showsBackground: false
+                )
+            }
+            .padding(.top, 20)
+        }
+    }
+
+    private var normalizedInviteCode: String? {
+        let trimmed = inviteCodeInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private var routeAccentColor: Color {
+        switch store.route {
+        case .entry:
+            return Color(red: 0.93, green: 0.73, blue: 0.20)
+        case .room:
+            return Color(red: 0.31, green: 0.74, blue: 0.97)
+        case .live:
+            return Color(red: 0.32, green: 0.82, blue: 0.52)
+        case .result:
+            return Color(red: 0.88, green: 0.30, blue: 0.24)
+        }
+    }
+}
+
+private struct MultiplayerProductSessionView: View {
+    @ObservedObject var store: MultiplayerShellStore
+    @Binding var inviteCodeInput: String
+
+    var body: some View {
+        ZStack {
+            MultiplayerShellBackground()
+                .ignoresSafeArea()
+
+            ScrollView {
+                VStack(spacing: 16) {
+                    MultiplayerPanelCard {
+                        VStack(alignment: .leading, spacing: 14) {
+                            HStack(spacing: 12) {
+                                MultiplayerGlyphBadge(
+                                    systemName: "shield.lefthalf.filled",
+                                    accentColor: Color(red: 0.31, green: 0.74, blue: 0.97)
+                                )
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text("Session Lifecycle")
+                                        .font(.system(size: 20, weight: .black, design: .rounded))
+                                        .foregroundStyle(.white)
+                                    Text("This tab keeps the shipped alpha lifecycle promises visible while the play tab stays focused on the current route.")
+                                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                                        .foregroundStyle(.white.opacity(0.76))
+                                }
+                                Spacer(minLength: 0)
+                            }
+
+                            sessionRule("Create / Join / Resume", detail: "Entry only advances after helloAck plus roomSnapshot land.")
+                            sessionRule("Reconnect", detail: "Overlay stays blocking until roomSnapshot and gameSnapshot finish applying.")
+                            sessionRule("Result Dismissal", detail: "Leave closes only after leaveAcknowledged or roomClosed arrives.")
+                        }
+                    }
+
+                    MultiplayerPanelCard {
+                        VStack(alignment: .leading, spacing: 14) {
+                            HStack(spacing: 12) {
+                                MultiplayerGlyphBadge(
+                                    systemName: "square.grid.2x2.fill",
+                                    accentColor: Color(red: 0.32, green: 0.82, blue: 0.52)
+                                )
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text("Shipped Alpha Placement")
+                                        .font(.system(size: 20, weight: .black, design: .rounded))
+                                        .foregroundStyle(.white)
+                                    Text("Phase 0 ships on the existing root-sheet baseline. Inside the sheet, `Home / Play / Session` is the accepted alpha information architecture.")
+                                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                                        .foregroundStyle(.white.opacity(0.76))
+                                }
+                                Spacer(minLength: 0)
+                            }
+
+                            HStack(spacing: 12) {
+                                MultiplayerStatPill(label: "Shipped", value: "Root Sheet")
+                                MultiplayerStatPill(label: "Inside", value: "Home / Play / Session")
+                                MultiplayerStatPill(label: "Lifecycle", value: "Locked")
+                            }
+                        }
+                    }
+
+                    MultiplayerPanelCard {
+                        VStack(alignment: .leading, spacing: 14) {
+                            HStack(spacing: 12) {
+                                MultiplayerGlyphBadge(
+                                    systemName: "arrow.right.circle.fill",
+                                    accentColor: Color(red: 0.95, green: 0.65, blue: 0.20)
+                                )
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text("Deferred After Alpha")
+                                        .font(.system(size: 20, weight: .black, design: .rounded))
+                                        .foregroundStyle(.white)
+                                    Text("These are real next steps, but they are explicitly deferred beyond the shipped alpha boundary.")
+                                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                                        .foregroundStyle(.white.opacity(0.76))
+                                }
+                                Spacer(minLength: 0)
+                            }
+
+                            VStack(spacing: 10) {
+                                ForEach(MultiplayerProductPlacementCandidate.allCases) { candidate in
+                                    placementCandidateCard(candidate)
+                                }
+                            }
+                        }
+                    }
+
+                    MultiplayerPanelCard {
+                        VStack(alignment: .leading, spacing: 14) {
+                            Text("Current Session")
+                                .font(.system(size: 20, weight: .black, design: .rounded))
+                                .foregroundStyle(.white)
+
+                            HStack(spacing: 12) {
+                                MultiplayerStatPill(label: "Invite", value: normalizedInviteCode ?? "Unset")
+                                MultiplayerStatPill(label: "Route", value: store.route.label)
+                                MultiplayerStatPill(label: "Transport", value: store.sourceLabel)
+                            }
+
+                            if !store.statusItems.isEmpty {
+                                LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 10)], spacing: 10) {
+                                    ForEach(store.statusItems) { item in
+                                        MultiplayerStatPill(label: item.label, value: item.value)
+                                    }
+                                }
+                            }
+
+                            if let persisted = store.entryState.persistedResume {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("Persisted Resume")
+                                        .font(.system(size: 15, weight: .black, design: .rounded))
+                                        .foregroundStyle(.white)
+                                    Text("room \(persisted.roomId) • session \(persisted.sessionId)")
+                                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                        .foregroundStyle(.white.opacity(0.72))
+                                    Text(persisted.isAttachReady ? "resumeToken, playerId, and deviceId are ready for authoritative hello resume." : "Resume is still incomplete and stays disabled on the entry surface.")
+                                        .font(.system(size: 13, weight: .medium, design: .rounded))
+                                        .foregroundStyle(.white.opacity(0.72))
+                                }
+                            }
+                        }
+                    }
+
+                    MultiplayerPanelCard {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Route Notes")
+                                .font(.system(size: 20, weight: .black, design: .rounded))
+                                .foregroundStyle(.white)
+                            Text(store.sourceDescription)
+                                .font(.system(size: 14, weight: .medium, design: .rounded))
+                                .foregroundStyle(.white.opacity(0.76))
+
+                            MultiplayerSecondaryButton(
+                                title: "Reset Route",
+                                subtitle: "Return to the entry shell without bypassing authoritative lifecycle rules.",
+                                accentColor: Color(red: 0.95, green: 0.65, blue: 0.20)
+                            ) {
+                                store.reset()
+                            }
+                        }
+                    }
+                }
+                .padding(20)
+            }
+        }
+    }
+
+    private var normalizedInviteCode: String? {
+        let trimmed = inviteCodeInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func sessionRule(_ title: String, detail: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Circle()
+                .fill(Color(red: 0.31, green: 0.74, blue: 0.97))
+                .frame(width: 10, height: 10)
+                .padding(.top, 4)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.system(size: 15, weight: .black, design: .rounded))
+                    .foregroundStyle(.white)
+                Text(detail)
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.72))
+            }
+
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func placementCandidateCard(_ candidate: MultiplayerProductPlacementCandidate) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            MultiplayerGlyphBadge(
+                systemName: candidate.symbolName,
+                accentColor: candidate.accentColor
+            )
+
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    Text(candidate.title)
+                        .font(.system(size: 15, weight: .black, design: .rounded))
+                        .foregroundStyle(.white)
+                    MultiplayerStatusBadge(
+                        title: candidate.badgeTitle,
+                        accentColor: candidate.accentColor
+                    )
+                }
+
+                Text(candidate.summary)
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.78))
+
+                Text(candidate.detail)
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.62))
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.white.opacity(0.05))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        )
     }
 }
 
@@ -1980,72 +3553,82 @@ struct MultiplayerShellLabView: View {
 
 struct MultiplayerShellShowcaseView: View {
     @StateObject private var store: MultiplayerShellStore
+    private let chrome: MultiplayerShellChrome
+    private let showsBackground: Bool
 
     @MainActor
     init() {
         _store = StateObject(wrappedValue: MultiplayerShellStore())
+        self.chrome = .diagnostic
+        self.showsBackground = true
     }
 
     @MainActor
-    init(store: MultiplayerShellStore) {
+    fileprivate init(
+        store: MultiplayerShellStore,
+        chrome: MultiplayerShellChrome = .diagnostic,
+        showsBackground: Bool = true
+    ) {
         _store = StateObject(wrappedValue: store)
+        self.chrome = chrome
+        self.showsBackground = showsBackground
     }
 
     var body: some View {
         ZStack {
-            MultiplayerShellBackground()
-                .ignoresSafeArea()
+            if showsBackground {
+                MultiplayerShellBackground()
+                    .ignoresSafeArea()
+            }
 
             VStack(spacing: 16) {
-                MultiplayerPanelCard {
-                    VStack(alignment: .leading, spacing: 14) {
-                        HStack(spacing: 12) {
-                            Text(store.sourceLabel)
-                                .font(.system(size: 20, weight: .black, design: .rounded))
-                                .foregroundStyle(.white)
-                            MultiplayerStatusBadge(title: store.route.label, accentColor: routeAccentColor)
-                            if let reconnectOverlay = store.reconnectOverlay {
-                                MultiplayerStatusBadge(title: reconnectOverlay.phase.title, accentColor: reconnectOverlay.phase.accentColor)
+                if chrome.showsDiagnosticsPanel {
+                    MultiplayerPanelCard {
+                        VStack(alignment: .leading, spacing: 14) {
+                            HStack(spacing: 12) {
+                                Text(store.sourceLabel)
+                                    .font(.system(size: 20, weight: .black, design: .rounded))
+                                    .foregroundStyle(.white)
+                                MultiplayerStatusBadge(title: store.route.label, accentColor: routeAccentColor)
+                                if let reconnectOverlay = store.reconnectOverlay {
+                                    MultiplayerStatusBadge(title: reconnectOverlay.phase.title, accentColor: reconnectOverlay.phase.accentColor)
+                                }
+                                Spacer(minLength: 0)
+                                MultiplayerSecondaryButton(
+                                    title: "Reset",
+                                    subtitle: "Return to the entry shell.",
+                                    accentColor: Color(red: 0.95, green: 0.65, blue: 0.20)
+                                ) {
+                                    store.reset()
+                                }
+                                .frame(maxWidth: 220)
                             }
-                            Spacer(minLength: 0)
-                            MultiplayerSecondaryButton(
-                                title: "Reset",
-                                subtitle: "Return to the entry shell.",
-                                accentColor: Color(red: 0.95, green: 0.65, blue: 0.20)
-                            ) {
-                                store.reset()
-                            }
-                            .frame(maxWidth: 220)
-                        }
 
-                        Text(store.sourceDescription)
-                            .font(.system(size: 13, weight: .medium, design: .rounded))
-                            .foregroundStyle(.white.opacity(0.72))
+                            Text(store.sourceDescription)
+                                .font(.system(size: 13, weight: .medium, design: .rounded))
+                                .foregroundStyle(.white.opacity(0.72))
 
-                        if !store.statusItems.isEmpty {
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 10) {
-                                    ForEach(store.statusItems) { item in
-                                        MultiplayerStatPill(label: item.label, value: item.value)
+                            if !store.statusItems.isEmpty {
+                                ScrollView(.horizontal, showsIndicators: false) {
+                                    HStack(spacing: 10) {
+                                        ForEach(store.statusItems) { item in
+                                            MultiplayerStatPill(label: item.label, value: item.value)
+                                        }
                                     }
                                 }
                             }
-                        }
 
-                        if store.controls.isEmpty {
-                            Text(
-                                store.route == .live && store.isGameplayTransportReady
-                                ? "Transport diagnostics are idle. Live commands now run from the hand and choice action area below."
-                                : "No source-specific actions are available for the current route."
-                            )
-                                .font(.system(size: 12, weight: .medium, design: .rounded))
-                                .foregroundStyle(.white.opacity(0.56))
-                        } else {
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 10) {
-                                    ForEach(store.controls) { control in
-                                        mockControlButton(control.title, accentColor: control.accentColor) {
-                                            store.performControl(control.action)
+                            if store.controls.isEmpty {
+                                Text(chrome.emptyControlsMessage(for: store))
+                                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                                    .foregroundStyle(.white.opacity(0.56))
+                            } else {
+                                ScrollView(.horizontal, showsIndicators: false) {
+                                    HStack(spacing: 10) {
+                                        ForEach(store.controls) { control in
+                                            mockControlButton(control.title, accentColor: control.accentColor) {
+                                                store.performControl(control.action)
+                                            }
                                         }
                                     }
                                 }
@@ -2089,6 +3672,7 @@ struct MultiplayerShellShowcaseView: View {
                     case .result:
                         MultiplayerResultView(
                             state: store.resultState,
+                            showsIntegrationNotes: chrome.showsResultIntegrationNotes,
                             onLeaveTapped: { store.performControl(.leaveRoom) }
                         )
                     }
@@ -2131,6 +3715,37 @@ struct MultiplayerShellShowcaseView: View {
                 )
         }
         .buttonStyle(.plain)
+    }
+}
+
+fileprivate enum MultiplayerShellChrome {
+    case diagnostic
+    case product
+
+    var showsDiagnosticsPanel: Bool {
+        switch self {
+        case .diagnostic:
+            return true
+        case .product:
+            return false
+        }
+    }
+
+    var showsResultIntegrationNotes: Bool {
+        switch self {
+        case .diagnostic:
+            return true
+        case .product:
+            return false
+        }
+    }
+
+    @MainActor
+    func emptyControlsMessage(for store: MultiplayerShellStore) -> String {
+        if store.route == .live && store.isGameplayTransportReady {
+            return "Transport diagnostics are idle. Live commands now run from the hand and choice action area below."
+        }
+        return "No source-specific actions are available for the current route."
     }
 }
 
@@ -2544,6 +4159,35 @@ private struct MultiplayerBoardZoneCard: View {
 private func shortIdentifier(_ identifier: String) -> String {
     guard identifier.count > 14 else { return identifier }
     return "\(identifier.prefix(6))...\(identifier.suffix(4))"
+}
+
+private func friendlyShellIdentifier(_ identifier: String) -> String {
+    identifier
+        .reduce(into: "") { partial, character in
+            if character == "." || character == "_" {
+                partial.append(" ")
+            } else if character.isUppercase {
+                if let last = partial.last, last != " " {
+                    partial.append(" ")
+                }
+                partial.append(character.lowercased())
+            } else {
+                partial.append(character)
+            }
+        }
+        .split(separator: " ")
+        .map { token in
+            let lowercased = token.lowercased()
+            switch lowercased {
+            case "id":
+                return "ID"
+            case "ttl":
+                return "TTL"
+            default:
+                return lowercased.capitalized
+            }
+        }
+        .joined(separator: " ")
 }
 
 private func countdownText(to date: Date?, reference: Date) -> String {

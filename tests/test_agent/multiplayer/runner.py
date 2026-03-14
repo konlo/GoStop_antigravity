@@ -590,6 +590,9 @@ class MultiplayerScenarioRunner:
         if isinstance(socket_result.get("transportParity"), dict):
             store.write_json("transport_parity.json", socket_result["transportParity"])
 
+        if isinstance(socket_result.get("bootstrapBoundaryProbe"), dict):
+            store.write_json("bootstrap_boundary_probe.json", socket_result["bootstrapBoundaryProbe"])
+
         if isinstance(socket_result.get("duplicateProbe"), dict):
             store.write_json("duplicate_probe.json", socket_result["duplicateProbe"])
 
@@ -598,6 +601,15 @@ class MultiplayerScenarioRunner:
 
         if isinstance(socket_result.get("heartbeatProbe"), dict):
             store.write_json("heartbeat_probe.json", socket_result["heartbeatProbe"])
+
+        if isinstance(socket_result.get("staleHeartbeatCodeProbe"), dict):
+            store.write_json("stale_heartbeat_code_probe.json", socket_result["staleHeartbeatCodeProbe"])
+
+        if isinstance(socket_result.get("gapRecoveryShape"), dict):
+            store.write_json("replay/gap_recovery_shape.json", socket_result["gapRecoveryShape"])
+
+        if isinstance(socket_result.get("gapRecoveryProbe"), dict):
+            store.write_json("replay/gap_recovery_probe.json", socket_result["gapRecoveryProbe"])
 
         store.write_replay_manifest(
             ReplayManifest(
@@ -771,40 +783,122 @@ class MultiplayerScenarioRunner:
 
         store.write_replay_placeholder("injection_manifest.json", injection_manifest)
         store.append_ndjson("timeline/mismatch.ndjson", mismatch_rows)
-        store.write_replay_placeholder(
-            "gap_injection_plan.json",
-            {
-                "scenarioId": scenario.scenario_id,
-                "status": status.value,
-                "executionReadiness": "preflight-only",
-                "plannedInjectionMode": "dropGameEvents",
-                "plannedTransportAction": "room_transport_send(action=dropGameEvents)",
-                "plannedTargetClientId": "host_client",
-                "plannedDropCount": 1,
-                "plannedTriggerPoint": "after gameStarted bootstrap and before the next authoritative gameplay command",
-                "plannedFollowUpCommand": "quit",
-                "expectedRecoverySnapshotReason": "gapDetected",
-                "expectedRejectEnvelope": None,
-                "expectedGapEvidence": {
-                    "lastDeliveredEventId": None,
-                    "nextAuthoritativeEventId": None,
-                    "droppedEnvelopeCount": 1,
-                },
-                "requiredHookSurface": "room_transport_send(action=dropGameEvents)",
-                "requiredArtifacts": [
-                    "replay/injection_manifest.json",
-                    "replay/gap_injection_plan.json",
-                    "timeline/mismatch.ndjson",
-                    "replay/event_stream.ndjson",
-                    "timeline/events.ndjson",
-                ],
-                "notes": [
-                    "Phase 0 keeps stale expectedStateVersion override as the only executable live path.",
-                    "Dropped-event gap injection remains future work until a deterministic per-session event-drop hook is exposed on the live transport path.",
-                    "The future live probe should persist lastDeliveredEventId, droppedEnvelopeCount, and the first gapDetected recovery snapshot cursor before asserting resumed continuity.",
-                ],
+        gap_plan = {
+            "scenarioId": scenario.scenario_id,
+            "status": status.value,
+            "executionReadiness": "live-gap-recovery-hook",
+            "plannedInjectionMode": "triggerGapRecovery",
+            "plannedTransportAction": "room_transport_send(action=triggerGapRecovery)",
+            "plannedTransportBackend": self.socket_transport if self.mode == "socket" else "n/a",
+            "plannedCommandSurface": "room_transport_* live transport",
+            "plannedTargetClientId": "host_client",
+            "plannedDropCount": None,
+            "plannedTriggerPoint": "after paired gameStarted/stateSnapshot bootstrap when a client-reported gap needs an explicit recovery hint",
+            "plannedDropAfterEnvelopeType": None,
+            "plannedDropAfterEventName": None,
+            "plannedFollowUpCommand": "triggerGapRecovery",
+            "plannedFollowUpActionId": "act_mp008_socket_gap_001",
+            "expectedRecoverySnapshotReason": "gapDetected",
+            "expectedRecoveryEnvelopeType": "gapRecoveryHint",
+            "expectedRecoveryEventName": "stateSnapshot",
+            "expectedRejectEnvelope": None,
+            "expectedGapEvidence": {
+                "lastDeliveredEventId": None,
+                "nextAuthoritativeEventId": None,
+                "droppedEnvelopeCount": None,
             },
-        )
+            "requiredHookSurface": "room_transport_send(action=triggerGapRecovery)",
+            "requiredArtifacts": [
+                "replay/injection_manifest.json",
+                "replay/gap_injection_plan.json",
+                "replay/gap_recovery_shape.json",
+                "replay/gap_recovery_probe.json",
+                "timeline/mismatch.ndjson",
+                "replay/event_stream.ndjson",
+                "timeline/events.ndjson",
+            ],
+            "notes": [
+                "Phase 0 keeps stale expectedStateVersion override as the locked mismatch path, but the live gap-recovery hook is now executable.",
+                "Current live probe uses triggerGapRecovery to validate gapRecoveryHint -> stateSnapshot(reason=gapDetected) ordering without needing a true drop hook.",
+                "Deterministic dropped-event injection remains future work until a per-session event-drop hook is exposed on the live transport path.",
+                "A future executable drop probe should record the exact drop point immediately after a known gameEvent envelope and before the follow-up quit/playCard command is issued.",
+            ],
+        }
+        gap_recovery_shape = artifact_source.get("gapRecoveryShape") if artifact_source is not None else None
+        gap_recovery_probe = artifact_source.get("gapRecoveryProbe") if artifact_source is not None else None
+        if isinstance(gap_recovery_shape, dict):
+            gap_plan["gapRecoveryShape"] = gap_recovery_shape
+            shape_contract = gap_recovery_shape
+            if "artifact" not in shape_contract and "recoveryEnvelope" not in shape_contract:
+                tcp_shape = gap_recovery_shape.get("tcp")
+                websocket_shape = gap_recovery_shape.get("websocket")
+                if isinstance(tcp_shape, dict) and tcp_shape == websocket_shape:
+                    shape_contract = tcp_shape
+            if isinstance(shape_contract, dict) and "artifact" in shape_contract and "recoveryEnvelope" in shape_contract:
+                artifact_contract = shape_contract["artifact"]
+                recovery_envelope = shape_contract["recoveryEnvelope"]
+                related_actions = shape_contract.get("relatedActions")
+                transport_flag = shape_contract.get("transportFlag")
+                if isinstance(artifact_contract, dict):
+                    gap_plan["expectedGapRecoveryHintName"] = artifact_contract.get("name")
+                    gap_plan["expectedGapRecoveryHintMinimumFields"] = artifact_contract.get("minimumFields")
+                    gap_plan["expectedGapRecoveryInputLockRequired"] = artifact_contract.get("inputLockRequired")
+                if isinstance(recovery_envelope, dict):
+                    gap_plan["expectedRecoverySnapshotReason"] = recovery_envelope.get("reason")
+                    gap_plan["expectedRecoveryEnvelopeType"] = recovery_envelope.get("type")
+                    gap_plan["expectedRecoveryEventName"] = recovery_envelope.get("eventName")
+                if isinstance(related_actions, dict):
+                    gap_plan["expectedBootstrapPrepareAction"] = related_actions.get("bootstrapPrepareAction")
+                    gap_plan["expectedDebugStaleHookAction"] = related_actions.get("debugStaleHookAction")
+                if isinstance(transport_flag, dict):
+                    gap_plan["expectedGapTransportFlagName"] = transport_flag.get("name")
+                    gap_plan["expectedGapTransportFlagStatus"] = transport_flag.get("status")
+                live_hook = shape_contract.get("liveHook")
+                if isinstance(live_hook, dict):
+                    gap_plan["expectedGapTransportAction"] = live_hook.get("transportAction")
+                    gap_plan["expectedGapRecoveryEnvelopeType"] = live_hook.get("recoveryEnvelopeType")
+        if isinstance(gap_recovery_probe, dict):
+            gap_plan["gapRecoveryProbe"] = gap_recovery_probe
+            probe_contract = gap_recovery_probe
+            tcp_probe = None
+            websocket_probe = None
+            if "gapHint" not in probe_contract:
+                tcp_probe = gap_recovery_probe.get("tcp")
+                websocket_probe = gap_recovery_probe.get("websocket")
+                if isinstance(tcp_probe, dict) and tcp_probe == websocket_probe:
+                    probe_contract = tcp_probe
+            if isinstance(probe_contract, dict):
+                gap_hint = probe_contract.get("gapHint")
+                if isinstance(gap_hint, dict):
+                    gap_plan["observedGapHintArtifactVersion"] = gap_hint.get("artifactVersion")
+                    gap_plan["observedGapHintTargetClientId"] = gap_hint.get("targetClientId")
+                    gap_plan["observedLastDeliveredEventId"] = gap_hint.get("lastAckedGameEventId")
+                    gap_plan["observedNextAuthoritativeEventId"] = gap_hint.get("authoritativeEventId")
+                    gap_plan["observedGapRecoverySnapshotReason"] = gap_hint.get("snapshotReason")
+                gap_plan["observedGapRecoverySnapshotId"] = probe_contract.get("snapshotId")
+                gap_plan["observedGapRecoverySnapshotEventId"] = probe_contract.get("snapshotEventId")
+            if "gapHint" not in gap_recovery_probe and isinstance(tcp_probe, dict) and isinstance(websocket_probe, dict):
+                tcp_gap_hint = tcp_probe.get("gapHint")
+                websocket_gap_hint = websocket_probe.get("gapHint")
+                if isinstance(tcp_gap_hint, dict) and tcp_gap_hint == websocket_gap_hint:
+                    gap_plan["observedGapHintArtifactVersion"] = tcp_gap_hint.get("artifactVersion")
+                    gap_plan["observedGapHintTargetClientId"] = tcp_gap_hint.get("targetClientId")
+                    gap_plan["observedLastDeliveredEventId"] = tcp_gap_hint.get("lastAckedGameEventId")
+                    gap_plan["observedNextAuthoritativeEventId"] = tcp_gap_hint.get("authoritativeEventId")
+                    gap_plan["observedGapRecoverySnapshotReason"] = tcp_gap_hint.get("snapshotReason")
+                tcp_snapshot_event_id = tcp_probe.get("snapshotEventId")
+                websocket_snapshot_event_id = websocket_probe.get("snapshotEventId")
+                if tcp_snapshot_event_id == websocket_snapshot_event_id:
+                    gap_plan["observedGapRecoverySnapshotEventId"] = tcp_snapshot_event_id
+                tcp_snapshot_reason = tcp_probe.get("snapshotReason")
+                websocket_snapshot_reason = websocket_probe.get("snapshotReason")
+                if tcp_snapshot_reason == websocket_snapshot_reason:
+                    gap_plan["observedGapRecoverySnapshotReason"] = tcp_snapshot_reason
+                gap_plan["observedGapRecoverySnapshotIdByTransport"] = {
+                    "tcp": tcp_probe.get("snapshotId"),
+                    "websocket": websocket_probe.get("snapshotId"),
+                }
+        store.write_replay_placeholder("gap_injection_plan.json", gap_plan)
 
     def _ensure_socket_binary(self) -> Path:
         if self._resolved_socket_binary is None:

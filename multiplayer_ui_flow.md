@@ -3,8 +3,8 @@
 ## Meta
 - **Owner**: Agent 3
 - **Primary Consumers**: Agent 1, Agent 2, Agent 4
-- **Status**: Draft
-- **Last Updated**: 2026-03-12
+- **Status**: Shipped Alpha
+- **Last Updated**: 2026-03-14
 - **Related Docs**:
   - `multiplayer_contract.md`
   - `room_protocol.md`
@@ -118,8 +118,12 @@
   - current turn / timer / pending choice / opponent connection 상태 표시
 - 주요 UI:
   - top status bar: 상대 상태, 내/상대 turn 배지, timer
-  - board projection
-  - bottom action area: hand, choice tray, reject toast anchor
+  - score / go / deck summary strip
+  - opponent/local captured zone + score-category grouping
+  - month-bucket table board + inspect-only month/card focus + 선택 hand card 기준 same-month highlight
+  - card-art hand grid + authoritative `playCard` CTA
+  - choice prompt + option card previews + authoritative submit CTA
+  - reject / reconnect / opponent disconnect banner
   - non-blocking opponent disconnect banner
 - 화면 이탈 조건:
   - `matchEnded`
@@ -149,9 +153,9 @@
   - ended reason
   - leave CTA
 
-## Current Shell Implementation
+## Shipped Alpha Shell Implementation
 
-### Implemented Placeholder Views
+### Shipped Alpha Views
 - `MultiplayerEntryView`
   - consumes `MultiplayerEntryShellState`
   - renders persisted resume CTA, entry action cards, entry banner
@@ -160,23 +164,26 @@
   - renders room header, member seats, ready/leave controls, deadline pills
 - `MultiplayerLiveShellView`
   - consumes `MultiplayerLiveShellState`
-  - renders top status, projection summary, hand-targeted play surface, pending choice submit tray, quit action, reject panel
+  - renders top status, projection summary, score/go/deck summary strip, opponent/local captured zones, month-bucket table board, card-focused inspect affordance, card-art hand surface, pending choice card previews, quit action, reject panel
 - `MultiplayerReconnectOverlay`
   - consumes `MultiplayerReconnectOverlayState`
   - renders full-screen blocking reconnect status with snapshot-first sync steps
 - `MultiplayerResultView`
   - consumes `MultiplayerResultShellState`
   - renders terminal summary, score rows, settlement flags, remaining integration notes
+- `MultiplayerProductMultiplayerRouteView`
+  - now mounts a shared transport-backed store inside product-facing `Home` / `Play` / `Session` tabs
+  - keeps invite input, create/join/resume flow, reconnect, and result dismissal on the same authoritative lifecycle path as the shared transport source
 - `MultiplayerShellShowcaseView`
   - consumes `MultiplayerShellStore`
-  - renders the active source route plus source-specific status pills and control buttons
+  - renders either diagnostic chrome (`MP Lab` / transport host) or product chrome (route-only surface without transport diagnostics)
 - `MultiplayerMappedPayloadDemoView`
   - consumes `MultiplayerShellMappedPreview`
   - renders the same shells from Agent 1 contract payloads plus local room/hello DTO mapping
 - `MultiplayerShellLabView`
-  - mounts the coordinator-backed lab on the first tab and the mapped contract demo on the second tab
+  - mounts `Coordinator`, `Transport`, `Mapped` tabs for local debug, real websocket transport, and contract-mapped inspection
 
-### Placeholder State Surface
+### UI State Surface
 - entry:
   - `pendingAction`
   - persisted local `roomId/sessionId/playerId/deviceId/resumeToken` summary
@@ -188,8 +195,11 @@
 - live:
   - `roomId`, `gameId`, `localPlayerId`, `currentPlayerId`, `phase`, `turnId`
   - `stateVersion`, `turnDeadlineAt`, `serverTime`
+  - `localPlayerDisplayName`, `opponentPlayerDisplayName`
   - `opponentHandCount`, `localHandCount`
+  - `localScore`, `opponentScore`, `localGoCount`, `opponentGoCount`, `deckRemainingCount`
   - `localPlayableCardIds`
+  - `tableMonthBuckets[]`, `localCapturedZone`, `opponentCapturedZone`
   - `pendingChoice.{isRedactedForViewer, redactionMessageKey}` plus option rows
   - `actionRejected.rejectReason` shell
 - reconnect:
@@ -199,7 +209,7 @@
   - `roundIndex`, `winnerPlayerId`, `loserPlayerId`, `finalScores[]`
   - `settlementSummary.{finalScore, scoreFormula, flags[]}`
   - `endReasonCode`, `endReasonMessageKey`, `forfeitingPlayerId`, `isDraw`
-  - `leavePolicy.{messageKey, isEnabled}` and integration notes for unresolved adapter/localization glue
+  - `leavePolicy.{messageKey, isEnabled}` and lifecycle notes for leave-pending / `roomClosed` rendering
 
 ### Source-Pluggable Shell Coordinator
 - `MultiplayerShellStore`
@@ -218,7 +228,7 @@
   - opens reconnect overlay only when the local `RoomSession.connectionState == disconnectedGrace`
   - clears reconnect overlay only after resumed room truth is applied
 - `MultiplayerTransportShellSource`
-  - is now a transport-backed source that can be mounted from `MP Lab > Transport` or a future product route
+  - is now a transport-backed source that can be mounted from `MP Lab > Transport` or the current product route
   - supports `MultiplayerTransportMountMode.labPreview` and `MultiplayerTransportMountMode.productPreparation(inviteCode:)`
   - `productPreparation(inviteCode:)` exposes actual `Create Room`, optional `Join Invite`, `Resume`, and authoritative `Leave` without reintroducing lab-only guest controls
   - product entry semantics now follow Agent 2 `inviteCode`; Phase 0 keeps `inviteCode == roomId`, but the UI boundary no longer advertises raw `roomId` as the user-facing join input
@@ -240,7 +250,7 @@
 - current create/join is intentionally mounted on the websocket command boundary first. The final REST bootstrap split is still a separate follow-up
   - `MultiplayerShellGameplayNetworkingAdapter` is now concrete on the websocket adapter and carries `playCard`, `submitChoice`, `quit` with `actionId` + `expectedStateVersion`, while still reusing the same inbound event path so duplicate replay / conflict reject semantics stay authoritative
 - `MultiplayerShellStore` production entrypoints
-  - `transportBacked(configuration:)` builds a store that future product navigation can mount without redoing `MP Lab`-specific wiring
+  - `transportBacked(configuration:)` builds a store that the current product sheet and future deeper product navigation can mount without redoing `MP Lab`-specific wiring
   - `activateTransportSource()` switches to the production transport source without resetting the visible route
   - `persistedResumeAttachRequest()` exposes the exact `hello resume` request candidate derived from persisted metadata
   - `resumePersistedSessionOverTransport()` sends the authoritative `hello resume` attach over the adapter
@@ -257,25 +267,44 @@
 - `MultiplayerShellMappedPreview`
   - builds a contract-backed demo state bundle so shell rendering can be inspected without networking
 
-### Temporary App Route Mount
+### Shipped Alpha Route Mount
 - `ContentView`
-  - now mounts `MultiplayerProductMultiplayerRouteView` from the main app root as a sheet, so multiplayer entry is no longer trapped inside `MP Lab`
+  - now mounts `MultiplayerProductMultiplayerRouteView` from the main app root as a sheet
+  - this root-sheet launcher is the accepted shipped alpha placement for Phase 0 and Round 17 sign-off
   - still keeps `MP Lab` as a separate DEBUG-only sheet for coordinator/transport/mapped inspection
 - `MultiplayerTransportRouteHostView`
-  - is the product-facing host boundary for the websocket-command transport route
+  - is the reusable transport host boundary for the websocket-command route
   - defaults to `MultiplayerTransportRouteConfiguration.productPreparation()`
-  - future product navigation can mount it directly, and optionally pass a resolved `inviteCode` via `productPreparation(inviteCode:)`
+  - `MP Lab > Transport` still mounts this host directly, and future product navigation can do the same when a thinner host wrapper is needed
 - `MultiplayerProductMultiplayerRouteView`
-  - is the first product-facing multiplayer entry wrapper for the shared transport host
-  - accepts optional `initialInviteCode` and keeps create/join/resume on the same authoritative attach lifecycle as the lab transport route
+  - is the current product-facing multiplayer wrapper for the shared transport store
+  - accepts optional `initialInviteCode`, exposes `Home`, `Play`, and `Session` tabs inside the sheet, and keeps create/join/resume on the same authoritative attach lifecycle as the lab transport route
+  - `Home` tab is the shipped alpha launcher surface inside the accepted root-sheet baseline
+  - `Session` tab marks bigger remount work as deferred instead of treating it as a current product blocker
 - `MultiplayerShellLabView`
   - now exposes three tabs: `Coordinator`, `Transport`, `Mapped`
   - `Transport` now mounts the same `MultiplayerTransportRouteHostView(configuration: .lab)` that product code can reuse with a different configuration, instead of hand-building a lab-only store
 
-### Not Implemented Yet
+### Deferred After Alpha
+- current baseline:
+  - main app는 `MultiplayerProductMultiplayerRouteView`를 root sheet로 연다
+  - sheet 내부는 `Home / Play / Session` 탭으로 product-facing transport route를 유지한다
+  - `Home`은 shipped alpha launcher surface다
+- deferred remount options surfaced in product `Session` tab:
+  - `Home Launcher`
+    - alpha 이후 가장 자연스러운 다음 단계
+    - home/root surface에 멀티플레이 진입 tile을 두고, 내부 lifecycle은 현재 product route를 그대로 재사용
+  - `Mode Tab`
+    - app-level IA가 더 커질 때 상위 mode split로 승격
+    - alpha boundary 밖이라 deferred
+  - `Quick Access`
+    - toolbar/menu 기반 resume or invite shortcut
+    - alpha에서는 secondary path라 deferred
+
+### Deferred Beyond Shipped Alpha
 - final REST bootstrap split separate from the websocket command boundary
-- deeper product navigation policy beyond the current root-sheet launcher
-- full card-art driven hand/table interaction beyond the current `cardId` chip action surface
+- app-wide remount beyond the current root-sheet launcher baseline
+- richer direct table-target gesture의 최종 semantics와 full final board parity
 - missing catalog entries for `match.end.*`, `match.reject.*`, `match.result.leave.*`, `room.closed.*`, `match.choice.shake.actor_only_waiting` still use shell fallback copy when `gameText(...)` has no catalog match
 
 ## Route and Overlay State
@@ -404,8 +433,14 @@
 | `phase` | hand/choice UI 노출 규칙 | `multiplayer_contract.md` | Available | Agent 1 |
 | `turnId` | turn-change animation / dedupe | `multiplayer_contract.md` | Available | Agent 1 |
 | `currentPlayerId` | 내 턴/상대 턴 표시 | `multiplayer_contract.md` | Available | Agent 1 |
+| `players[].name` | live projection card와 product-facing player label | `multiplayer_contract.md` | Available | Agent 1 |
 | `players[].hand` (self only) | 내 hand 렌더 | `multiplayer_contract.md` | Available | Agent 1 |
 | `players[].handCount` | 상대 hand count UI | `multiplayer_contract.md` | Available | Agent 1 |
+| `players[].score` / `players[].goCount` | live scoreboard strip와 projection summary | `multiplayer_contract.md` | Available | Agent 1 |
+| `players[].captured.{bright,animal,ribbon,junk}` | captured zone grouping과 score-category board 구성 | `multiplayer_contract.md` | Available | Agent 1 |
+| `table.cards[]` | flat table fallback / total visible line count | `multiplayer_contract.md` | Available | Agent 1 |
+| `table.monthBuckets{month:[cards]}` | month-bucket board composition과 inspect-only focus surface | `multiplayer_contract.md` | Available | Agent 1 |
+| `deck.remainingCount` | table pressure와 round pacing 표시 | `multiplayer_contract.md` | Available | Agent 1 |
 | viewer-scoped `pendingChoice.options[]` | non-actor에게 hidden hand metadata가 보이지 않아야 함 | review finding `F-001` | Follow-Up | Agent 1 / 3 |
 | `turnChanged.turnDeadlineAt` + envelope `serverTime` | drift 없는 timer 표시 | `multiplayer_contract.md` | Available | Agent 1 |
 | `pendingChoice.choiceId` | choice lifecycle 식별 | `multiplayer_contract.md` | Available | Agent 1 |
@@ -480,17 +515,18 @@
 - invite room을 사용자에게 공유할 human-readable identifier가 필요하면 `inviteCode` shape를 정해야 한다.
 - product `Leave Room`을 lab reset 대신 실제로 연결하려면 `leaveRoom`/`roomClosed` UX에 맞는 app-facing debug API 사용 순서를 잠가야 한다.
 
-## Integration Blockers
-- actual websocket client는 아직 `MultiplayerShellNetworkingAdapter`에 붙지 않았지만, adapter boundary 자체는 Agent 2 transport envelope를 `MultiplayerShellInboundEvent`로 decode할 수 있다.
-- UserDefaults-backed persisted resume 저장/복구와 `hello resume` attach entrypoint는 wired 됐다. 남은 일은 product source mount와 actual socket client 연결이다.
-- `ContentView`에는 debug launcher가 붙었지만, 실제 product entry/navigation policy는 아직 없다.
+## Deferred Integration Follow-Up
+- `MultiplayerWebSocketCommandNetworkingAdapter`는 현재 shipped alpha transport path다. websocket command bootstrap 바깥의 final REST split은 deferred follow-up이다.
+- UserDefaults-backed persisted resume 저장/복구와 `hello resume` attach entrypoint는 현재 product sheet route까지 wired 됐다. 더 깊은 app-wide remount만 deferred다.
+- `ContentView` root sheet가 현재 shipped alpha product entry다. sheet 밖의 broader home/tab/menu remount는 deferred scope다.
 - coordinator tab은 `create -> guest hello -> ready -> guest ready -> gameStarted -> live -> disconnect -> resume`까지 실제 room mutation 기준으로 보이며, live bootstrap 구간 또한 transient GameManager를 통해 authoritative state를 렌더링한다.
 - result dismissal policy는 now source-agnostic이다. local debug와 future transport source 모두 `leaveAcknowledged` 또는 `roomClosed` authoritative signal 기준으로만 entry로 닫힌다.
 - `match.end.*`, `match.result.leave.*`, `room.closed.*`, `match.choice.shake.actor_only_waiting` localization key가 UI catalog에 아직 연결되지 않았다. 현재 UI state는 `MultiplayerResultShellState.endReasonMessageKey`, `MultiplayerResultLeavePolicy.messageKey`, `MultiplayerBannerState.messageKey`로 연결 포인트를 유지한다.
 
-## Open Questions
-- [ ] invite room share UX에서 `inviteCode`가 roomId와 다른 별도 문자열인지
-- [ ] reconnect 실패 후 final summary가 없을 때 entry로 바로 보낼지 terminal intermediate screen을 둘지
+## Deferred Questions
+- shipped alpha boundary 안의 open question은 없다.
+- invite/share UX가 Phase 0 이후 human-readable code를 roomId와 분리할지는 bootstrap split과 함께 재검토한다.
+- reconnect 실패 후 final summary가 없는 경우 terminal intermediate screen이 필요한지는 alpha 이후 usage validation에서 다시 판단한다.
 
 ## Change Log
 - 2026-03-08: `entry -> room -> live match -> reconnect overlay -> result` 흐름, payload checklist, reject/error/reconnect UX rules 초안 확장
@@ -507,3 +543,4 @@
 - 2026-03-11: `MultiplayerTransportShellSource`와 `MultiplayerBufferedTransportAdapter`를 추가해 persisted resume가 future source에서 실제 `hello resume` attach로 이어질 code path를 고정했다. Agent 2 transport envelope(`helloAck`, `roomSnapshot`, `gameEvent`, `roomEvent`, `terminalSummary`)는 now shell inbound path로 decode 가능하다.
 - 2026-03-11: `MultiplayerWebSocketCommandNetworkingAdapter`를 추가해 `MP Lab > Transport`가 Agent 2 websocket command server를 실제로 사용하게 했다. create / peer join / ready / gameStarted / matchEnded / resume / leave는 now `room_create`, `room_join`, `room_transport_connect/send/receive`를 타고, result dismissal은 local `memberLeft` 또는 `roomClosed` authoritative signal에만 반응한다. message key rendering은 `gameText(...)` fallback을 통과한다.
 - 2026-03-11: store에 `activateTransportSource()`, `persistedResumeAttachRequest()`, `resumePersistedSessionOverTransport()`, `ingestTransportEnvelope(data/jsonObject)`, `sendAuthoritativeLeaveFromResult()`를 추가해 app shell이 adapter instance 세부사항 없이 production transport 경계를 직접 사용할 수 있게 했다. `room.closed.*`와 `match.result.leave.*`는 `MultiplayerBannerState.messageKey`와 `MultiplayerResultLeavePolicy.messageKey`로 남긴다.
+- 2026-03-14: round17 fixup으로 shipped alpha / deferred-after-alpha wording을 final sign-off 기준으로 잠그고, stale blocker 문구를 현재 product route reality에 맞게 정리했다.
