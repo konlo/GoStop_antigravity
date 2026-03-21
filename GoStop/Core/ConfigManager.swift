@@ -165,9 +165,9 @@ class ConfigManager: ObservableObject {
     static let shared = ConfigManager()
     private static let layoutDebugEnvKey = "GOSTOP_LAYOUT_DEBUG"
     private static var layoutDebugEnabled: Bool {
-        // Default ON for active UI debugging sessions.
-        // Set GOSTOP_LAYOUT_DEBUG=0 to force-disable.
-        ProcessInfo.processInfo.environment[layoutDebugEnvKey] != "0"
+        // Default OFF for normal gameplay and product-route validation.
+        // Set GOSTOP_LAYOUT_DEBUG=1 to explicitly enable layout overlays.
+        ProcessInfo.processInfo.environment[layoutDebugEnvKey] == "1"
     }
     
     // V2 System

@@ -4,7 +4,7 @@
 - **Owner**: Agent 4
 - **Primary Consumers**: Agent 1, Agent 2, Agent 3
 - **Status**: Draft
-- **Last Updated**: 2026-03-14
+- **Last Updated**: 2026-03-21
 - **Related Docs**:
   - `multiplayer_contract.md`
   - `room_protocol.md`
@@ -45,10 +45,18 @@
 ## Harness Skeleton
 
 ### Entrypoint
+- `python3 tests/test_agent/multi_test_scenario.py --list`
+- `python3 tests/test_agent/multi_test_scenario.py --coverage`
+- `python3 tests/test_agent/multi_test_scenario.py --list-suites`
+- `python3 tests/test_agent/multi_test_scenario.py --suite managed-all-runnable --mode fixture`
+- `python3 tests/test_agent/multi_test_scenario.py --suite managed-room-readiness-guard --mode fixture`
+- `python3 tests/test_agent/multi_test_scenario.py --suite managed-end-to-end-always-go --mode fixture`
+- `python3 tests/test_agent/multi_test_scenario.py --suite managed-transport-hardening --mode fixture`
 - `python3 tests/test_agent/multiplayer_runner.py --list`
 - `python3 tests/test_agent/multiplayer_runner.py --all-p0`
 - `python3 tests/test_agent/multiplayer_runner.py --suite smoke --mode fixture`
 - `python3 tests/test_agent/multiplayer_runner.py --suite socket-smoke --mode socket --binary /tmp/gostop_cli_round15_agent4/Build/Products/Debug/GoStopCLI --skip-build`
+- `python3 tests/test_agent/multiplayer_runner.py --suite socket-end-to-end --mode socket --binary /tmp/gostop_cli_local/Build/Products/Debug/GoStopCLI --skip-build`
 - `python3 tests/test_agent/multiplayer_runner.py --suite socket-parity --mode socket --transport compare --skip-build`
 - `python3 tests/test_agent/multiplayer_runner.py --suite final-validation --mode socket --transport compare --skip-build`
 - `python3 tests/test_agent/multiplayer_runner.py --suite socket-duplicate --mode socket --transport compare --skip-build`
@@ -60,6 +68,8 @@
 - `python3 scripts/run_multiplayer_cli_two_player_smoke.py --scenario all --final-validation --skip-build`
 
 ### Files
+- `tests/test_agent/multi_test_scenario.py`
+  - management entrypoint for multiplayer scenario inventory, suite aliases, `test_scenarios.py` coverage tracing via AST parsing, and `MP-016` two-simulator UI pass-through via `--mode ui`
 - `tests/test_agent/multiplayer_runner.py`
   - thin CLI entrypoint for scenario listing and scaffold runs
 - `tests/test_agent/multiplayer/models.py`
@@ -67,25 +77,47 @@
 - `tests/test_agent/multiplayer/artifacts.py`
   - artifact layout writer for `manifest.json`, `timeline/`, `snapshots/`, `replay/`, `anomaly_report.md`
 - `tests/test_agent/multiplayer/scenarios.py`
-  - `MP-001 ~ MP-008`, `MP-013`, `MP-014` registry와 suite mapping
+  - `MP-001 ~ MP-008`, `MP-013`, `MP-014`, `MP-015`, `MP-016` registry와 suite mapping
 - `tests/test_agent/multiplayer/skeletons.py`
-  - `MP-001 ~ MP-008`, `MP-013`, `MP-014` actual Python step skeleton registry
+  - `MP-001 ~ MP-008`, `MP-013`, `MP-014`, `MP-015`, `MP-016` actual Python step skeleton registry
 - `tests/test_agent/multiplayer/runner.py`
   - scaffold / fixture / socket runner that materializes artifacts without touching single-player harness
 - `tests/test_agent/multiplayer/socket_transport.py`
-  - actual GoStopCLI `--room-transport-server` TCP fallback + `--room-transport-websocket-server` websocket binding for socket mode, with live parity smoke for `MP-001`, `MP-002`, `MP-004`, `MP-007`, `MP-008`, `MP-013`, `MP-014`
+  - actual GoStopCLI `--room-transport-server` TCP fallback + `--room-transport-websocket-server` websocket binding for socket mode, with live parity smoke for `MP-001`, `MP-002`, `MP-004`, `MP-007`, `MP-008`, `MP-013`, `MP-014` and seeded end-to-end always-go gameplay coverage for `MP-016`
   - `room_bootstrap_create`, `room_bootstrap_lookup_invite`, `room_bootstrap_join`, `room_bootstrap_prepare_game_start`, `room_gap_recovery_shape`, `triggerGapRecovery` smoke/preflight validation for bootstrap split and gap follow-up
 - `tests/test_agent/multiplayer/fixtures.py`
-  - synthetic room/game transcript fixtures for `MP-001 ~ MP-008`, `MP-013`, `MP-014`
+  - synthetic room/game transcript fixtures for `MP-001 ~ MP-008`, `MP-013`, `MP-014`, `MP-015`, `MP-016`
 - `tests/test_agent/multiplayer/validators.py`
-  - fixture validation logic for runnable P0 checks
+  - fixture validation logic for runnable and targeted regression checks
+- `tests/test_agent/multiplayer_ui_auto_play.py`
+  - two-simulator SwiftUI autoroute harness that installs/launches host+guest, reads invite code from the multiplayer simulator bridge, auto-drives authoritative gameplay for `MP-016` (always-go) and `MP-017` (short captured-zone probe), and stores artifacts under scenario-specific multiplayer UI roots
 - `scripts/run_multiplayer_cli_two_player_smoke.py`
   - GoStopCLI build/run smoke with cached binary reuse, per-scenario `summary.json`, `summary.md`, `transcript.ndjson`, explicit `room_bootstrap_*` facade probe + `room_record_game_started -> metadata.gameStartedBootstrapPlan.fetchAction` paired bootstrap assert, and live `triggerGapRecovery -> gapRecoveryHint -> stateSnapshot(reason=gapDetected)` regression
 
 ### Separation Rule
+- `tests/test_agent/multi_test_scenario.py` may read `tests/test_agent/test_scenarios.py` only for coverage inventory and migration planning; it must not execute or import the single-player scenario registry as multiplayer runtime state
 - multiplayer harness는 `tests/test_agent/main.py`, `tests/test_agent/test_scenarios.py`와 분리된 별도 entrypoint를 사용한다
 - single-player scenario registry와 shared global state를 재사용하지 않는다
 - multiplayer artifact root 기본값은 `test_artifacts/multiplayer/`다
+
+### Two-Simulator UI Harness
+- command
+  - `python3 tests/test_agent/multi_test_scenario.py --suite managed-end-to-end-always-go --mode ui --install-app --app-path /tmp/gostop_ios_build/Build/Products/Debug-iphonesimulator/GoStop.app --fast-animation --capture-final-screenshot`
+  - `python3 tests/test_agent/multi_test_scenario.py --suite managed-capture-visibility-short --mode ui --install-app --app-path /tmp/gostop_ios_build/Build/Products/Debug-iphonesimulator/GoStop.app --fast-animation --capture-final-screenshot`
+  - `python3 tests/test_agent/multiplayer_ui_auto_play.py --scenario-id MP-016 --install-app --app-path /tmp/gostop_ios_build/Build/Products/Debug-iphonesimulator/GoStop.app --fast-animation --capture-final-screenshot`
+  - `python3 tests/test_agent/multiplayer_ui_auto_play.py --scenario-id MP-017 --install-app --app-path /tmp/gostop_ios_build/Build/Products/Debug-iphonesimulator/GoStop.app --fast-animation --capture-final-screenshot`
+- prerequisites
+  - booted host simulator `988B3B75-DD16-49AE-B5D7-B046B19A357C`
+  - booted guest simulator `01DE5F5D-C372-4BE2-8CAB-3FF25E5AFBFD`
+  - websocket room transport server on `ws://127.0.0.1:9092`
+- latest verified artifact
+  - `test_artifacts/multiplayer/managed/managed-end-to-end-always-go/ui/`
+  - `test_artifacts/multiplayer/managed/managed-capture-visibility-short/ui/`
+- UI probe artifacts
+  - `summary.md`, `summary.json`, `timeline.jsonl`
+  - `action_log.jsonl`: per-action before/after screen summary + verification result
+  - `screen_checks.json`: structured pass/fail list for screen parity assertions
+  - `action_screens/`: host/guest screenshots captured after each verified gameplay action
 
 ### Code-Level Skeletons
 - `MP-001`: room create/join/ready auto-start skeleton
@@ -98,6 +130,9 @@
 - `MP-008`: `stateVersion` mismatch / resync skeleton
 - `MP-013`: shake actor-only hidden-info redaction regression
 - `MP-014`: stale/replaced heartbeat reject regression
+- `MP-015`: premature ready guard / autoroute defer regression
+- `MP-016`: seeded end-to-end always-go gameplay regression
+- `MP-017`: two-turn-per-seat captured-zone visibility regression
 
 ## Scenario Matrix
 
@@ -117,6 +152,9 @@
 | MP-012 | server reject 후 client UX banner 확인 | P1 | Planned | UI error mapping | Draft |
 | MP-013 | shake choice hidden-info leak guard | P1 | Fixture-backed regression + socket projection parity smoke | privacy / viewer-scoped choice payload | Fixture PASS / TCP=websocket PASS |
 | MP-014 | replaced or expired session heartbeat reject | P1 | Fixture-backed regression + CLI smoke + socket parity smoke + websocket debug-connect code probe | session hardening / newest-wins policy | Fixture PASS / CLI PASS / TCP=websocket PASS |
+| MP-015 | waitingForPlayers에서 premature ready가 transport disconnect를 만들지 않음 | P1 | Fixture-backed regression + simulator UI smoke | room readiness guard + product autoroute defer | Fixture PASS / UI PASS |
+| MP-016 | seeded multiplayer full game을 끝까지 진행하며 go-stop마다 항상 go를 선택 | P1 | Fixture-backed regression + socket live end-to-end + two-simulator UI autoroute smoke | full gameplay progression + always-go policy + roomClosed completion | Fixture PASS / Socket PASS / UI PASS |
+| MP-017 | host/guest 각 2턴만 진행하면서 먹은 카드가 다음 턴이 아니라 같은 턴 handoff 전에 획득영역에 보이는지 검증 | P1 | Fixture-backed regression + socket authoritative probe + two-simulator UI authoritative probe | captured-zone projection parity + same-turn visibility before handoff | Fixture PASS / Socket PASS / UI PASS |
 
 ## Scenario Template
 

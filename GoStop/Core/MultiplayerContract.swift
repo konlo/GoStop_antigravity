@@ -523,6 +523,8 @@ struct MultiplayerMatchSnapshot: Codable {
     let scoreboard: MultiplayerScoreboard
     let timers: MultiplayerTimers
     let resume: MultiplayerResumeState
+    let lastActionEffect: String?
+    let lastChat: MultiplayerChatPresence?
 
     init(
         traceId: String?,
@@ -544,7 +546,9 @@ struct MultiplayerMatchSnapshot: Codable {
         pendingChoice: MultiplayerChoice?,
         scoreboard: MultiplayerScoreboard,
         timers: MultiplayerTimers,
-        resume: MultiplayerResumeState
+        resume: MultiplayerResumeState,
+        lastActionEffect: String? = nil,
+        lastChat: MultiplayerChatPresence? = nil
     ) {
         self.traceId = traceId
         self.roomId = roomId
@@ -566,6 +570,8 @@ struct MultiplayerMatchSnapshot: Codable {
         self.scoreboard = scoreboard
         self.timers = timers
         self.resume = resume
+        self.lastActionEffect = lastActionEffect
+        self.lastChat = lastChat
     }
 }
 
@@ -687,6 +693,13 @@ struct MultiplayerTimers: Codable {
 struct MultiplayerResumeState: Codable {
     let isResumable: Bool
     let graceDeadlineAt: String?
+}
+
+struct MultiplayerChatPresence: Codable {
+    let playerId: String
+    let emojiId: String
+    let text: String?
+    let sentAt: String?
 }
 
 struct MultiplayerAuthorityReplayManifest: Codable {

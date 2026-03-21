@@ -1,6 +1,7 @@
 import logging
 import os
 import time
+from typing import Optional
 from main import TestAgent
 
 logger = logging.getLogger("TestAgent.Scenarios")
@@ -585,6 +586,168 @@ def _assert_player_captured_cards_visible(state: dict, player_index: int, expect
                 f"Captured card M{month} {ctype} ({card.get('id')}) is still hidden in target UI set. "
                 f"hiddenInTargetCardIds={sorted(hidden_target_ids)}"
             )
+
+
+def _ux_event_card_ids(event: dict) -> set[str]:
+    data = event.get("data", {}) or {}
+    card_ids = []
+    if data.get("cardId"):
+        card_ids.append(data["cardId"])
+    if data.get("cardIds"):
+        card_ids.extend(card_id for card_id in data["cardIds"].split(",") if card_id)
+    return set(card_ids)
+
+
+def _find_ux_event_index(state: dict, event_type: str, matcher) -> Optional[int]:
+    for idx, event in enumerate(state.get("uxEventLogs", []) or []):
+        if event.get("type") != event_type:
+            continue
+        if matcher(event):
+            return idx
+    return None
+
+
+def scenario_bugfix_play_capture_animates_before_draw_reveal(agent: TestAgent):
+    """
+    Regression scenario for late-feeling capture UX:
+    - A normal play-phase capture must start table->captured animation before deck->table draw begins.
+    """
+    logger.info("Running play-phase capture sequencing regression scenario...")
+
+    agent.send_user_action("start_game")
+    agent.set_condition({
+        "currentTurnIndex": 0,
+        "mock_gameState": "playing",
+        "mock_hand": [
+            {"month": 1, "type": "bright"},
+            {"month": 6, "type": "junk"}
+        ],
+        "mock_table": [
+            {"month": 1, "type": "junk"},
+            {"month": 8, "type": "junk"},
+            {"month": 10, "type": "ribbon"}
+        ],
+        "mock_deck": [
+            {"month": 2, "type": "junk"}
+        ],
+        "mock_captured_cards": [],
+        "mock_opponent_captured_cards": [],
+        "player0_data": {"isComputer": False},
+        "player1_data": {"isComputer": False, "hand": []}
+    })
+
+    wait_for_quiescent_state(agent)
+    agent.send_user_action("play_card", {"month": 1, "type": "bright"})
+    state = wait_for_quiescent_state(agent)
+
+    _assert_player_captured_cards_visible(state, 0, [(1, "bright")])
+
+    player = state.get("players", [{}])[0]
+    bright_card = next(
+        (card for card in player.get("capturedCards", []) if card.get("month") == 1 and card.get("type") == "bright"),
+        None
+    )
+    assert bright_card and bright_card.get("id"), f"Expected captured M1 bright in state. player={player}"
+
+    capture_move_idx = _find_ux_event_index(
+        state,
+        "moveStart",
+        lambda event: (
+            event.get("data", {}).get("source") == "table" and
+            event.get("data", {}).get("target") == "captured" and
+            bright_card["id"] in _ux_event_card_ids(event)
+        )
+    )
+    deck_move_idx = _find_ux_event_index(
+        state,
+        "moveStart",
+        lambda event: (
+            event.get("data", {}).get("source") == "deck" and
+            event.get("data", {}).get("target") == "table"
+        )
+    )
+
+    assert capture_move_idx is not None, f"Missing play capture moveStart in uxEventLogs. uxEventLogs={state.get('uxEventLogs')}"
+    assert deck_move_idx is not None, f"Missing deck draw moveStart in uxEventLogs. uxEventLogs={state.get('uxEventLogs')}"
+    assert capture_move_idx < deck_move_idx, (
+        "Play-phase capture should animate into captured area before draw reveal starts. "
+        f"capture_move_idx={capture_move_idx}, deck_move_idx={deck_move_idx}, uxEventLogs={state.get('uxEventLogs')}"
+    )
+
+    logger.info("Play-phase capture sequencing regression scenario passed!")
+
+
+def scenario_bugfix_play_choice_capture_animates_before_draw_reveal(agent: TestAgent):
+    """
+    Regression scenario for play-phase choosingCapture path:
+    - After resolving the table choice, table->captured animation must begin before deck->table draw starts.
+    """
+    logger.info("Running play-choice capture sequencing regression scenario...")
+
+    agent.send_user_action("start_game")
+    agent.set_condition({
+        "currentTurnIndex": 0,
+        "mock_gameState": "playing",
+        "mock_hand": [
+            {"month": 5, "type": "animal"},
+            {"month": 7, "type": "junk"}
+        ],
+        "mock_table": [
+            {"month": 5, "type": "junk"},
+            {"month": 5, "type": "ribbon"},
+            {"month": 9, "type": "junk"}
+        ],
+        "mock_deck": [
+            {"month": 2, "type": "junk"}
+        ],
+        "mock_captured_cards": [],
+        "mock_opponent_captured_cards": [],
+        "player0_data": {"isComputer": False},
+        "player1_data": {"isComputer": False, "hand": []}
+    })
+
+    wait_for_quiescent_state(agent)
+    agent.send_user_action("play_card", {"month": 5, "type": "animal"})
+
+    choice_state = wait_for_game_state(agent, "choosingCapture")
+    pending_played = choice_state.get("pendingCapturePlayedCard") or {}
+    options = choice_state.get("pendingCaptureOptions", []) or []
+    selected_option = next((card for card in options if card.get("type") == "ribbon"), None) or (options[0] if options else None)
+    assert pending_played.get("id"), f"Missing pending play-phase trigger card. state={choice_state}"
+    assert selected_option and selected_option.get("id"), f"Missing capture choice option. state={choice_state}"
+
+    agent.send_user_action("respond_to_capture", {"id": selected_option["id"]})
+    state = wait_for_quiescent_state(agent)
+
+    _assert_player_captured_cards_visible(state, 0, [(5, "animal"), (5, selected_option["type"])])
+
+    played_card_id = pending_played["id"]
+    capture_move_idx = _find_ux_event_index(
+        state,
+        "moveStart",
+        lambda event: (
+            event.get("data", {}).get("source") == "table" and
+            event.get("data", {}).get("target") == "captured" and
+            played_card_id in _ux_event_card_ids(event)
+        )
+    )
+    deck_move_idx = _find_ux_event_index(
+        state,
+        "moveStart",
+        lambda event: (
+            event.get("data", {}).get("source") == "deck" and
+            event.get("data", {}).get("target") == "table"
+        )
+    )
+
+    assert capture_move_idx is not None, f"Missing play-choice capture moveStart in uxEventLogs. uxEventLogs={state.get('uxEventLogs')}"
+    assert deck_move_idx is not None, f"Missing deck draw moveStart in uxEventLogs. uxEventLogs={state.get('uxEventLogs')}"
+    assert capture_move_idx < deck_move_idx, (
+        "Chosen play-phase capture should animate into captured area before draw reveal starts. "
+        f"capture_move_idx={capture_move_idx}, deck_move_idx={deck_move_idx}, uxEventLogs={state.get('uxEventLogs')}"
+    )
+
+    logger.info("Play-choice capture sequencing regression scenario passed!")
 
 
 def scenario_verify_captured_brights_visible_after_consecutive_captures(agent: TestAgent):
@@ -5348,6 +5511,8 @@ def main():
         scenario_verify_opponent_four_card_capture,
         scenario_verify_acquisition_order,
         scenario_verify_chrysanthemum_choice,
+        scenario_bugfix_play_capture_animates_before_draw_reveal,
+        scenario_bugfix_play_choice_capture_animates_before_draw_reveal,
         scenario_verify_captured_brights_visible_after_consecutive_captures,
         scenario_verify_draw_choice_trigger_bright_visible_after_capture,
         scenario_verify_opponent_single_month6_pi_capture,

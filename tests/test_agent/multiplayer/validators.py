@@ -162,6 +162,61 @@ def _validate_mp_014(fixture: dict) -> None:
     assert latest["heartbeatOwnerStable"] is True, "Stale heartbeat must not roll back session ownership."
 
 
+def _validate_mp_015(fixture: dict) -> None:
+    commands = list(fixture["commands"])
+    guarded_ready = next(command for command in commands if command.get("commandName") == "setReady")
+    assert guarded_ready["dispatch"] == "localGuard", "Premature ready should be intercepted locally."
+    assert guarded_ready["guardResult"] == "skipped", "Premature ready should be skipped, not sent."
+    assert guarded_ready["guardReason"] == "waitingForPlayers", "Guard reason should reflect the solo-room state."
+
+    frames = _pass_frames(fixture)
+    snapshots = [frame for frame in frames if frame.get("transportType") == "roomSnapshot"]
+    assert [frame["roomState"] for frame in snapshots] == ["waitingForPlayers", "waitingForReady"], "Room should advance only after guest join."
+    assert not any(frame.get("eventName") == "playerDisconnected" for frame in frames), "Premature ready must not disconnect the host."
+    assert not any(frame.get("errorCode") == "invalidRoomState" for frame in frames), "Premature ready must not hit transport invalidRoomState."
+
+    latest = _pass_snapshots(fixture)["latest_server"]["payload"]
+    assert latest["roomState"] == "waitingForReady", "Authority snapshot should stop at waitingForReady."
+    assert latest["localReady"] is False, "Local member should remain unready until the guarded state clears."
+    assert latest["playerDisconnectedObserved"] is False, "Passive disconnect churn must remain absent."
+
+
+def _validate_mp_016(fixture: dict) -> None:
+    commands = list(fixture["commands"])
+    go_stop_commands = [command for command in commands if command.get("choiceKind") == "goStop"]
+    assert go_stop_commands, "The always-go fixture must exercise at least one goStop choice."
+    assert all(command.get("optionCode") == "go" for command in go_stop_commands), "Every goStop submission must choose go."
+
+    frames = _pass_frames(fixture)
+    assert any(frame.get("engineEventName") == "choiceRequested" and frame.get("choiceKind") == "goStop" for frame in frames), "goStop choiceRequested should be present."
+    assert any(frame.get("transportType") == "terminalSummary" for frame in frames), "terminalSummary must be emitted."
+    assert any(frame.get("eventName") == "roomClosed" for frame in frames), "roomClosed must complete the leave lifecycle."
+
+    latest = _pass_snapshots(fixture)["latest_server"]["payload"]
+    assert latest["goStopChoiceCount"] == len(go_stop_commands), "Probe goStop count should match the command transcript."
+    assert latest["goStopOptionCodes"] == ["go", "go"], "Probe should record only go submissions."
+    assert latest["roomClosedSeen"] is True, "Room close completion must be captured."
+    assert latest["closedRoomState"] == "closed", "Closed room snapshot should remain authoritative."
+
+
+def _validate_mp_017(fixture: dict) -> None:
+    commands = list(fixture["commands"])
+    play_commands = [command for command in commands if command.get("commandName") == "playCard"]
+    assert len(play_commands) == 4, "The short multiplayer probe should drive exactly four playCard actions."
+    assert [command.get("playerId") for command in play_commands] == ["player_a", "player_b", "player_a", "player_b"], "The short probe should alternate two turns per player."
+
+    frames = _pass_frames(fixture)
+    patched = next(frame for frame in frames if frame.get("engineEventName") == "statePatched")
+    turn_changed = next(frame for frame in frames if frame.get("engineEventName") == "turnChanged")
+    assert patched.get("capturedDelta") == 2, "Fixture should include an authoritative capture delta."
+    assert patched.get("stateVersion") == turn_changed.get("stateVersion"), "Capture projection should settle before the same turn handoff version."
+
+    latest = _pass_snapshots(fixture)["latest_server"]["payload"]
+    assert latest["captureProbeSuccessCount"] >= 1, "The short probe must record at least one successful capture parity check."
+    assert latest["captureProbeFailures"] == [], "The short probe must not record captured-zone lag failures."
+    assert latest["probes"][0]["renderedCaptureStateVersion"] == latest["probes"][0]["turnPassedStateVersion"], "Rendered capture visibility should land by the same turn handoff version."
+
+
 _PASS_VALIDATORS = {
     "MP-001": _validate_mp_001,
     "MP-002": _validate_mp_002,
@@ -173,4 +228,7 @@ _PASS_VALIDATORS = {
     "MP-008": _validate_mp_008,
     "MP-013": _validate_mp_013,
     "MP-014": _validate_mp_014,
+    "MP-015": _validate_mp_015,
+    "MP-016": _validate_mp_016,
+    "MP-017": _validate_mp_017,
 }

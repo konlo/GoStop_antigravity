@@ -164,6 +164,7 @@ struct RoomAuthorityRelay {
     var fetchGameStartedBootstrap: (RoomGameStartedBootstrapRequest) -> [String: Any]
     var fetchTerminalSummary: (RoomTerminalSummaryRelayRequest) -> [String: Any]
     var executeGameplayCommand: (RoomAuthorityGameplayExecutionRequest) throws -> RoomAuthorityGameplayExecutionResult
+    var startGameIfNeeded: (() -> Void)?
 }
 
 private enum RoomCLIAdapterError: Error {
@@ -221,7 +222,8 @@ final class RoomCoordinatorCLIAdapter {
                     )
                 )
             case "room_join", "room_bootstrap_join":
-                let payload = try decode(JoinRoomRequest.self, from: request.data)
+                var payload = try decode(JoinRoomRequest.self, from: request.data)
+                payload.roomId = try resolveRoomIdentifier(from: payload.roomId)
                 let mutation = try coordinator.joinRoom(payload)
                 return success(
                     action: request.action,
@@ -431,9 +433,9 @@ final class RoomCoordinatorCLIAdapter {
         _ payload: RoomBootstrapLookupCLIRequest,
         action: String
     ) throws -> [String: Any] {
-        // Phase 0 ships invite lookup as part of the bootstrap facade.
-        guard let snapshot = coordinator.snapshot(for: payload.inviteCode) else {
-            throw RoomCoordinatorError.roomNotFound(roomId: payload.inviteCode)
+        let resolvedRoomID = try resolveRoomIdentifier(from: payload.inviteCode)
+        guard let snapshot = coordinator.snapshot(for: resolvedRoomID) else {
+            throw RoomCoordinatorError.roomNotFound(roomId: resolvedRoomID)
         }
 
         let room = snapshot.room
@@ -785,6 +787,7 @@ final class RoomCoordinatorCLIAdapter {
                     gameId: payload.gameId ?? "transport_game_\(client.roomId)"
                 )
             )
+            authorityRelay.startGameIfNeeded?()
             broadcastRoomEvents(mutation.events, in: client.roomId)
             if let bootstrapPlan = mutation.metadata.gameStartedBootstrapPlan {
                 try enqueueBootstrapEnvelopes(
@@ -3146,7 +3149,43 @@ final class RoomCoordinatorCLIAdapter {
         guard room.joinPolicy == .inviteCode else {
             return nil
         }
-        return room.roomId
+        return inviteCodeValue(from: room.roomId)
+    }
+
+    private func resolveRoomIdentifier(from rawValue: String) throws -> String {
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        if coordinator.snapshot(for: trimmed) != nil {
+            return trimmed
+        }
+
+        guard let inviteCode = normalizedInviteCodeValue(trimmed) else {
+            throw RoomCoordinatorError.roomNotFound(roomId: rawValue)
+        }
+
+        let candidateRoomID = "room_\(inviteCode)"
+        if coordinator.snapshot(for: candidateRoomID) != nil {
+            return candidateRoomID
+        }
+
+        throw RoomCoordinatorError.roomNotFound(roomId: rawValue)
+    }
+
+    private func inviteCodeValue(from roomID: String) -> String? {
+        let components = roomID.split(separator: "_", omittingEmptySubsequences: true)
+        guard let suffix = components.last else { return nil }
+        let digits = String(suffix).filter(\.isNumber)
+        guard !digits.isEmpty else { return nil }
+        return digits
+    }
+
+    private func normalizedInviteCodeValue(_ rawValue: String?) -> String? {
+        guard let rawValue else { return nil }
+        let digits = rawValue.filter(\.isNumber)
+        guard !digits.isEmpty else { return nil }
+        if digits.count >= 4 {
+            return digits
+        }
+        return String(repeating: "0", count: 4 - digits.count) + digits
     }
 
     private func serializeMember(_ member: RoomMember) -> [String: Any] {

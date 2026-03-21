@@ -605,6 +605,12 @@ class MultiplayerScenarioRunner:
         if isinstance(socket_result.get("staleHeartbeatCodeProbe"), dict):
             store.write_json("stale_heartbeat_code_probe.json", socket_result["staleHeartbeatCodeProbe"])
 
+        if isinstance(socket_result.get("alwaysGoProbe"), dict):
+            store.write_json("always_go_probe.json", socket_result["alwaysGoProbe"])
+
+        if isinstance(socket_result.get("captureVisibilityProbe"), dict):
+            store.write_json("capture_visibility_probe.json", socket_result["captureVisibilityProbe"])
+
         if isinstance(socket_result.get("gapRecoveryShape"), dict):
             store.write_json("replay/gap_recovery_shape.json", socket_result["gapRecoveryShape"])
 

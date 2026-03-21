@@ -443,6 +443,135 @@ def _review_regression_scenarios() -> list[ScenarioDefinition]:
                 "stale_heartbeat_code_probe.json stores the raw websocket command error envelopes alongside the CLI ingress baseline codes so drift is visible immediately.",
             ],
         ),
+        ScenarioDefinition(
+            scenario_id="MP-015",
+            name="Ready stays local until the room reaches waitingForReady",
+            priority="P1",
+            automation="Fixture-backed regression",
+            focus="premature ready guard + product autoroute defer",
+            description="Keep the host in waitingForPlayers until a second member joins, and verify local UI/autoroute does not send setReady early or trigger a passive disconnect.",
+            steps=[
+                "Host creates a room and lands on the room route with only one connected member.",
+                "A local ready attempt occurs while the authoritative room is still waitingForPlayers.",
+                "The shell keeps the ready action local and waits for a second member before enabling authoritative ready dispatch.",
+                "Once the guest joins, the room advances to waitingForReady without any playerDisconnected side effect.",
+            ],
+            assertions=[
+                "No authoritative setReady command is sent while the room is waitingForPlayers.",
+                "No invalidRoomState error or playerDisconnected event is emitted from the premature local ready attempt.",
+                "The room reaches waitingForReady with two connected members and the local member still not ready.",
+            ],
+            observability=[
+                "local guard result for the premature ready attempt",
+                "roomSnapshot roomState timeline before and after memberJoined",
+                "absence of invalidRoomState and playerDisconnected around the deferred ready window",
+            ],
+            required_events=[
+                "roomSnapshot(waitingForPlayers)",
+                "roomEvent:memberJoined",
+                "roomSnapshot(waitingForReady)",
+            ],
+            required_artifacts=[
+                "manifest.json",
+                "timeline/commands.ndjson",
+                "timeline/events.ndjson",
+                "snapshots/latest_server.json",
+            ],
+            notes=[
+                "This regression specifically protects the product autoroute path from sending ready before the second seat exists.",
+                "The local shell guard should fail fast before websocket transport invalidation can cascade into passive disconnect.",
+            ],
+        ),
+        ScenarioDefinition(
+            scenario_id="MP-016",
+            name="Seeded multiplayer match finishes end-to-end while every go-stop choice selects go",
+            priority="P1",
+            automation="Fixture-backed regression + socket live end-to-end",
+            focus="full-match gameplay progression + always-go decision policy + terminal close",
+            description=(
+                "Bootstrap a real multiplayer room, drive legal gameplay actions from both seats, "
+                "choose go for every go-stop prompt, and verify the match still reaches terminalSummary "
+                "plus final roomClosed."
+            ),
+            steps=[
+                "Seed the authoritative board and bootstrap a two-player room into live gameplay.",
+                "On each turn, send a legal playCard from the acting player's visible hand.",
+                "When choicePending appears, resolve capture with the first legal table option, decline shake, choose a deterministic chrysanthemum role, and always submit go for go-stop.",
+                "Continue until roundEnded/matchEnded/terminalSummary is observed, then send leaveRoom from both clients and wait for roomClosed.",
+            ],
+            assertions=[
+                "The live match reaches terminalSummary without outOfTurn, invalidPhase, invalidCard, or invalidChoice rejects.",
+                "Every chooseGoStop submission uses optionCode=go; stop is never sent.",
+                "At least one go-stop prompt is encountered on the seeded path so the always-go policy is exercised.",
+                "Final leaveRoom lifecycle closes the room with roomClosed and roomState=closed.",
+            ],
+            observability=[
+                "selected deterministic seed and per-seed attempt summaries",
+                "playCard / submitChoice action timeline with authoritative stateVersion",
+                "go-stop optionCode history and terminalSummary matchEnded payload",
+                "roomClosed labels and closed room snapshot after both clients leave",
+            ],
+            required_events=[
+                "gameEvent:actionAccepted",
+                "gameEvent:choiceRequested",
+                "terminalSummary",
+                "roomEvent:roomClosed",
+            ],
+            required_artifacts=[
+                "manifest.json",
+                "timeline/commands.ndjson",
+                "timeline/events.ndjson",
+                "snapshots/latest_server.json",
+                "always_go_probe.json",
+            ],
+            notes=[
+                "The live implementation may iterate a small deterministic seed set until it finds a match that surfaces at least one go-stop prompt; the chosen seed is recorded in always_go_probe.json.",
+                "Capture and chrysanthemum choices stay deterministic by selecting the first authoritative option, while shake declines to keep the run reproducible.",
+            ],
+        ),
+        ScenarioDefinition(
+            scenario_id="MP-017",
+            name="Short multiplayer UI probe keeps captured cards visible before the turn hands off",
+            priority="P1",
+            automation="Fixture-backed regression + simulator UI authoritative probe",
+            focus="captured-zone projection parity during the first two turns per seat",
+            description=(
+                "Run a live two-player room for exactly two turns per player, compare simulator-rendered captured zones "
+                "against authoritative room projections, and fail if a captured card only appears after the next turn begins."
+            ),
+            steps=[
+                "Create and join a real multiplayer invite room, then auto-ready into live gameplay.",
+                "Drive at most two legal playCard turns from the host and two from the guest, resolving any pending capture or role choices deterministically.",
+                "After each turn, fetch authoritative room projections for both seats and compare captured totals against the simulator-rendered captured zones.",
+                "Fail immediately if authoritative captured cards exist for the acting player once the turn hands off but either simulator still renders the old captured total.",
+            ],
+            assertions=[
+                "The scenario completes exactly two playCard turns per seat without invalidPhase, invalidCard, outOfTurn, or invalidChoice rejects.",
+                "At least one authoritative capture occurs during the four-turn probe so captured-zone parity is exercised.",
+                "Whenever authoritative captured totals increase for the acting player, both simulator UIs show the new captured total before the turn hands off to the opponent.",
+            ],
+            observability=[
+                "host/guest simulator live snapshots with rendered captured totals",
+                "authoritative room_projection_preview snapshots for both room players",
+                "per-turn probe rows recording baseline totals, authoritative capture version, and rendered visibility version",
+            ],
+            required_events=[
+                "gameEvent:actionAccepted",
+                "gameEvent:statePatched",
+                "gameEvent:turnChanged",
+            ],
+            required_artifacts=[
+                "manifest.json",
+                "timeline/commands.ndjson",
+                "timeline/events.ndjson",
+                "snapshots/latest_server.json",
+                "capture_visibility_probe.json",
+            ],
+            notes=[
+                "The UI probe may retry a small number of fresh rooms until at least one capture occurs within the first four turns.",
+                "This regression specifically guards the multiplayer shell path where statePatched previously lagged behind turnChanged and full gameSnapshot refresh.",
+            ],
+        ),
     ]
 
 
@@ -454,6 +583,8 @@ SMOKE_SCENARIOS = [SCENARIO_REGISTRY[scenario_id] for scenario_id in ("MP-001", 
 SOCKET_SMOKE_SCENARIOS = [
     SCENARIO_REGISTRY[scenario_id] for scenario_id in ("MP-001", "MP-002", "MP-007", "MP-008", "MP-014")
 ]
+SOCKET_END_TO_END_SCENARIOS = [SCENARIO_REGISTRY["MP-016"]]
+SOCKET_CAPTURE_VISIBILITY_SCENARIOS = [SCENARIO_REGISTRY["MP-017"]]
 SOCKET_PARITY_SCENARIOS = [
     SCENARIO_REGISTRY[scenario_id]
     for scenario_id in ("MP-001", "MP-002", "MP-004", "MP-007", "MP-008", "MP-013", "MP-014")
@@ -461,10 +592,12 @@ SOCKET_PARITY_SCENARIOS = [
 FINAL_VALIDATION_SCENARIOS = list(SOCKET_PARITY_SCENARIOS)
 SOCKET_DUPLICATE_SCENARIOS = [SCENARIO_REGISTRY["MP-004"]]
 SOCKET_REVIEW_FIXUP_SCENARIOS = [SCENARIO_REGISTRY[scenario_id] for scenario_id in ("MP-013", "MP-014")]
-REVIEW_FIXUP_SCENARIOS = [SCENARIO_REGISTRY[scenario_id] for scenario_id in ("MP-013", "MP-014")]
+REVIEW_FIXUP_SCENARIOS = [SCENARIO_REGISTRY[scenario_id] for scenario_id in ("MP-013", "MP-014", "MP-015", "MP-016", "MP-017")]
 SCENARIO_SUITES = {
     "smoke": SMOKE_SCENARIOS,
     "socket-smoke": SOCKET_SMOKE_SCENARIOS,
+    "socket-end-to-end": SOCKET_END_TO_END_SCENARIOS,
+    "socket-capture-visibility": SOCKET_CAPTURE_VISIBILITY_SCENARIOS,
     "socket-parity": SOCKET_PARITY_SCENARIOS,
     "socket-duplicate": SOCKET_DUPLICATE_SCENARIOS,
     "socket-review-fixups": SOCKET_REVIEW_FIXUP_SCENARIOS,

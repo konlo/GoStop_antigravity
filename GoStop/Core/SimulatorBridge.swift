@@ -116,12 +116,6 @@ class SimulatorBridge {
                 }
             }
             
-            if TestControlSupport.externallyControlledActions.contains(action) {
-                DispatchQueue.main.async {
-                    self.gameManager.externalControlMode = true
-                }
-            }
-            
             switch action {
             case "get_state":
                 enqueueStateResponse(connection: connection)

@@ -28,7 +28,7 @@ enum CardRole: String, Codable {
 
 /// Represents a single Hwatu card
 struct Card: Identifiable, Equatable, CustomStringConvertible, Codable {
-    let id: String
+    var id: String
     let month: Month
     let type: CardType
     let imageIndex: Int

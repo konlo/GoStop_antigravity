@@ -1,7 +1,7 @@
 import Foundation
 
 class Player: ObservableObject, Identifiable, Codable {
-    let id: UUID
+    var id: UUID
     let name: String
     @Published var hand: [Card] = []
     @Published var capturedCards: [Card] = []
@@ -25,9 +25,10 @@ class Player: ObservableObject, Identifiable, Codable {
     @Published var bombMungddaCount: Int = 0
     @Published var isComputer: Bool = false
     @Published var dummyCardCount: Int = 0
+    @Published var seatIndex: Int = 0
     
     enum CodingKeys: String, CodingKey {
-        case id, name, hand, capturedCards, hasCapturedThisRound, score, money, goCount, lastGoScore, shakeCount, shakenMonths, bombCount, sweepCount, ttadakCount, jjokCount, seolsaCount, awardedFirstTurnTtadakBonus, awardedFirstTurnSeolsaBonus, seolsaEatCount, isPiMungbak, mungddaCount, bombMungddaCount, isComputer, dummyCardCount
+        case id, name, hand, capturedCards, hasCapturedThisRound, score, money, goCount, lastGoScore, shakeCount, shakenMonths, bombCount, sweepCount, ttadakCount, jjokCount, seolsaCount, awardedFirstTurnTtadakBonus, awardedFirstTurnSeolsaBonus, seolsaEatCount, isPiMungbak, mungddaCount, bombMungddaCount, isComputer, dummyCardCount, seatIndex
     }
     
     required init(from decoder: Decoder) throws {
@@ -59,6 +60,7 @@ class Player: ObservableObject, Identifiable, Codable {
         bombMungddaCount = try container.decode(Int.self, forKey: .bombMungddaCount)
         isComputer = try container.decode(Bool.self, forKey: .isComputer)
         dummyCardCount = try container.decodeIfPresent(Int.self, forKey: .dummyCardCount) ?? 0
+        seatIndex = try container.decodeIfPresent(Int.self, forKey: .seatIndex) ?? 0
     }
     
     func encode(to encoder: Encoder) throws {
@@ -87,6 +89,7 @@ class Player: ObservableObject, Identifiable, Codable {
         try container.encode(bombMungddaCount, forKey: .bombMungddaCount)
         try container.encode(isComputer, forKey: .isComputer)
         try container.encode(dummyCardCount, forKey: .dummyCardCount)
+        try container.encode(seatIndex, forKey: .seatIndex)
     }
 
     init(id: UUID = UUID(), name: String, money: Int = 10000) {
@@ -117,6 +120,7 @@ class Player: ObservableObject, Identifiable, Codable {
         bombMungddaCount = 0
         isComputer = false // reset will be called by startGame, which sets computer state again
         dummyCardCount = 0
+        seatIndex = 0
     }
     
     func receive(cards: [Card]) {

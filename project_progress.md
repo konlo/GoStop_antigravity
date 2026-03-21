@@ -1,17 +1,17 @@
 # Project Progress Log
 
 ## Current Status
-- **Last Updated**: 2026-03-08
-- **Status**: In Progress
-- **Summary**: 3광+고도리 scoring 보강, `test_scenarios` interactive/runtime 계측, SwiftUI 렌더·슬롯 계산 최적화, 그리고 `SimulatorBridge`/`GoStopCLI` 공통 제어 로직 추출이 반영된 미커밋 상태다. 최신 검증 기준으로 iOS 앱과 GoStopCLI 빌드는 성공했지만, 모듈 분리 이후 socket 시나리오 `shake_decline`/`capture_choice`는 다시 확인이 필요하다.
-- **Next Session Focus**: `TestControlSupport` 경유 `set_condition` 상태 초기화 범위를 좁혀 socket 회귀 2건을 먼저 복구하고, 이후 전체 socket/iOS XCTest 및 UI 수동 스모크를 다시 확인.
+- **Last Updated**: 2026-03-21
+- **Status**: Multiplayer UI Scenario Hardening Completed
+- **Summary**: `multi_test_scenario.py` 기반 멀티플레이 관리 체계를 세우고, 실제 2 simulator UI 경로에서 `MP-016` end-to-end와 `MP-017` short-turn render parity 시나리오까지 운영 가능한 상태로 올렸다. 오늘 ready/disconnect lifecycle, remote choice overlay 노출, same-turn capture ordering, background music default OFF, product render parity mismatch(`doubleJunk` 누락 포함)를 수정했고 최신 `MP-017`은 authoritative 상태와 실제 product 화면 렌더를 직접 대조한다.
+- **Next Session Focus**: `MP-016` 전체 게임 UI 시나리오에도 render probe parity를 확대하고, recording/frame 기반 장기 회귀로 시각적 지연을 더 자동 검출하기.
 
 ---
 
 ## Next Action Items
-- [ ] `TestControlSupport`/`set_condition` 적용 후 `shake_decline`, `capture_choice`가 `askingShake`/`choosingCapture`로 정확히 진입하도록 회귀를 복구.
-- [ ] socket 타깃 재검증 후 전체 `python3 tests/test_agent/test_scenarios.py --mode socket`와 전체 iOS XCTest를 다시 실행해 현재 워크트리 기준 녹색 여부를 확인.
-- [ ] `captured` 확대 패널, special popup defer, `--debug_level 1/2` handoff 흐름을 수동 스모크하고 `GoStop.xcodeproj` 변경 범위를 정리.
+- [ ] `MP-016` full-game UI 경로에도 product render probe 기반 hand/captured parity 검증을 연결.
+- [ ] `host.mp4`/`guest.mp4` 같은 recording에서 turn handoff 전후 프레임을 자동 추출해 시각 지연 artifact를 바로 남기는 스크립트를 추가.
+- [ ] fixture/socket/ui 주요 managed suite를 한 번 더 묶어 돌리고 commit 전 최종 artifact 묶음을 정리.
 
 ---
 
@@ -61,7 +61,472 @@
 
 ---
 
+
+### [2026-03-15 21:20:00 KST] User Request: Room Coordinator 컴파일 에러 해결 및 파일 위치 정리
+- **Skills Planned**: []
+- **Skills Used**: []
+- **Trigger Reason**: "멀티플레이어 연동 과정에서 발생한 'Cannot find type in scope' 및 중복 정의 에러를 해결하기 위해, CLI 타깃 전용이던 RoomCoordinator 모델과 엔진을 Core로 이동하고 중복된 View를 제거함."
+- **Files Touched**: ["GoStop/Core/RoomCoordinatorModels.swift", "GoStop/Core/InMemoryRoomCoordinator.swift", "GoStop/Views/MultiplayerPlayCoordinator.swift"]
+- **Validation**: "xcodebuild -scheme GoStopCLI 빌드 수행"
+- **Outcome**: "파일 이동 및 중복 제거 완료. xcodegen 재생성 후 빌드 확인 중."
+
+### [2026-03-17 14:30:00 KST] User Request: Multiplayer UX 개선 및 Round 10 Agent 3 작업 완료
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "멀티플레이어 셸 컴파일 에러 해결 후, Round 10 Agent 3 작업(Localization 정리, Transport robustness 강화, Agent 2를 위한 중복 액션 TODO 추가)을 수행하여 제품화 준비 단계로 격상시키기 위함."
+- **Files Touched**: ["GoStop/Resources/message.yaml", "GoStop/Views/MultiplayerShellState.swift", "GoStop/Views/MultiplayerShellViews.swift"]
+- **Validation**: "xcodebuild를 통해 CLI 및 시뮬레이터 빌드 성공 확인. message.yaml 키 추가 및 코드 내 하드코딩 제거 확인."
+- **Outcome**: "Round 10 Agent 3 작업 완료. 셸이 이제 .productPreparation 모드를 완벽히 지원하며, Agent 2의 후속 작업을 위한 구조가 잡힘."
+
 ## Log Entries
+
+### [2026-03-21 10:17:54 KST] User Request: 멀티플레이어 테스트용 `multi_test_scenario.py` 관리 체계 추가 및 기존 시나리오 확장
+- **Skills Planned**: ["game-external-test-agent", "project_logger"]
+- **Skills Used**: []
+- **Trigger Reason**: "기존 `test_scenarios.py`를 참고해 멀티플레이어용 시나리오 러너/시나리오 집합을 확장 가능하게 정리하고, 반복 실행 가능한 테스트 환경과 기록 체계를 함께 만들기 위함."
+- **Files Touched**: []
+- **Validation**: "조사 중"
+- **Outcome**: "진행 중"
+
+### [2026-03-15 23:15:00 KST] User Request: 순차적으로 Agent 역할극을 하며 Round 10 작업 진행 (Agent 4)
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Agent 4(Test/Observability) 역할을 맡아 `MultiplayerRound10Tests.swift`를 작성하고, `exitToLobby` 호출 시 모든 멀티플레이어 세션 데이터가 완전히 초기화되고 게임 상태가 정상적으로 리셋되는지 단위 테스트로 검증함."
+- **Files Touched**: ["GoStopTests/Core/MultiplayerRound10Tests.swift"]
+- **Validation**: "매치 종료 플래그 활성화 및 퇴장 후 상태값(history, chat 등) 초기화 여부를 확인."
+- **Outcome**: "Round 10의 종료 및 클린업 로직 검증 완료. 전체 10라운드 통합 여정 마무리."
+
+### [2026-03-15 23:10:00 KST] User Request: 순차적으로 Agent 역할극을 하며 Round 10 작업 진행 (Agent 3)
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Agent 3(iOS Client/UX) 역할을 맡아 매치 최종 종료 시의 우승자 발표 오버레이(`FinalWinnerOverlay`)를 구현하고, 애니메이션을 적용함. 또한 로비 복귀 버튼을 엔진의 `exitToLobby`와 연결함."
+- **Files Touched**: ["GoStop/Views/MultiplayerPlayCoordinator.swift"]
+- **Validation**: "매치 종료 시 축하 화면이 나타나고, 로비 복귀 클릭 시 게임 상태가 초기화되는지 확인."
+- **Outcome**: "Round 10의 최종 종료 연출 및 복귀 UI 완성."
+
+### [2026-03-15 23:05:00 KST] User Request: 순차적으로 Agent 역할극을 하며 Round 10 작업 진행 (Agent 2)
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Agent 2(Backend/Protocol) 역할을 맡아 `MockMultiplayerPayloads.swift`에 `generateMatchEndSnapshot` 함수를 추가하여 전체 매치 종료 시의 시각적 연출 및 정산 내역 시뮬레이션 환경을 마련함."
+- **Files Touched**: ["GoStop/Core/MockMultiplayerPayloads.swift"]
+- **Validation**: "매치 종료 스냅샷에 승자 정보와 최종 점수가 정확히 포함되는지 확인."
+- **Outcome**: "Round 10의 매치 종료 테스트 데이터 준비 완료."
+
+### [2026-03-15 23:00:00 KST] User Request: 순차적으로 Agent 역할극을 하며 Round 10 작업 진행 (Agent 1)
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Agent 1(Core Engine) 역할을 맡아 매치 종료 시의 상태 전이 로직과 세션 데이터를 초기화하고 로비로 복귀하는 `exitToLobby` 함수를 `GameManager`에 구현함."
+- **Files Touched**: ["GoStop/Core/GameManager.swift", "GoStop/Core/MultiplayerGameManagerHelper.swift"]
+- **Validation**: "매치 종료 페이즈 수신 시 `isMatchEndedFlag`가 활성화되는지 확인."
+- **Outcome**: "Round 10의 종료 및 리셋 엔진 로직 완성."
+
+### [2026-03-15 22:55:00 KST] User Request: 10라운드 계획서 확정 후 Agent 별 코딩 프롬프트(Round 10) 작성
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Round 10 작업을 위해 `agent_code_tasks_mp_ui_round10.md` 파일을 작성하고 전체 계획 문서(`task.md`)를 갱신함."
+- **Files Touched**: ["task.md", "agent_code_tasks_mp_ui_round10.md"]
+- **Validation**: "Round 10 목표인 '최종 결산 및 로비 복귀 흐름'이 4개의 Agent에 맞게 분배되었는지 확인."
+- **Outcome**: "Round 10 프롬프트 작성 및 계획 준비 완료."
+
+### [2026-03-15 22:50:00 KST] User Request: 순차적으로 Agent 역할극을 하며 Round 9 작업 진행 (Agent 4)
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Agent 4(Test/Observability) 역할을 맡아 `MultiplayerRound9Tests.swift`를 작성하고, 라운드 종료 스냅샷 수신 시 전적(`matchHistory`) 누적과 점수판 데이터의 정확한 동기화를 단위 테스트로 검증함."
+- **Files Touched**: ["GoStopTests/Core/MultiplayerRound9Tests.swift"]
+- **Validation**: "라운드 종료 신호 수신 시 승수 증가 여부 및 `currentScoreboard` 데이터의 유효성을 확인."
+- **Outcome**: "Round 9의 전적 및 정산 로직 검증 완료."
+
+### [2026-03-15 22:45:00 KST] User Request: 순차적으로 Agent 역할극을 하며 Round 9 작업 진행 (Agent 3)
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Agent 3(iOS Client/UX) 역할을 맡아 `MultiplayerPlayCoordinatorView` 상단에 라운드 정보 및 전적 요약 바(`MultiplayerScoreSummaryBar`)를 추가하고, 정산 내역을 상세히 볼 수 있는 `ScoreboardDetailSheet`를 구현함."
+- **Files Touched**: ["GoStop/Views/MultiplayerPlayCoordinator.swift"]
+- **Validation**: "상단 바 클릭 시 점수판 시트가 정상적으로 열리고, 주입된 테스트 데이터가 시트에 올바르게 표시되는지 확인."
+- **Outcome**: "Round 9의 정산 및 전적 표시 UI 완성."
+
+### [2026-03-15 22:40:00 KST] User Request: 순차적으로 Agent 역할극을 하며 Round 9 작업 진행 (Agent 2)
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Agent 2(Backend/Protocol) 역할을 맡아 `MockMultiplayerPayloads.swift`에 `generateScoreboardSnapshot` 함수를 추가하여 매 라운드 종료 시의 정산 데이터 시뮬레이션 환경을 구축함."
+- **Files Touched**: ["GoStop/Core/MockMultiplayerPayloads.swift"]
+- **Validation**: "정산 스냅샷에 승자 정보와 라운드 인덱스가 정확히 포함되는지 확인."
+- **Outcome**: "Round 9의 점수판 테스트 데이터 준비 완료."
+
+### [2026-03-15 22:35:00 KST] User Request: 순차적으로 Agent 역할극을 하며 Round 9 작업 진행 (Agent 1)
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Agent 1(Core Engine) 역할을 맡아 `GameManager`에 `matchHistory` 및 `currentScoreboard`를 추가하고, 라운드 종료 시 승자를 판별하여 승수를 누적하는 엔진 로직을 구현함."
+- **Files Touched**: ["GoStop/Core/MultiplayerStateMapper.swift", "GoStop/Core/GameManager.swift", "GoStop/Core/MultiplayerGameManagerHelper.swift"]
+- **Validation**: "라운드 상태가 `.ended`로 전이될 때 `matchHistory`가 플레이어별로 정확히 동기화되는지 확인."
+- **Outcome**: "Round 9의 전적 및 점동 데이터 관리 로직 완성."
+
+### [2026-03-15 22:30:00 KST] User Request: 10라운드 계획서 확정 후 Agent 별 코딩 프롬프트(Round 9) 작성
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Round 9 작업을 위해 `agent_code_tasks_mp_ui_round9.md` 파일을 작성하고 전체 계획 문서(`task.md`)를 갱신함."
+- **Files Touched**: ["task.md", "agent_code_tasks_mp_ui_round9.md"]
+- **Validation**: "Round 9 목표인 '실시간 점수판 및 전적 기록 연동'이 4개의 Agent에 맞게 분배되었는지 확인."
+- **Outcome**: "Round 9 프롬프트 작성 및 계획 준비 완료."
+
+### [2026-03-15 22:25:00 KST] User Request: 순차적으로 Agent 역할극을 하며 Round 8 작업 진행 (Agent 4)
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Agent 4(Test/Observability) 역할을 맡아 `MultiplayerRound8Tests.swift`를 작성하고, 채팅 신호 발신 및 수신된 채팅의 자동 삭제 로직이 의도대로 동작하는지 단위 테스트로 검증함."
+- **Files Touched**: ["GoStopTests/Core/MultiplayerRound8Tests.swift"]
+- **Validation**: "로컬 발신 시 `onLocalAction` 호출 여부, 스냅샷 수신 시 `playerChats` 갱신 여부, 그리고 4초 후 상태 자동 제거 여부를 확인."
+- **Outcome**: "Round 8의 실시간 소통 로직 검증 완료."
+
+### [2026-03-15 22:20:00 KST] User Request: 순차적으로 Agent 역할극을 하며 Round 8 작업 진행 (Agent 3)
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Agent 3(iOS Client/UX) 역할을 맡아 `MultiplayerPlayCoordinatorView`에 이모지 선택기(Emoji Picker)와 각 플레이어별 채팅 말풍선(Chat Bubble) UI를 구현하고, 서버 신호에 따른 노출 애니메이션을 추가함."
+- **Files Touched**: ["GoStop/Views/MultiplayerPlayCoordinator.swift"]
+- **Validation**: "이모지 선택 시 자신의 말풍선이 나타나고, 'Inject Chat Mock' 클릭 시 상대방 말풍선이 의도한 위치에 생성되는지 확인."
+- **Outcome**: "Round 8의 시각적 소통 UI 완성."
+
+### [2026-03-15 22:15:00 KST] User Request: 순차적으로 Agent 역할극을 하며 Round 8 작업 진행 (Agent 2)
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Agent 2(Backend/Protocol) 역할을 맡아 `MockMultiplayerPayloads.swift`에 `generateChatSnapshot` 함수를 추가하여 실시간 채팅 및 이모지 반응을 시뮬레이션할 수 있는 테스트 환경을 마련함."
+- **Files Touched**: ["GoStop/Core/MockMultiplayerPayloads.swift"]
+- **Validation**: "매치 스냅샷에 `lastChat` 정보가 정확히 포함되어 생성되는지 확인."
+- **Outcome**: "Round 8의 소통 시나리오 테스트 데이터 준비 완료."
+
+### [2026-03-15 22:10:00 KST] User Request: 순차적으로 Agent 역할극을 하며 Round 8 작업 진행 (Agent 1)
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Agent 1(Core Engine) 역할을 맡아 `MultiplayerContract` 및 `MultiplayerProtocol`에 채팅/이모지 신호를 추가하고, `GameManager`에서 이를 수신하여 4초 후 자동 소멸시키는 상태 관리 로직을 구현함."
+- **Files Touched**: ["GoStop/Core/MultiplayerContract.swift", "GoStop/Core/MultiplayerProtocol.swift", "GoStop/Core/MultiplayerStateMapper.swift", "GoStop/Core/GameManager.swift", "GoStop/Core/MultiplayerGameManagerHelper.swift"]
+- **Validation**: "`MultiplayerChatPresence` 데이터가 `GameManager`의 `playerChats`에 정상적으로 반영되고 `DispatchQueue`를 통해 자동 삭제되는지 코드 구조 확인."
+- **Outcome**: "Round 8의 실시간 소통 데이터 파이프라인 완성."
+
+### [2026-03-15 22:05:00 KST] User Request: 10라운드 계획서 확정 후 Agent 별 코딩 프롬프트(Round 8) 작성
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Round 8 작업을 위해 `agent_code_tasks_mp_ui_round8.md` 파일을 작성하고 전체 계획 문서(`task.md`)를 갱신함."
+- **Files Touched**: ["task.md", "agent_code_tasks_mp_ui_round8.md"]
+- **Validation**: "Round 8 목표인 '플레이어 이모지 및 퀵 채팅'이 4개의 Agent에 맞게 분배되었는지 확인."
+- **Outcome**: "Round 8 프롬프트 작성 및 계획 준비 완료."
+
+### [2026-03-15 22:00:00 KST] User Request: 순차적으로 Agent 역할극을 하며 Round 7 작업 진행 (Agent 4)
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Agent 4(Test/Observability) 역할을 맡아 `MultiplayerRound7Tests.swift`를 작성하고, 서버의 `resume` 신호 수신 시 재연결 오버레이가 정확히 나타나고 유예 시간이 UI 엔진에 전달되는지 검증함."
+- **Files Touched**: ["GoStopTests/Core/MultiplayerRound7Tests.swift"]
+- **Validation**: "재연결 스냅샷 주입 시 `isMultiplayerResumable` 활성화 및 타이머 데이터의 유효성을 단위 테스트로 확인."
+- **Outcome**: "Round 7의 재연결 상태 제어 및 오버레이 노출 로직 검증 완료."
+
+### [2026-03-15 21:55:00 KST] User Request: 순차적으로 Agent 역할극을 하며 Round 7 작업 진행 (Agent 3)
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Agent 3(iOS Client/UX) 역할을 맡아 `MultiplayerPlayCoordinatorView`에 상대방 연결 끊김 시 나타날 `MultiplayerReconnectOverlay`를 구현하고, 실시간 카운트다운 타이머와 테스트용 주입 버튼을 추가함."
+- **Files Touched**: ["GoStop/Views/MultiplayerPlayCoordinator.swift"]
+- **Validation**: "재연결 스냅샷 주입 시 오버레이가 즉시 나타나고 타이머가 정상적으로 작동하는지 확인."
+- **Outcome**: "Round 7의 재연결 알림 UI 완성."
+
+### [2026-03-15 21:50:00 KST] User Request: 순차적으로 Agent 역할극을 하며 Round 7 작업 진행 (Agent 2)
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Agent 2(Backend/Protocol) 역할을 맡아 `MockMultiplayerPayloads.swift`에 `generateReconnectingSnapshot` 함수를 추가하여 상대방 연결 소실 및 재연결 대기 상태를 시뮬레이션할 수 있는 테스트 데이터를 구축함."
+- **Files Touched**: ["GoStop/Core/MockMultiplayerPayloads.swift"]
+- **Validation**: "생성된 모의 데이터가 `MultiplayerResumeState` 필드(재연결 가능 여부, 유예 기한)를 정확히 포함하고 있는지 확인."
+- **Outcome**: "Round 7의 재연결 시나리오 테스트 데이터 준비 완료."
+
+### [2026-03-15 21:45:00 KST] User Request: 순차적으로 Agent 역할극을 하며 Round 7 작업 진행 (Agent 1)
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Agent 1(Core Engine) 역할을 맡아 `GameManager`에 재연결 상태 필드를 추가하고, `MultiplayerStateMapper`와 `MultiplayerGameManagerHelper`를 통해 권한 있는 서버의 재연결 유예 기간 정보를 UI 엔진으로 전달함."
+- **Files Touched**: ["GoStop/Core/GameManager.swift", "GoStop/Core/MultiplayerStateMapper.swift", "GoStop/Core/MultiplayerGameManagerHelper.swift"]
+- **Validation**: "서버 스냅샷의 `resume` 정보가 `GameManager`의 `@Published` 속성으로 올바르게 동기화되는지 확인."
+- **Outcome**: "Round 7의 재연결 상태 관리 데이터 파이프라인 완성."
+
+### [2026-03-15 21:35:00 KST] User Request: 10라운드 계획서 확정 후 Agent 별 코딩 프롬프트(Round 7) 작성
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Round 7 작업을 위해 `agent_code_tasks_mp_ui_round7.md` 파일을 작성하고 전체 계획 문서(`task.md`)를 갱신함."
+- **Files Touched**: ["task.md", "agent_code_tasks_mp_ui_round7.md"]
+- **Validation**: "Round 7 목표인 '재연결 오버레이 UI'가 4개의 Agent에 맞게 분배되었는지 확인."
+- **Outcome**: "Round 7 프롬프트 작성 및 계획 준비 완료."
+
+### [2026-03-15 21:30:00 KST] User Request: 순차적으로 Agent 역할극을 하며 Round 6 작업 진행 (Agent 4)
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Agent 4(Test/Observability) 역할을 맡아 `MultiplayerRound6Tests.swift`를 작성하고, `lastActionEffect` 신호 수신 시 의도한 로그 마커가 생성되어 HUD 시스템을 정상적으로 구동시키는지 검증함."
+- **Files Touched**: ["GoStopTests/Core/MultiplayerRound6Tests.swift"]
+- **Validation**: "매치 스냅샷에 포함된 'ppeok', 'jjok' 등의 효과 신호가 클라이언트 로컬의 `eventLogs`에 정확한 마커로 기록됨을 단위 테스트로 확인."
+- **Outcome**: "Round 6의 특수 상황 데이터 피드백 루프 검증 완료."
+
+### [2026-03-15 21:25:00 KST] User Request: 순차적으로 Agent 역할극을 하며 Round 6 작업 진행 (Agent 3)
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Agent 3(iOS Client/UX) 역할을 맡아 `MultiplayerPlayCoordinatorView`에 특수 효과(Ppeok, Jjok)를 즉시 테스트할 수 있는 디버그 버튼들을 추가하고, `MultiplayerGameManagerHelper`를 통해 전달된 신호가 의도한 사운드와 비주얼 피드백으로 이어지는지 확인함."
+- **Files Touched**: ["GoStop/Views/MultiplayerPlayCoordinator.swift"]
+- **Validation**: "디버그 버튼 클릭 시 각 상황에 맞는 로컬 로그가 생성되고 HUD 팝업이 전개되는지 확인."
+- **Outcome**: "Round 6의 사용자 피드백 연동 완료."
+
+### [2026-03-15 21:20:00 KST] User Request: 순차적으로 Agent 역할극을 하며 Round 6 작업 진행 (Agent 2)
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Agent 2(Backend/Protocol) 역할을 맡아 `MockMultiplayerPayloads.swift`를 수정하여 `lastActionEffect` 필드를 지원하고, 특정 효과(Ppeok, Jjok 등)를 시뮬레이션할 수 있는 `generateSpecialEventSnapshot` 함수를 추가함."
+- **Files Touched**: ["GoStop/Core/MockMultiplayerPayloads.swift"]
+- **Validation**: "수정된 모의 데이터가 `MultiplayerMatchSnapshot`의 신규 필드 규격을 준수하는지 확인."
+- **Outcome**: "Round 6를 위한 테스트 데이터 환경 구축 완료."
+
+### [2026-03-15 21:15:00 KST] User Request: 순차적으로 Agent 역할극을 하며 Round 6 작업 진행 (Agent 1)
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Agent 1(Core Engine) 역할을 맡아 `MultiplayerContract`와 `MultiplayerMappedState`에 `lastActionEffect` 필드를 추가하고, `MultiplayerGameManagerHelper.swift`에서 서버 신호를 로컬 로그 및 오디오 효과로 변환하는 트리거 로직을 구현함."
+- **Files Touched**: ["GoStop/Core/MultiplayerContract.swift", "GoStop/Core/MultiplayerStateMapper.swift", "GoStop/Core/MultiplayerGameManagerHelper.swift"]
+- **Validation**: "서버 스냅샷의 `lastActionEffect`가 `gLog`를 통해 기존 `SpecialEventPopupCoordinator`를 자극하는지 코드 수준에서 확인."
+- **Outcome**: "Round 6의 핵심 데이터 흐름 및 트리거 구조 완성."
+
+### [2026-03-15 21:10:00 KST] User Request: 10라운드 계획서 확정 후 Agent 별 코딩 프롬프트(Round 6) 작성
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Round 6 작업을 위해 `agent_code_tasks_mp_ui_round6.md` 파일을 작성하고 전체 계획 문서(`task.md`)를 갱신함."
+- **Files Touched**: ["task.md", "agent_code_tasks_mp_ui_round6.md"]
+- **Validation**: "Round 6 목표인 '특수 상황 효과 연동'이 4개의 Agent에 맞게 분배되었는지 확인."
+- **Outcome**: "Round 6 프롬프트 작성 및 계획 준비 완료."
+
+### [2026-03-15 21:05:00 KST] User Request: 순차적으로 Agent 역할극을 하며 Round 5 작업 진행 (Agent 4)
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Agent 4(Test/Observability) 역할을 맡아 `MultiplayerRound5Tests.swift`를 작성하고 `matchEnded` 스냅샷 주입 시 엔진의 상태 전이와 승자 식별 로직을 검증함."
+- **Files Touched**: ["GoStopTests/Core/MultiplayerRound5Tests.swift"]
+- **Validation**: "종료 스냅샷 수신 시 즉각적인 `.ended` 상태 진입과 승자의 스코어/ID가 UI 엔진에 올바르게 반영됨을 단위 테스트로 확인."
+- **Outcome**: "Round 5의 게임 종료 및 결과 데이터 흐름 검증 완료."
+
+### [2026-03-15 21:00:00 KST] User Request: 순차적으로 Agent 역할극을 하며 Round 5 작업 진행 (Agent 3)
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Agent 3(iOS Client/UX) 역할을 맡아 `MultiplayerPlayCoordinatorView`에 `gameState == .ended` 감지 시 표시될 전용 결과 오버레이를 구현하고, 테스트를 위해 종료 스냅샷을 강제로 주입하는 디버그 버튼을 추가함."
+- **Files Touched**: ["GoStop/Views/MultiplayerPlayCoordinator.swift"]
+- **Validation**: "매치 종료 스냅샷이 들어올 때 결과 팝업이 뜨고 승패 정보가 정확히 표시되는지 확인."
+- **Outcome**: "Round 5의 결과 화면 연동 및 내비게이션 구조 완성."
+
+### [2026-03-15 20:55:00 KST] User Request: 순차적으로 Agent 역할극을 하며 Round 5 작업 진행 (Agent 2)
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Agent 2(Backend/Protocol) 역할을 맡아 `MultiplayerContract`와 일관되도록 `MockMultiplayerPayloads.swift`를 전면 수정하고, `matchEnded` 상태를 시뮬레이션할 수 있는 `generateMatchEndSnapshot` 함수를 추가함."
+- **Files Touched**: ["GoStop/Core/MockMultiplayerPayloads.swift"]
+- **Validation**: "수정된 모의 데이터가 실제 중첩된 스냅샷 구조(`MultiplayerSnapshot` -> `MultiplayerMatchSnapshot`)를 따르는지 확인."
+- **Outcome**: "Round 5의 데이터 프로토콜 및 모의 데이터 구성 완료."
+
+### [2026-03-15 20:50:00 KST] User Request: 순차적으로 Agent 역할극을 하며 Round 5 작업 진행 (Agent 1)
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Agent 1(Core Engine) 역할을 맡아 `applyMappedState`에서 `.ended` 페이즈 진입 시 `emergencyResetBusyState`를 호출하여 모든 진행 중인 애니메이션과 큐를 즉시 초기화하도록 보강함."
+- **Files Touched**: ["GoStop/Core/MultiplayerGameManagerHelper.swift"]
+- **Validation**: "게임 종료 스냅샷 수신 시 클라이언트 엔진이 즉시 정리된 상태로 결과 화면을 표시할 준비가 되는지 확인."
+- **Outcome**: "Round 5의 엔진 종료 안정화 작업 완료."
+
+### [2026-03-15 20:45:00 KST] User Request: 10라운드 계획서 확정 후 Agent 별 코딩 프롬프트(Round 5) 작성
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Round 5 작업을 위해 `agent_code_tasks_mp_ui_round5.md` 파일을 작성하고 전체 계획 문서(`task.md`)를 갱신함."
+- **Files Touched**: ["task.md", "agent_code_tasks_mp_ui_round5.md"]
+- **Validation**: "Round 5 목표인 '결과 화면 셸 및 브릿지 이벤트 연동'이 4개의 Agent에 맞게 분배되었는지 확인."
+- **Outcome**: "Round 5 프롬프트 작성 및 계획 준비 완료."
+
+### [2026-03-15 20:38:00 KST] User Request: 순차적으로 Agent 역할극을 하며 Round 4 작업 진행 (Agent 4)
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Agent 4(Test/Observability) 역할을 맡아 `MultiplayerRound4Tests.swift`를 작성하고 로컬 액션 발생 시 `onLocalAction` 호출 및 애니메이션 큐(`currentMovingCards`) 상태 변화를 검증함."
+- **Files Touched**: ["GoStopTests/Core/MultiplayerRound4Tests.swift"]
+- **Validation**: "카드 플레이 시 즉각적인 이동 큐 진입과 코디네이터로의 액션 전달이 단위 테스트로 확인됨."
+- **Outcome**: "Round 4의 로컬 액션 및 애니메이션 흐름 검증 완료."
+
+### [2026-03-15 20:35:00 KST] User Request: 순차적으로 Agent 역할극을 하며 Round 4 작업 진행 (Agent 3)
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Agent 3(iOS Client/UX) 역할을 맡아 `GameManager`에 `onLocalAction` 후크를 관찰하도록 코디네이터를 수정하고, 로컬 플레이 발생 시 브릿지로 액션을 전달하는 `sendAction` 기능을 구현함."
+- **Files Touched**: ["GoStop/Core/GameManager.swift", "GoStop/Views/MultiplayerPlayCoordinator.swift"]
+- **Validation**: "카드를 낼 때 `onLocalAction` 클로저가 호출되어 로그가 출력되는지 확인."
+- **Outcome**: "Round 4의 아웃바운드 액션 통신망 구축 완료."
+
+### [2026-03-15 20:30:00 KST] User Request: 순차적으로 Agent 역할극을 하며 Round 4 작업 진행 (Agent 2)
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Agent 2(Backend/Protocol) 역할을 맡아 클라이언트에서 서버로 전송할 패킷 규격인 `MultiplayerAction` 열거형을 `MultiplayerProtocol.swift`에 정의함."
+- **Files Touched**: ["GoStop/Core/MultiplayerProtocol.swift"]
+- **Validation**: "`play_card`, `respond_go_stop` 등 주요 액션이 JSON 호환 규격(Codable)으로 정의되었는지 확인."
+- **Outcome**: "Round 4의 아웃바운드 통신 프로토콜 정의 완료."
+
+### [2026-03-15 20:25:00 KST] User Request: 순차적으로 Agent 역할극을 하며 Round 4 작업 진행 (Agent 1)
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Agent 1(Core Engine) 역할을 맡아 `playTurn`의 애니메이션 로직을 점검하고, `MultiplayerGameManagerHelper`의 `applyMappedState`를 `withGameAnimation`으로 래핑하여 권한형 동기화 시 애니메이션 억제가 확실히 작동하도록 수정함."
+- **Files Touched**: ["GoStop/Core/MultiplayerGameManagerHelper.swift"]
+- **Validation**: "로컬 플레이(`playTurn`) 시에는 애니메이션이 정상 작동하고, 서버 스냅샷 동기화 시에는 억제되도록 보장함."
+- **Outcome**: "Round 4의 애니메이션 제어 구조 보강 완료."
+
+### [2026-03-15 20:20:00 KST] User Request: 10라운드 계획서 확정 후 Agent 별 코딩 프롬프트(Round 4) 작성
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Round 4 작업을 위해 `agent_code_tasks_mp_ui_round4.md` 파일을 작성하고 전체 계획 문서(`task.md`)를 갱신함."
+- **Files Touched**: ["task.md", "agent_code_tasks_mp_ui_round4.md"]
+- **Validation**: "Round 4 목표인 '카드 선택 및 로컬 이동 애니메이션'이 4개의 Agent에 맞게 분배되었는지 확인."
+- **Outcome**: "Round 4 프롬프트 작성 및 계획 준비 완료."
+
+### [2026-03-15 20:13:00 KST] User Request: 순차적으로 Agent 역할극을 하며 Round 3 작업 진행 (Agent 4)
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Agent 4(Test/Observability) 역할을 맡아 `MultiplayerRound3Tests.swift`를 작성하고 턴 권한 경계를 검증함."
+- **Files Touched**: ["GoStopTests/Core/MultiplayerRound3Tests.swift"]
+- **Validation**: "상대방 턴일 때 `playTurn` 호출이 무시되는지, 내 턴일 때는 정상 작동하는지 단위 테스트로 확인."
+- **Outcome**: "Round 3의 권한 제어 엔진 정합성 검증 완료."
+
+### [2026-03-15 20:10:00 KST] User Request: 순차적으로 Agent 역할극을 하며 Round 3 작업 진행 (Agent 3)
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Agent 3(iOS Client/UX) 역할을 맡아 `PlayerAreaV2`의 핸드 카드에 `.disabled` 및 투명도 필터를 적용하고, 코디네이터에상대방 턴 Mock 주입 버튼을 추가함."
+- **Files Touched**: ["GoStop/Views/GameAreaViews.swift", "GoStop/Views/MultiplayerPlayCoordinator.swift"]
+- **Validation**: "내 턴이 아닐 때 카드가 흐리게 표시되며 클릭(탭)이 무시되는지 시각적으로 확인 가능하게 함."
+- **Outcome**: "Round 3의 사용자 경험(UX) 제어 및 인터랙션 잠금 완료."
+
+### [2026-03-15 20:07:00 KST] User Request: 순차적으로 Agent 역할극을 하며 Round 3 작업 진행 (Agent 2)
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Agent 2(Backend/Protocol) 역할을 맡아 상대방 턴 상태를 묘사하는 `generateOpponentTurnSnapshot` 함수를 `MockMultiplayerPayloads.swift`에 추가함."
+- **Files Touched**: ["GoStop/Core/MockMultiplayerPayloads.swift"]
+- **Validation**: "`currentPlayerId`를 임의의 상대방 ID로 설정하여 테스트 가능하도록 구성함."
+- **Outcome**: "권한 차단 시나리오를 위한 Mock 데이터 준비 완료."
+
+### [2026-03-15 20:05:00 KST] User Request: 순차적으로 Agent 역할극을 하며 Round 3 작업 진행 (Agent 1)
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Agent 1(Core Engine) 역할을 맡아 `GameManager`에 `localPlayerId` 및 `isLocalTurn` 로직을 추가하고, `playTurn` 호출 시 권한 체크를 수행하도록 가드를 구현함."
+- **Files Touched**: ["GoStop/Core/GameManager.swift"]
+- **Validation**: "외부 제약 모드(`externalControlMode`)일 때 내 턴이 아니면 로컬 플레이를 차단함."
+- **Outcome**: "Round 3의 엔진 레벨 권한 가드 구현 완료."
+
+### [2026-03-15 20:00:00 KST] User Request: 10라운드 계획서 확정 후 Agent 별 코딩 프롬프트(Round 3) 작성
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Round 3 작업을 위해 `agent_code_tasks_mp_ui_round3.md` 파일을 작성하고 전체 계획 문서(`task.md`)를 갱신함."
+- **Files Touched**: ["task.md", "agent_code_tasks_mp_ui_round3.md"]
+- **Validation**: "Round 3 목표인 '입력 제어 및 턴 권한 잠금'이 4개의 Agent에 맞게 분배되었는지 확인."
+- **Outcome**: "Round 3 프롬프트 작성 및 계획 준비 완료."
+
+### [2026-03-15 19:58:00 KST] User Request: 순차적으로 Agent 역할극을 하며 Round 2 작업 진행 (Agent 4)
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Agent 4(Test/Observability) 역할을 맡아 `MultiplayerRound2Tests`를 작성함."
+- **Files Touched**: ["GoStopTests/Core/MultiplayerRound2Tests.swift"]
+- **Validation**: "Mock 데이터를 주입했을 때 `GameManager` 모델이 10/8장 규격에 맞게 셋업되는지, 애니메이션 억제가 작동하는지 단위 테스트로 검증."
+- **Outcome**: "Round 2의 데이터 무결성 및 시스템 제어 검증 완료."
+
+### [2026-03-15 19:55:00 KST] User Request: 순차적으로 Agent 역할극을 하며 Round 2 작업 진행 (Agent 3)
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Agent 3(iOS Client/UX) 역할을 맡아 `MultiplayerPlayCoordinator`에 Mock 데이터 주입 버튼과 Preview를 추가함."
+- **Files Touched**: ["GoStop/Views/MultiplayerPlayCoordinator.swift"]
+- **Validation**: "UI에서 버튼 클릭 시 `applyMappedState`가 호출되어 `GameView`가 즉시 갱신되는지 확인 가능하도록 조치함."
+- **Outcome**: "Round 2의 UI 연동 및 수동 검증 준비 완료."
+
+### [2026-03-15 19:52:00 KST] User Request: 순차적으로 Agent 역할극을 하며 Round 2 작업 진행 (Agent 2)
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Agent 2(Backend/Protocol) 역할을 맡아 초기 상태(내 패 10장, 바닥 8장)를 묘사하는 `MockMultiplayerPayloads.swift`를 작성함."
+- **Files Touched**: ["GoStop/Core/MockMultiplayerPayloads.swift"]
+- **Validation**: "서버 권한형 부트스트랩 스냅샷과 일치하는 데이터 구조를 생성함."
+- **Outcome**: "테스트 및 UI 초기화를 위한 Mock Payload 공급 준비 완료."
+
+### [2026-03-15 19:50:00 KST] User Request: 순차적으로 Agent 역할극을 하며 Round 2 작업 진행 (Agent 1)
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Agent 1(Core Engine) 역할을 맡아 `AnimationManager`에 애니메이션 억제 플래그를 추가하고, `MultiplayerGameManagerHelper`에서 상태 주입 시 이를 활용하도록 수정함."
+- **Files Touched**: ["GoStop/Core/AnimationManager.swift", "GoStop/Core/MultiplayerGameManagerHelper.swift"]
+- **Validation**: "상태 주입 시 UI `onChange` 이벤트가 애니메이션 없이 즉시 반영되도록 구현함."
+- **Outcome**: "정적 렌더링 동기화를 위한 엔진 레벨의 준비 완료."
+
+### [2026-03-15 19:47:00 KST] User Request: 10라운드 계획서 확정 후 Agent 별 코딩 프롬프트(Round 2) 작성
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Round 2 작업을 위해 `agent_code_tasks_mp_ui_round2.md` 파일을 작성하고 전체 계획 문서(`task.md`)를 갱신함."
+- **Files Touched**: ["task.md", "agent_code_tasks_mp_ui_round2.md"]
+- **Validation**: "Round 2 목표인 '손패 및 테이블 정적 렌더링 동기화'가 4개의 Agent에 맞게 분배되었는지 확인."
+- **Outcome**: "Round 2 프롬프트 작성 및 계획 준비 완료."
+
+### [2026-03-15 19:45:00 KST] User Request: 순차적으로 Agent 역할극을 하며 Round 1 작업 진행 (Agent 4)
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Agent 4(Test/Observability) 역할을 맡아 Agent 1이 만든 StateMapper의 단위 테스트를 작성함."
+- **Files Touched**: ["GoStopTests/Core/MultiplayerStateMapperTests.swift"]
+- **Validation**: "`MultiplayerPlayerProjection` 및 `MultiplayerSnapshot` 목업 데이터가 `MultiplayerMappedState`로 정확히 매핑되는지 검증하는 XCTestCase를 작성함."
+- **Outcome**: "Round 1의 테스트 계층 구축 및 검증 준비 완료."
+
+### [2026-03-15 19:40:00 KST] User Request: 순차적으로 Agent 역할극을 하며 Round 1 작업 진행 (Agent 3)
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Agent 3(iOS Client/UX) 역할을 맡아 `MultiplayerPlayCoordinator.swift`를 작성함."
+- **Files Touched**: ["GoStop/Views/MultiplayerPlayCoordinator.swift"]
+- **Validation**: "`GameView`를 감싸서 네트워크 상태(`MultiplayerSnapshot`)를 주기적으로 받아 StateMapper를 거쳐 GameManager 내부로 주입하도록 하는 래퍼/코디네이터를 작성함."
+- **Outcome**: "UI 계층에서 외부 권한 상태를 받아들일 준비를 마침."
+
+### [2026-03-15 19:35:00 KST] User Request: 순차적으로 Agent 역할극을 하며 Round 1 작업 진행 (Agent 2)
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Agent 2(Backend/Protocol) 역할을 맡아 Boot Payloads와 Delta Events 구조를 확정함."
+- **Files Touched**: ["agent2_handoff_round1.md"]
+- **Validation**: "기존 `room_protocol.md`와 향후 추가될 `MultiplayerShellState` 확장에 맞추어 UI 갱신 시 티어링(tearing)이 발생하지 않도록 sequence number와 JSON Patch delta 명세를 Handoff에 정의함."
+- **Outcome**: "Round 1의 통신 규격 정의 완료."
+
+### [2026-03-15 19:30:00 KST] User Request: 순차적으로 Agent 역할극을 하며 Round 1 작업 시작
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "Agent 1(Core Engine) 역할을 맡아 `MultiplayerStateMapper` 설계 및 `GameManager` 어댑터 작성을 지시받아 이를 수행함."
+- **Files Touched**: ["GoStop/Core/MultiplayerStateMapper.swift", "GoStop/Core/MultiplayerGameManagerHelper.swift", "agent1_handoff_round1.md"]
+- **Validation**: "기존 싱글플레이 전용 `GameManager`를 건드리지 않기 위해 `MultiplayerStateMapperError` 에러와 `MultiplayerMappedState` 구조체를 신설하고, 단방향 의존성 브릿지인 `MultiplayerGameManagerHelper` 프로토콜을 구현함."
+- **Outcome**: "서버 스냅샷을 렌더링 가능한 상태로 변환하는 계층(Agent 1 목표) 구축을 완료하고, Agent 2를 위한 Handoff 문서를 아티팩트로 남김."
+
+### [2026-03-15 19:24:56 KST] User Request: 10라운드 계획서 확정 후 Agent 별 코딩 프롬프트(Round 1) 작성
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "10-Round 연동 계획이 승인됨에 따라, 첫 번째 라운드(상태 매핑 및 어댑터 설계)를 위해 4개 Agent 세션에 바로 투입할 수 있는 프롬프트 파일을 생성하고 로그에 남겨야 했음."
+- **Files Touched**: ["agent_code_tasks_mp_ui_round1.md", "task.md", "project_progress.md"]
+- **Validation**: "작성된 `agent_code_tasks_mp_ui_round1.md`가 Agent 1(StateMapper 초안), Agent 2(부트스트랩/이벤트 페이로드), Agent 3(MultiplayerPlayCoordinator 마운트), Agent 4(변환 검증기)의 책임과 금지사항을 포함하는지 확인."
+- **Outcome**: "Round 1의 구체적인 코딩 프롬프트 가이드를 `agent_code_tasks_mp_ui_round1.md` 파일로 마련하여 병렬 작업을 시작할 수 있는 토대를 제공함."
+
+### [2026-03-15 19:22:42 KST] User Request: 본화면과 멀티플레이 상태를 연동하는 작업을 하고 싶어 agent를 4개 정도 운영해서 round를 10개 정도 나눠서 진행할 수 있도록 계획을 좀 세워죠
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "멀티플레이 본화면(GameView) 연동을 위해 4개 Agent 기준으로 10라운드 계획을 세우고, 작업 방향을 문서화해야 했음."
+- **Files Touched**: ["implementation_plan.md", "task.md", "project_progress.md"]
+- **Validation**: "`matgo_multiplayer_multi_agent_plan.md`에 정의된 4개 Agent(Core, Backend, iOS UX, Test)의 역할을 재확인하고, 상태 변환부터 애니메이션, 예외 처리, 정산까지 10단계 매핑 계획으로 체계화함."
+- **Outcome**: "단순 나열 뷰를 넘어 본 화면의 애니메이션과 상태를 멀티플레이 서버 스냅샷에 연결하기 위한 10라운드 병렬 계획을 `implementation_plan.md`로 정리해 유저의 리뷰를 대기함."
+
+### [2026-03-15 19:18:20 KST] User Request: 멀티 플레이 화투를 구현했는데 UI가 기존 single 플레이 화투 방식인지 확인해줘
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "멀티플레이 UI가 기존 싱글플레이(GameView) 기반 요소들을 재사용하는지 구조 조사를 요청했고, 결과를 로그에 남겨야 했음."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`MultiplayerShellViews.swift`의 `MultiplayerLiveShellView` 내부 렌더링 방식(`playerLane`, `tableLane` 등 단순 VStack/HStack)과 기존 `GameView.swift`의 좌표/애니메이션 기반 슬롯 매니저 구조를 대조 확인."
+- **Outcome**: "멀티플레이 UI는 기존 싱글플레이의 리치 애니메이션 UI(`GameView`)를 재사용하지 않고, 별도로 만들어진 문서·진단 목적의 `MultiplayerLiveShellView`를 사용하고 있음을 코드상 확인하여 브리핑함."
+
+### [2026-03-15 16:02:03 KST] User Request: invite code를 `room_0038` 대신 숫자-only share code로 변경
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 실제 invite share 값에서 `room_` 접두사를 제거하고 숫자만 쓰는 형태를 원했고, 현재 app/CLI가 `inviteCode == roomId`를 암묵 가정하고 있어 bootstrap lookup과 join 경로를 함께 맞춰야 했다."
+- **Files Touched**: ["GoStopCLI/RoomCoordinatorCLIAdapter.swift", "GoStop/Views/MultiplayerShellState.swift", "GoStop/Views/MultiplayerShellViews.swift", "project_progress.md"]
+- **Validation**: "코드 기준으로 create response와 room snapshot의 `inviteCode`가 `serializedInviteCode(for:)`를 통해 노출되고, guest product route는 입력값을 그대로 `room_join.roomId`로 보내는 구조를 다시 확인했다. 따라서 CLI adapter가 numeric invite code를 `room_####` room id로 해석하도록 수정하고, app에서는 invite input normalization과 UI copy를 numeric share code 기준으로 정리했다."
+- **Outcome**: "invite room은 이제 외부에 `0038` 같은 숫자-only invite code를 노출한다. CLI adapter는 numeric invite code 또는 legacy `room_0038` 입력을 모두 실제 room id로 해석해 lookup/join을 처리하고, app 입력도 숫자만 normalize해 product route 설명과 preview data까지 숫자 invite code 기준으로 정리했다."
+
+### [2026-03-15 15:47:17 KST] User Request: multiplayer room에서 양쪽 ready 이후 게임이 시작되지 않는 문제 수정
+- **Skills Planned**: ["gostop-test-reliability", "project_logger"]
+- **Skills Used**: ["gostop-test-reliability", "project_logger"]
+- **Trigger Reason**: "사용자가 두 시뮬레이터 캡처로 ready 이후 game start가 멈춘 재현을 보여 줬고, 실제 simulator debug log와 transport event 흐름을 대조해 stale room state 원인을 코드에서 바로 막아야 했다."
+- **Files Touched**: ["GoStop/Views/MultiplayerShellState.swift", "project_progress.md"]
+- **Validation**: "두 simulator app sandbox의 `debug_log_multiplayer.ndjson`를 읽어 host/guest 모두 `lastSeen.roomSequence=5`까지는 받았지만, non-acting client UI는 `seq=3`에 머무는 mismatch를 확인했다. 로그상 `memberReadyChanged`/`roomStateChanged` 후 `roomSnapshot`이 자동으로 반영되지 않았고, 앱 mapper가 해당 room event들을 무시하고 있었다."
+- **Outcome**: "transport `roomEvent` 중 `memberJoined`, `memberReadyChanged`, `readyWindowExpired`, `playerDisconnected`, `playerReconnected`, `playerForfeited`, `roomStateChanged`, non-local `memberLeft`를 snapshot refresh trigger로 승격시켰다. 이제 acting client가 아닌 쪽도 higher `roomSequence` room event를 받으면 authoritative `roomSnapshot`을 다시 당겨 ready/start state를 따라가야 한다."
+
+### [2026-03-15 15:36:50 KST] User Request: `MultiplayerShellState.swift` compile errors 3건 수정
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "멀티플레이 shell 상태 파일의 Swift compile error 3건을 기존 타입/로그 모델에 맞춰 최소 수정으로 정리해야 했다."
+- **Files Touched**: ["GoStop/Views/MultiplayerShellState.swift", "project_progress.md"]
+- **Validation**: "`xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n 'MultiplayerShellState\\.swift|error:|warning:|BUILD SUCCEEDED|BUILD FAILED'`와 `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -destination 'generic/platform=iOS' -derivedDataPath /tmp/gostop_ios_device_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n 'MultiplayerShellState\\.swift|error:|warning:|BUILD SUCCEEDED|BUILD FAILED'`를 시도했다. 두 경로 모두 현재 머신의 Xcode/CoreSimulator package resolution 환경 문제(`Could not resolve package dependencies`, `simdiskimaged` 응답 불가)로 전체 빌드 검증은 막혔지만, 소스 스캔으로 `pendingChoice?.id` 잔존 여부와 `phase`/`seekToEnd()` 수정 적용 상태를 재확인했다."
+- **Outcome**: "`MultiplayerShellState.swift`의 세 compile error 원인을 각각 수정했다. `seekToEnd()`의 unused `try?` 결과를 명시적으로 소비했고, `MultiplayerChoiceShellState` 접근은 `id` 대신 `choiceId`로 고쳤으며, debug log `fields` 딕셔너리에는 `MultiplayerPhase` 대신 `rawValue` 문자열을 넣도록 정리했다."
 
 ### [2026-03-08 21:18:56 KST] User Request: 현재 멀티플레이 작업 상태에서 중간 테스트 가능 여부 및 실행
 - **Skills Planned**: ["gostop-game-builder", "project_logger"]
@@ -2274,3 +2739,434 @@
 - **Files Touched**: ["project_progress.md"]
 - **Validation**: "직전 확인 결과를 기준으로 shipped Phase 0 완료, final validation green, merge-ready 상태를 다시 요약하는 것이 적절한지 점검했다."
 - **Outcome**: "현재 작업 범위를 마감 가능한 상태로 요약하고, shipped scope 완료와 deferred backlog를 반영한 권장 커밋 메시지를 작성해 제공했다."
+
+### [2026-03-15 12:10:45 KST] User Request: 온라인으로 두 사람이 접속하는 방법 설명 요청
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 현재 멀티플레이 구현 기준으로 실제 온라인 2인 접속이 어떤 흐름으로 동작하는지 알고 싶어 했다."
+- **Files Touched**: ["agent_sync_board.md", "room_protocol.md", "multiplayer_contract.md", "multiplayer_ui_flow.md", "project_progress.md"]
+- **Validation**: "`agent_sync_board.md`와 관련 protocol/contract 문서에서 shipped Phase 0 bootstrap boundary, websocket transport path, invite/resume/heartbeat 정책을 다시 확인했다."
+- **Outcome**: "현재 shipped Phase 0 기준으로는 authoritative websocket transport 서버를 public 환경에 띄우고, `room_bootstrap_*`로 방 생성/참가 후 `room_transport_*`로 hello/ready/gameplay를 진행하는 방식이 온라인 2인 접속 경로라는 점을 정리해 설명했다. true REST bootstrap split과 automatic dropped-event detection은 deferred backlog임도 함께 구분했다."
+
+### [2026-03-15 12:15:48 KST] User Request: 내 컴퓨터에서 2인 접속 테스트 가능 여부 확인 요청
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 현재 구현으로 자신의 컴퓨터 한 대에서 2인 접속 테스트를 할 수 있는지, 가능하면 어떤 방식으로 해야 하는지 알고 싶어 했다."
+- **Files Touched**: ["multiplayer_ui_flow.md", "agent_sync_board.md", "GoStop/Views/MultiplayerShellState.swift", "project_progress.md"]
+- **Validation**: "`MultiplayerWebSocketCommandNetworkingAdapter`의 기본 endpoint(`ws://127.0.0.1:9092`), `MP Lab > Transport` 연결 경로, 로컬 smoke 스크립트의 2인 attach/ready/start 흐름을 다시 확인했다."
+- **Outcome**: "한 컴퓨터에서 2인 접속 테스트는 가능하다고 정리했다. 가장 쉬운 방법은 기존 2인 smoke 스크립트 사용이고, 수동 테스트는 로컬 websocket 서버를 9092 포트로 띄운 뒤 두 simulator 또는 transport source를 이용해 host/guest를 붙이는 방식이라고 설명했다."
+
+### [2026-03-15 12:16:53 KST] User Request: 로컬 2인 테스트 단계별 실행 방법 요청
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 로컬 서버 실행, simulator 2대 연결, 실기기 연결, 그리고 앱 안에서 무엇을 눌러야 하는지까지 단계별 설명을 원했다."
+- **Files Touched**: ["GoStop/ContentView.swift", "GoStop/Views/MultiplayerShellState.swift", "GoStop/Views/MultiplayerShellViews.swift", "multiplayer_ui_flow.md", "project_progress.md"]
+- **Validation**: "`ContentView.swift`의 `Multiplayer` / `MP Lab` 진입점, product route의 `Home / Play / Session` 구성, 기본 websocket endpoint(`ws://127.0.0.1:9092`), transport-backed entry 버튼 명칭을 다시 확인했다."
+- **Outcome**: "로컬 2인 테스트는 `Multiplayer` product route를 기준으로 진행하고, `MP Lab > Transport`는 진단용으로만 쓰는 것을 권장한다고 정리했다. 서버 실행, 시뮬레이터 2개 실행, invite code 공유, Join Invite, Ready, live 전환, 실기기 연결 시 `GOSTOP_MP_TRANSPORT_URL`을 Mac LAN IP로 바꾸는 방법까지 단계별로 설명했다."
+
+### [2026-03-15 12:16:53 KST] User Request: Create Room 후 Invite Code 위치 확인 요청
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 첫 번째 시뮬레이터에서 Create Room 이후 invite code가 어디에 보이는지 찾지 못해 실제 노출 위치를 알고 싶어 했다."
+- **Files Touched**: ["GoStop/Views/MultiplayerShellViews.swift", "GoStop/Views/MultiplayerShellState.swift", "project_progress.md"]
+- **Validation**: "`MultiplayerRoomShellView`에서 `state.inviteCode`가 실제로 어떻게 렌더링되는지와 product route Home 화면이 invite code 입력 필드와 생성된 invite code 표시를 별도로 다루는지 다시 확인했다."
+- **Outcome**: "Create Room 후 invite code는 Home 입력칸에 자동 채워지는 것이 아니라 room surface 쪽에서 `Invite code: ...` 텍스트로 노출된다는 점을 설명하고, route가 Room으로 바뀌었는지와 Play/room 화면으로 이동해 확인해야 한다고 안내했다."
+
+### [2026-03-15 13:08:21 KST] User Request: `Create Room`과 `MP Lab` 위치 혼동 확인 요청
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 `Create Room`이 product route가 아니라 MP Lab에만 있는 것처럼 보여 혼동하고 있어 실제 버튼 라벨과 화면별 차이를 다시 확인할 필요가 있었다."
+- **Files Touched**: ["GoStop/Views/MultiplayerShellViews.swift", "GoStop/Views/MultiplayerShellState.swift", "project_progress.md"]
+- **Validation**: "`MultiplayerEntryView`와 `MultiplayerShellShowcaseView`의 entry action 라벨을 다시 읽어 product route에서는 `Create Invite`, debug/local flow에서는 `Create Room` 또는 `Create Invite`가 섞여 보일 수 있음을 확인했다."
+- **Outcome**: "사용자에게 product route에서는 실제로 `Create Room`이 아니라 `Create Invite`를 눌러야 하며, `Create Room`이라는 표현은 개념 설명이었다고 정정해 안내했다. 또한 `MP Lab`은 디버그용, `Multiplayer`는 실제 수동 2인 테스트용이라고 다시 구분해 설명했다."
+
+### [2026-03-15 13:22:03 KST] User Request: `Create Invite` 카드와 `Mock Action` 문구 확인 요청
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 `Attach Paths` 영역의 `Create Invite` 카드가 실제 클릭 대상인지, 그리고 `Mock Action` 문구가 무엇을 의미하는지 확인하고 싶어 했다."
+- **Files Touched**: ["GoStop/Views/MultiplayerShellViews.swift", "project_progress.md"]
+- **Validation**: "`MultiplayerActionCard` 구현을 다시 읽어 카드 전체가 실제 `Button(action:)`이고, 하단의 `Mock Action`은 별도 기능이 아니라 하드코딩된 표시 텍스트임을 확인했다. 부팅된 시뮬레이터 화면 캡처로 사용자가 보고 있는 카드와 실제 코드 구성을 대조했다."
+- **Outcome**: "사용자에게 orange `Create Invite` 카드 자체가 눌러야 하는 entry action이며, `Mock Action` 문구는 현재 UI copy 문제일 뿐 별도 mock-only 버튼이 아니라고 설명했다. 시뮬레이터 캡처를 기반으로 정확한 클릭 대상을 다시 안내했다."
+
+### [2026-03-15 13:46:01 KST] User Request: GoStopCLI websocket 서버 9092 listen 여부 확인 방법 요청
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 로컬 transport 서버가 실제로 떠 있는지 확인하는 방법과 현재 상태를 알고 싶어 했다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`lsof -nP -iTCP:9092 -sTCP:LISTEN`와 `ps -ef | rg \"GoStopCLI|room-transport-websocket-server|9092\"`로 현재 머신에서 9092 포트 listen 프로세스와 실행 명령을 확인했다."
+- **Outcome**: "현재 `/tmp/gostop_cli_local/Build/Products/Debug/GoStopCLI --room-transport-websocket-server --port 9092`가 PID 5030으로 9092 포트를 listen 중임을 확인했다. 사용자가 앞으로 직접 확인할 수 있는 `lsof`/`ps` 명령도 함께 안내했다."
+
+### [2026-03-15 13:47:56 KST] User Request: 앱이 `ws://127.0.0.1:9092`를 실제로 쓰는지 확인 방법 요청
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 서버 포트가 열려 있는 것과 별개로 앱이 실제 기본 websocket endpoint를 쓰고 있는지 확인하고 싶어 했다."
+- **Files Touched**: ["GoStop/Views/MultiplayerShellState.swift", "project_progress.md"]
+- **Validation**: "`MultiplayerShellTransportOptions.defaultEndpointURL()` 구현을 다시 읽어 기본값이 `ws://127.0.0.1:9092`이고 `GOSTOP_MP_TRANSPORT_URL` env var가 있으면 override된다는 점을 확인했다. 또한 `lsof -nP -iTCP:9092`로 현재 `GoStop` 프로세스의 `127.0.0.1 -> 127.0.0.1:9092` ESTABLISHED 연결을 확인했다."
+- **Outcome**: "사용자에게 코드상 기본 endpoint, Xcode scheme env override 확인 위치, 앱 UI의 endpoint 노출 문구, 그리고 현재 머신에서 `GoStop` 프로세스가 실제로 `127.0.0.1:9092`와 ESTABLISHED 상태라는 런타임 확인 방법을 함께 설명했다."
+
+### [2026-03-15 13:54:46 KST] User Request: `Session` 탭 위치 확인 요청
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 현재 sheet 화면에서 `Session` 탭 위치를 찾지 못하고 있어 `Multiplayer` product route와 `MP Lab`의 탭 구조 차이를 기준으로 설명할 필요가 있었다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "직전 캡처(`/tmp/gostop_sim_16.png`)와 `ContentView.swift`, `MultiplayerProductMultiplayerRouteView` 구조를 기준으로 `Multiplayer`는 하단 `Home / Play / Session` 탭, `MP Lab`은 `Coordinator / Transport / Mapped` 탭이라는 점을 재확인했다."
+- **Outcome**: "사용자에게 현재 `Multiplayer` sheet라면 하단 맨 오른쪽이 `Session` 탭이고, `MP Lab`에 있으면 `Session` 탭이 원래 없다는 점을 구분해서 안내했다."
+
+### [2026-03-15 13:58:26 KST] User Request: `Session` 탭 위치를 화살표 캡처로 안내 요청
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 하단 탭이 실제로 없는 것처럼 보인다고 하여, 현재 시뮬레이터 캡처 위에 위치를 명시한 시각적 안내가 필요했다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "부팅된 simulator 화면을 `xcrun simctl io ... screenshot`으로 캡처하고, 별도 주석 이미지를 생성해 `Home / Play / Session`의 실제 위치를 시각적으로 확인했다."
+- **Outcome**: "현재 `Multiplayer Home` 화면의 하단 탭 바에 `Home / Play / Session`이 모두 존재하지만 `Play`와 `Session`이 매우 어둡게 렌더링된다는 점을 화살표 이미지와 확대본으로 안내했다."
+
+### [2026-03-15 14:30:31 KST] User Request: `room created failed` 원인 확인 요청
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 annotated guide대로 진행했지만 `room created failed`가 발생해 실제 원인이 서버인지 앱 transport state인지 구분할 필요가 있었다."
+- **Files Touched**: ["GoStop/Views/MultiplayerShellState.swift", "project_progress.md"]
+- **Validation**: "`MultiplayerTransportShellSource.createRoom` 경로와 `MultiplayerWebSocketCommandNetworkingAdapter.createRoomBootstrap` 구현을 다시 읽고, 현재 머신의 `lsof -nP -iTCP:9092` 결과로 앱과 `GoStopCLI` 사이의 ESTABLISHED 연결을 확인했다. 실패 배너 문구가 generic key(`entry.resume.transport_unavailable`)를 쓰는 구조도 확인했다."
+- **Outcome**: "현재 `GoStop` 앱과 `GoStopCLI` 서버는 9092에서 실제 연결되어 있어 서버 down 가능성은 낮고, `room created failed`는 앱의 entry/transport state 또는 websocket command response 실패를 generic하게 감싼 상태로 판단했다. 사용자에게 우선 `unsupported/not ready` 배너 유무, sheet 재오픈/앱 재실행, MP Lab > Transport에서 동일 증상 재현 여부를 기준으로 복구/분기 확인 절차를 안내했다."
+
+### [2026-03-15 14:33:48 KST] User Request: `Room Create Failed` 상세 에러 기반 원인 분석 및 수정
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 에러 detail(`Transport value eventName is not a string.`) 스크린샷을 제공해, 구체적인 parser mismatch를 코드에서 찾아 수정할 수 있게 됐다."
+- **Files Touched**: ["GoStop/Views/MultiplayerShellState.swift", "project_progress.md"]
+- **Validation**: "`MultiplayerShellTransportEnvelopeMapper.roomEvents`와 `RoomCoordinatorCLIAdapter.serializeEvent`를 대조해 server roomEvent envelope가 `payload.payload.eventName` 구조인데 앱 파서는 `payload.eventName`만 기대하고 있음을 확인했다. 수정 후 `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator ... build`를 시도했으나 CoreSimulator runtime/package dependency 환경 문제로 코드 수준 빌드 검증은 완료하지 못했다."
+- **Outcome**: "앱 `roomEvent` 파서가 nested payload를 한 단계 더 풀도록 수정해 `eventName is not a string` mismatch를 해결했다. 사용자는 앱을 다시 빌드/실행한 뒤 `Create Invite`를 재시도하면 된다."
+
+### [2026-03-15 14:36:52 KST] User Request: `resumeMode=fresh is unsupported` 에러 원인 분석 및 수정
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 두 번째 상세 에러 스크린샷(`resumeMode=fresh is unsupported`)을 제공해 helloAck enum raw value mismatch를 직접 확인할 수 있게 됐다."
+- **Files Touched**: ["GoStop/Views/MultiplayerShellState.swift", "project_progress.md"]
+- **Validation**: "`MultiplayerHelloResumeMode` 정의와 `RoomCoordinatorCLIAdapter`의 `resumeMode.rawValue`를 대조해 앱은 `freshAttach/resumed/resumeRejected`, 서버는 `fresh/resume/...`를 보내는 mismatch를 확인했다."
+- **Outcome**: "앱의 `MultiplayerHelloResumeMode` rawValue를 서버가 보내는 `fresh`, `resume`, `resumeRejected`와 맞추도록 수정했다. 사용자는 앱을 다시 빌드/재실행 후 `Create Invite`를 재시도하면 된다."
+
+### [2026-03-15 14:56:18 KST] User Request: `join fail` 원인 확인 및 2-시뮬레이터 transport collision 점검
+- **Skills Planned**: ["gostop-test-reliability", "project_logger"]
+- **Skills Used**: ["gostop-test-reliability", "project_logger"]
+- **Trigger Reason**: "사용자가 두 시뮬레이터 스크린샷과 함께 `room_join failed (roomClosed)`를 제보해, 서버가 실제로 방을 닫았는지와 app-side multiplayer transport 구성이 2인 테스트에 안전한지 확인할 필요가 있었다."
+- **Files Touched**: ["GoStop/Views/MultiplayerShellState.swift", "project_progress.md"]
+- **Validation**: "`lsof -nP -iTCP:9092`와 `ps -ef`로 현재 `GoStopCLI` 서버는 살아 있고 두 시뮬레이터 중 한 앱만 9092에 ESTABLISHED 상태임을 확인했다. `MultiplayerTransportRouteConfiguration.productPreparation`의 `hostClientId`가 고정 문자열이라 두 simulator app 인스턴스가 동일한 transport client ID를 공유하는 문제를 확인했고, `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator ...`는 코드 에러가 아니라 CoreSimulator/runtime 환경 문제로 실패했다."
+- **Outcome**: "product multiplayer route의 websocket client ID를 고정값이 아니라 인스턴스별 고유값으로 생성하도록 수정했다. 현재 `room_0035`는 서버가 이미 `roomClosed`로 보고 있으므로 이 방은 버리고 앱을 다시 실행한 뒤 새 invite code로 재검증해야 한다. host 화면이 살아 보였던 것은 app이 room mailbox를 지속 polling하지 않아 stale snapshot을 보여줬을 가능성이 높다고 정리했다."
+
+### [2026-03-15 15:05:04 KST] User Request: Join 이후 실제 게임 진행 방법 안내
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 room join 성공 후 실제 play tab에서 어떤 순서로 게임을 진행해야 하는지 물었고, 현재 shipped alpha UX가 제공하는 ready/live/gameplay action 경로를 코드 기준으로 확인할 필요가 있었다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`MultiplayerRoomView`, `MultiplayerLiveShellView`, `MultiplayerProductPlayView`, `MultiplayerShellStore`의 networking adapter 경로를 다시 읽어 room 단계의 `Ready`, live 단계의 `playCard`/`submitChoice`/`quit` UI가 실제 authoritative transport에 연결돼 있음을 확인했다."
+- **Outcome**: "사용자에게 두 플레이어가 각각 Play 탭에서 `Ready`를 누른 뒤 live로 전환되고, live에서는 손패 카드를 먼저 선택한 다음 `Play <카드명>` 버튼으로 실제 `playCard`를 보내며, choice가 뜨면 해당 option 버튼으로 `submitChoice`를 보내고, 나가기는 `Send Quit Command`를 사용하는 순서를 안내할 준비를 마쳤다."
+
+### [2026-03-15 15:13:51 KST] User Request: Ready 이후 한쪽 stale room 상태 및 live handoff 갭 수정
+- **Skills Planned**: ["gostop-test-reliability", "project_logger"]
+- **Skills Used**: ["gostop-test-reliability", "project_logger"]
+- **Trigger Reason**: "사용자가 두 시뮬레이터에서 한쪽은 두 좌석 모두 Ready, 다른 쪽은 Seat 2 Not Ready로 보이는 스크린샷을 제공해, product route가 room mailbox를 지속 polling하지 않고 `starting -> gameStarted -> live` handoff를 자동으로 처리하지 않는 문제를 함께 고칠 필요가 있었다."
+- **Files Touched**: ["GoStop/Views/MultiplayerShellState.swift", "project_progress.md"]
+- **Validation**: "`MultiplayerWebSocketCommandNetworkingAdapter.pullMailbox`, `MultiplayerShellStore.handleInboundEvent`, `RoomCoordinatorCLIAdapter`의 `snapshot`/`recordGameStartedAndPrepareBootstrap` 경로를 다시 읽어, 현재 앱이 액션 직후에만 mailbox를 당기고 host가 `.starting` 상태에서 자동으로 `recordGameStarted`를 보내지 않는 구조임을 확인했다. `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator ...` 검증은 다시 시도했지만 CoreSimulator/runtime 환경 문제로 실패했다."
+- **Outcome**: "room/live/result route에서 transport mailbox를 0.6초 간격으로 주기 polling하도록 보강하고, host local player가 `.starting` room snapshot을 받으면 `recordGameStartedUsingNetworkingAdapter`를 자동 호출하도록 수정했다. 이로써 두 기기가 stale room snapshot에 오래 머무르지 않고, 둘 다 ready 완료 후 live bootstrap handoff가 자동으로 이어질 수 있어야 한다."
+
+### [2026-03-15 15:28:37 KST] User Request: 10초 이상 room에 머무는 상태를 추적할 수 있도록 debug_log 추가
+- **Skills Planned**: ["gostop-test-reliability", "project_logger"]
+- **Skills Used**: ["gostop-test-reliability", "project_logger"]
+- **Trigger Reason**: "사용자가 ready 이후 10초 이상 live로 넘어가지 않는 재현을 직접 잡고 있어, 앱 내부 상태 전이와 transport polling 흐름을 파일 기반 `debug_log`로 남길 필요가 있었다."
+- **Files Touched**: ["GoStop/Views/MultiplayerShellState.swift", "project_progress.md"]
+- **Validation**: "`rg -n 'debug_log|Logger\\(|artifact|traceId' GoStop GoStopCLI tests`, `sed -n '1888,2185p' GoStop/Views/MultiplayerShellState.swift`, `sed -n '690,940p' GoStop/Views/MultiplayerShellState.swift`로 기존 multiplayer transport 경로와 로깅 부재를 확인했다. 이어서 `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_debuglog build CODE_SIGNING_ALLOWED=NO`를 시도했으나 이번에도 CoreSimulator/runtime/package dependency 환경 문제(`Could not resolve package dependencies`)로 코드 수준 빌드 검증은 완료하지 못했다."
+- **Outcome**: "앱 sandbox의 `Application Support/GoStop/debug_log_multiplayer.ndjson`에 append되는 파일 기반 debug logger를 추가하고, `Route Notes`에 전체 log path를 노출했다. `setReady`, `room_transport_receive`, mailbox poll 주기, inbound `helloAck`/`roomSnapshot`/`gameSnapshot`, route 전환, auto-start trigger/success/failure 지점마다 요약 상태를 저장하도록 보강했다. 다음 재현부터는 두 시뮬레이터가 각각 어떤 `roomSequence`, `roomState`, `members ready`, `gameStarted` 단계에서 갈라지는지 파일 로그로 비교할 수 있다."
+
+### [2026-03-19 21:59:05 KST] User Request: 현재 멀티플레이가 싱글플레이처럼 카드 클릭 UX로 동작하는지 확인
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 지금까지 멀티플레이 작업 상태를 되짚으면서, 실제 live 입력이 싱글플레이 `GameView`와 같은 카드 탭 UX인지 아니면 별도 shell UX인지 현재 코드 기준으로 판정해달라고 요청했다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`ContentView.swift`, `GoStop/Views/MultiplayerShellViews.swift`, `GoStop/Views/MultiplayerShellState.swift`, `GoStop/Views/MultiplayerPlayCoordinator.swift`, `GoStop/Views/GameAreaViews.swift`, `GoStop/Views/GameView.swift`를 읽어 main app multiplayer route, product live surface, debug-only rich UI bridge, single-player tap path를 비교했다."
+- **Outcome**: "현재 main app의 `Multiplayer` 진입은 `MultiplayerProductMultiplayerRouteView -> MultiplayerLiveShellView` 경로를 사용하며, 손패 카드를 눌러 선택한 뒤 별도 `Play ...` 버튼으로 authoritative `playCard`를 보내는 구조임을 확인했다. 싱글플레이는 손패 카드를 직접 탭하면 즉시 `gameManager.playTurn(card:)`로 들어가므로 UX parity는 아직 아니다. `GameView`를 감싼 `MultiplayerPlayCoordinatorView`가 존재하긴 하지만 이는 `MP Lab`의 `Rich UI` 탭용이며 파일 주석상 아직 실제 live socket/room coordinator에 완전 연결된 production route는 아니다."
+
+### [2026-03-15 16:12:40 KST] User Request: live 상태 이후 실제 게임 플레이 시작 방법 문의
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 live transport handoff 이후 실제로 어디를 눌러 플레이를 시작하는지 물었고, `MultiplayerLiveShellView`의 turn gating과 hand/action 패널 위치를 코드 기준으로 다시 확인할 필요가 있었다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`rg -n 'MultiplayerLiveShellView|Play Card|Choice Pending|My Hand|Send Quit Command' GoStop/Views/MultiplayerShellViews.swift`, `sed -n '1159,1605p' GoStop/Views/MultiplayerShellViews.swift`, `sed -n '1490,1525p' GoStop/Views/MultiplayerShellViews.swift`, `sed -n '160,220p' GoStop/Views/MultiplayerShellViews.swift`로 live 화면이 이미 플레이 화면이며, 실제 입력은 `My Hand` 카드 선택 후 `Play ...` 버튼과 `pendingChoice` 옵션 버튼으로 진행되고 현재 턴 소유자만 조작이 풀리는 것을 확인했다."
+- **Outcome**: "사용자에게 live 화면 진입이 곧 게임 시작 상태이며 별도 start 버튼은 없고, 아래로 스크롤해 `My Hand` 섹션에서 카드 선택 후 `Play ...`를 누르며, 선택지가 뜨면 `Choice Pending` 옵션을 누르는 흐름으로 안내할 준비를 마쳤다."
+
+### [2026-03-15 16:24:02 KST] User Request: Live 화면에서 Play 버튼을 눌러도 아무 일도 일어나지 않는 문제 수정
+- **Skills Planned**: ["gostop-test-reliability", "project_logger"]
+- **Skills Used**: ["gostop-test-reliability", "project_logger"]
+- **Trigger Reason**: "사용자가 실제 live gameplay에서 `Play` 버튼 탭 후 아무 반응이 없다고 제보했고, simulator debug log와 transport authority 경로를 확인해 action reject 또는 stale phase 문제를 판별할 필요가 있었다."
+- **Files Touched**: ["GoStopCLI/main.swift", "GoStopCLI/RoomCoordinatorCLIAdapter.swift", "GoStop/Views/MultiplayerShellViews.swift", "project_progress.md"]
+- **Validation**: "두 simulator `debug_log_multiplayer.ndjson`를 검색해 `inbound.actionRejected code=invalidPhase`와 `liveRoute phase=waiting`을 확인했다. 이어서 `xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI -configuration Debug -derivedDataPath /tmp/gostop_cli_build build CODE_SIGNING_ALLOWED=NO`는 `BUILD SUCCEEDED`로 통과했고, `python3 scripts/run_multiplayer_cli_two_player_smoke.py --scenario mp008-gameplay-resync --skip-build --binary /tmp/gostop_cli_build/Build/Products/Debug/GoStopCLI --output-root /tmp/gostop_multiplayer_smoke_after_startfix`도 통과했다. 생성된 transcript에서 `recordGameStartedAndPrepareBootstrap` 직후 `stateSnapshot.state.phase == inTurn`으로 바뀐 것까지 확인했다. iOS app 전체 빌드는 `simdiskimaged`/package dependency 환경 오류로 검증하지 못했다."
+- **Outcome**: "transport room이 `recordGameStarted`만 기록하고 authority `GameManager.startGame()`은 호출하지 않아 live bootstrap snapshot이 계속 `phase=waiting`으로 남던 문제를 수정했다. `RoomAuthorityRelay.startGameIfNeeded` hook를 추가해 transport bootstrap 직전에 authority game start를 실행하고, live UI는 `phase == .inTurn`일 때만 `Play` 버튼을 활성화하도록 바꿨다. 이제 rebuild 후 live 진입 직후 첫 snapshot이 `inTurn`이어야 하며, 더 이상 waiting 상태에서 misleading `Play` 탭이 발생하지 않아야 한다."
+
+### [2026-03-15 16:27:49 KST] User Request: 9092로 실행 중인 GoStopCLI 서버를 새 binary로 재시작
+- **Skills Planned**: ["gostop-test-reliability", "project_logger"]
+- **Skills Used**: ["gostop-test-reliability", "project_logger"]
+- **Trigger Reason**: "사용자가 새로 수정한 CLI binary로 room transport websocket server를 다시 올려 달라고 요청했고, 현재 9092 listening 상태와 실행 인자를 확인한 뒤 서버 프로세스를 재기동할 필요가 있었다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`lsof -nP -iTCP:9092 -sTCP:LISTEN`로 기존 9092 listener가 없음을 확인했다. sandbox 안에서 `/tmp/gostop_cli_build/Build/Products/Debug/GoStopCLI --room-transport-websocket-server`를 직접 실행하면 `Operation not permitted`로 bind가 막혀, escalated PTY로 재실행했다. 이후 다시 `lsof -nP -iTCP:9092 -sTCP:LISTEN`에서 `GoStopCLI` PID 24298이 `*:9092 (LISTEN)` 상태임을 확인했다."
+- **Outcome**: "새로 빌드한 `/tmp/gostop_cli_build/Build/Products/Debug/GoStopCLI` websocket transport server를 9092에 재기동했다. 현재 simulator는 이 새 binary가 제공하는 room transport websocket server에 연결할 수 있어야 한다."
+
+### [2026-03-15 16:49:38 KST] User Request: 오른쪽에서 한 턴 진행 후 왼쪽 Play 클릭 무반응 문제 수정
+- **Skills Planned**: ["gostop-test-reliability", "project_logger"]
+- **Skills Used**: ["gostop-test-reliability", "project_logger"]
+- **Trigger Reason**: "사용자가 한 기기에서 턴을 진행한 뒤 다른 기기에서 카드 선택 후 `Play`를 눌러도 반응이 없다고 보고했고, simulator 스크린샷상 양쪽 live projection이 같은 턴을 다른 stateVersion으로 보고 있어 app 쪽 stale live state 처리 누락을 메워야 했다."
+- **Files Touched**: ["GoStop/Views/MultiplayerShellState.swift", "project_progress.md"]
+- **Validation**: "`rg -n 'statePatched|triggerGapRecovery|gapRecoveryHint|handleInboundEvent|gameEvents\\(' GoStop/Views/MultiplayerShellState.swift GoStopCLI/RoomCoordinatorCLIAdapter.swift GoStop/Core/MultiplayerContract.swift`와 관련 `sed` 조회로 서버는 gameplay마다 `statePatched`를 보내지만 앱 mapper는 그 이벤트를 버리고 있음을 다시 확인했다. 수정 후 `rg -n 'statePatched|GapRecoveryNetworkingAdapter|statePatchRefresh|triggerGapRecoveryUsingNetworkingAdapter' GoStop/Views/MultiplayerShellState.swift`로 새 경로를 확인했다. `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO`는 이번에도 CoreSimulator/runtime 환경 문제(`simdiskimaged` 응답 불가, `Could not resolve package dependencies`)로 전체 app 빌드 검증을 끝내지 못했다."
+- **Outcome**: "앱 shell이 `statePatched` gameEvent를 수신하면 patch를 무시한 채 stale live projection에 남지 않고, coalesced `triggerGapRecovery` transport action으로 authoritative `stateSnapshot`을 다시 받아오도록 수정했다. websocket adapter에 gap recovery 전송을 추가하고, store에 `inbound.statePatched` 및 `live.statePatchRefresh.*` 로그를 남기게 해 다음 재현에서는 오른쪽 턴 이후 왼쪽이 즉시 fresh snapshot으로 따라오고 `Play` 무반응 대신 state update가 적용돼야 한다."
+### [2026-03-19 22:10:28 KST] User Request: 멀티플레이도 싱글플레이처럼 카드 자체를 눌러 바로 진행하도록 수정
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 product multiplayer live UX를 싱글플레이처럼 `손패 카드 직접 탭 -> 즉시 진행` 흐름으로 맞추길 원했고, 현재 남아 있던 선택 후 전송 흔적과 안내 문구를 정리할 필요가 있었다."
+- **Files Touched**: ["GoStop/Views/MultiplayerShellViews.swift", "project_progress.md"]
+- **Validation**: "`sed -n '1159,1528p'`, `sed -n '1605,1705p'`, `sed -n '1928,2110p'`, `sed -n '2448,2485p'`, `sed -n '2488,2710p' GoStop/Views/MultiplayerShellViews.swift`로 live shell 입력 흐름과 잔여 문구를 다시 확인했다. 수정 후 `rg -n 'Direct Hand Play|Tap a hwatu card from your hand|Tap a hand card to send playCard immediately|Last tapped:|syncSelectedCardIfNeeded\\(|was the latest locally tapped hand card' GoStop/Views/MultiplayerShellViews.swift`로 direct-tap wording과 자동 선택 제거가 반영됐음을 확인했다. `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO` 검증은 이번에도 CoreSimulator/package dependency 환경 문제(`Could not resolve package dependencies`)로 끝까지 통과하지 못했다."
+- **Outcome**: "product multiplayer live shell의 hand play 안내를 `직접 탭 전송` 기준으로 바꾸고, 자동으로 첫 손패를 선택하던 `syncSelectedCardIfNeeded` 기본 동작을 제거했다. 이제 live UI는 사용자가 실제로 탭한 손패만 최근 카드로 표시하고, table focus는 여전히 로컬 inspection 용도로만 남는다. 선택 후 별도 Play 버튼을 전제로 하는 카피를 걷어내 싱글플레이에 더 가까운 `카드 자체를 눌러 바로 진행` UX 방향으로 정리했다."
+
+### [2026-03-19 22:17:28 KST] User Request: 로컬 멀티플레이 테스트용 websocket 서버를 9092에 다시 띄우기
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 실제로 두 사람이 접속하는 테스트를 이어가려면 로컬 websocket transport 서버가 필요했고, 현재 9092 listener와 CLI binary가 없는 상태여서 build 후 재기동이 필요했다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`lsof -nP -iTCP:9092 -sTCP:LISTEN`로 기존 listener가 없음을 확인했다. 이어서 `xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI -configuration Debug -derivedDataPath /tmp/gostop_cli_local build CODE_SIGNING_ALLOWED=NO`를 unrestricted로 재시도해 `BUILD SUCCEEDED`를 확인했다. 그 다음 `/tmp/gostop_cli_local/Build/Products/Debug/GoStopCLI --room-transport-websocket-server --port 9092`를 실행했고, 마지막으로 `lsof -nP -iTCP:9092 -sTCP:LISTEN`에서 `GoStopCLI ... TCP *:9092 (LISTEN)`을 확인했다."
+- **Outcome**: "새로 빌드한 `GoStopCLI` websocket transport 서버를 9092에 재기동했다. 현재 로컬 2인 멀티플레이 테스트는 `ws://127.0.0.1:9092` 기준으로 진행 가능한 상태다."
+
+### [2026-03-19 22:27:16 KST] User Request: 멀티플레이 테이블 카드 선택/매칭 UX를 싱글플레이에 더 가깝게 개선
+- **Skills Planned**: ["gostop-ui-playability", "gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-ui-playability", "gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 direct hand tap 다음 단계로, multiplayer의 table/capture interaction도 싱글플레이처럼 카드 자체를 눌러 선택하는 감각에 더 가깝게 맞춰 달라고 요청했다."
+- **Files Touched**: ["GoStop/Views/MultiplayerShellViews.swift", "project_progress.md"]
+- **Validation**: "`GameAreaViews.swift`, `GameView.swift`, `MultiplayerShellViews.swift`를 읽어 싱글플레이의 `손패 직접 탭` 및 `captureChoiceOverlay` 카드 직접 탭 흐름을 multiplayer live shell과 비교했다. 수정 후 `rg -n 'handleTableCardTap|handleChoicePreviewTap|captureChoiceOption\\(|Tap the matching table card|Tap any card in this preview stack' GoStop/Views/MultiplayerShellViews.swift`로 새 interaction entrypoint와 안내 문구를 확인했다. `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO` 검증은 이번에도 CoreSimulator/package dependency 환경 문제(`Could not resolve package dependencies`)로 끝까지 통과하지 못했다."
+- **Outcome**: "multiplayer live shell에서 table card tap을 local focus 전용에서 한 단계 올려, `capture` choice가 떠 있는 동안에는 매칭되는 table card를 누르면 바로 해당 `submitChoice`로 이어지게 만들었다. choice preview stack도 카드 자체가 버튼이 되도록 바꿔 싱글플레이 capture overlay와 비슷한 감각으로 선택할 수 있게 했고, capture choice 중에는 selected hand context를 지우지 않도록 focus 동작도 조정했다. 즉 transport 계약은 그대로 두고, live 보드 상호작용은 `카드 자체를 눌러 선택`하는 쪽으로 더 가까워졌다."
+
+### [2026-03-19 22:52:01 KST] User Request: 두 플레이어가 모두 ready 하면 바로 single 화투 플레이로 들어가서 화투를 칠 수 있도록 수정
+- **Skills Planned**: ["gostop-game-builder", "gostop-ui-playability", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "gostop-ui-playability", "project_logger"]
+- **Trigger Reason**: "사용자가 멀티플레이 room/live handoff를 단순 shell 카드 패널이 아니라 싱글플레이처럼 `GameView` 기반 실제 화투 플레이 화면으로 바꾸길 원했고, authoritative snapshot과 transport action을 직접 연결하는 bridge가 필요했다."
+- **Files Touched**: ["GoStop/Core/GameManager.swift", "GoStop/Core/MultiplayerStateMapper.swift", "GoStop/Views/MultiplayerPlayCoordinator.swift", "GoStop/Views/MultiplayerShellState.swift", "GoStop/Views/MultiplayerShellViews.swift", "project_progress.md"]
+- **Validation**: "`sed`/`rg`로 `GameManager.onLocalAction`, `DefaultMultiplayerStateMapper`, `MultiplayerPlayCoordinatorViewModel`, `MultiplayerShellStore.handleInboundEvent`, `MultiplayerShellShowcaseView case .live`를 다시 점검했다. 수정 후 `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n \"BUILD SUCCEEDED|BUILD FAILED|error:\"`를 실행해 `BUILD SUCCEEDED`를 확인했다."
+- **Outcome**: "멀티플레이 product live route가 authoritative `gameSnapshot`을 받으면 더 이상 custom live shell만 쓰지 않고 `GameView` 기반 `MultiplayerAuthoritativeGameCoordinatorView`로 들어가도록 바꿨다. store는 raw live snapshot을 보관하고 `GameView`에서 발생한 `playCard/respondToCapture/respondToShake/respondToGoStop/respondToChrysanthemumChoice`를 기존 transport submit/play 경로로 다시 매핑한다. 상태 매퍼는 non-UUID room player id에서도 seat 기준으로 플레이어와 턴을 안정적으로 맞추도록 보강했다. 결과적으로 두 플레이어가 ready 후 live로 넘어가면, product route에서 싱글플레이처럼 손패 화투를 직접 탭해 authoritative multiplayer command를 보낼 수 있는 기반이 붙었다."
+
+### [2026-03-19 23:40:18 KST] User Request: 멀티플레이 live 화면에 남아 있는 상단 chrome/debug overlay 정리
+- **Skills Planned**: ["gostop-ui-playability", "gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-ui-playability", "gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 새 live route 화면 캡처를 보여주며 싱글플레이 같은 몰입형 화면과 다르게 상단 `Current Route` 카드와 디버그 가이드가 남아 있는 상태를 지적했고, product live 진입 시 남는 shell chrome를 더 걷어낼 필요가 있었다."
+- **Files Touched**: ["GoStop/Core/ConfigManager.swift", "GoStop/Views/MultiplayerShellViews.swift", "project_progress.md"]
+- **Validation**: "`rg -n \"layoutDebugEnabled|toolbar\\(store.route == \\.live|if store.route == \\.live\" GoStop/Core/ConfigManager.swift GoStop/Views/MultiplayerShellViews.swift`로 live 전용 tab bar hide, play view live 분기, layout debug 기본 정책 위치를 확인했다. 수정 후 `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n \"BUILD SUCCEEDED|BUILD FAILED|error:\"`를 다시 실행해 `BUILD SUCCEEDED`를 확인했다."
+- **Outcome**: "product multiplayer route에서 `store.route == .live`일 때는 상단 `Current Route` 카드 없이 `MultiplayerShellShowcaseView`만 전면에 렌더링하고, tab bar도 숨기도록 바꿨다. 또한 `ConfigManager`의 layout debug 기본값을 OFF로 돌려 `Safe Area / opponent / center / player` 가이드가 기본 실행에서 더 이상 노출되지 않게 했다. 이제 product live 진입 시 싱글플레이에 더 가까운 몰입형 화면으로 보여야 하며, 디버그 가이드는 `GOSTOP_LAYOUT_DEBUG=1`을 명시한 경우에만 다시 켤 수 있다."
+
+### [2026-03-19 23:49:10 KST] User Request: 멀티플레이는 single과 같은 GameView 하나로 동작해야 하므로 live 시작 시 product shell 대신 직접 GameView로 전환
+- **Skills Planned**: ["gostop-game-builder", "gostop-ui-playability", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "gostop-ui-playability", "project_logger"]
+- **Trigger Reason**: "사용자가 여전히 `Multiplayer` shell 안에서 게임이 도는 것처럼 보인다고 지적했고, 요구사항을 `single play와 multiplayer play가 동일한 GameView를 공유하고 online 여부만 다르게 보는 구조`로 다시 명확히 했다."
+- **Files Touched**: ["GoStop/Views/MultiplayerShellViews.swift", "project_progress.md"]
+- **Validation**: "`rg -n \"MultiplayerProductLiveGameView|authoritativeLiveSnapshot, store.route == \\.live|NavigationStack\" GoStop/Views/MultiplayerShellViews.swift`로 live direct-route 분기 위치를 확인했다. 이후 `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n \"BUILD SUCCEEDED|BUILD FAILED|error:\"`를 실행해 `BUILD SUCCEEDED`를 확인했다."
+- **Outcome**: "product multiplayer route는 이제 `store.route == .live && authoritativeLiveSnapshot != nil`이면 `NavigationStack/TabView/MultiplayerShellShowcaseView` 경유 없이 곧바로 `MultiplayerProductLiveGameView -> MultiplayerAuthoritativeGameCoordinatorView -> GameView`로 진입한다. 즉 multiplayer game이 시작되면 shell chrome이 아니라 single play와 같은 GameView 하나가 전면에 보이고, 차이는 local engine이 아니라 online authoritative snapshot/action bridge가 뒤에서 붙는 점뿐이 되도록 구조를 정리했다."
+
+### [2026-03-20 00:16:27 KST] User Request: 멀티플레이 화면 떨림, 서로 다른 바닥 화투, 컴퓨터 대전처럼 보이는 문제 확인 및 수정
+- **Skills Planned**: ["gostop-test-reliability", "gostop-ui-playability", "gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-test-reliability", "gostop-ui-playability", "gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 멀티플레이 live에서 화면이 떨리고 두 기기가 다른 바닥 화투를 보며 사람 대 사람 대신 컴퓨터전처럼 동작한다고 보고했고, 시뮬레이터 로그와 GameView/mapper wiring을 동시에 점검해 authoritative manager 미주입과 stale single-player player model 재사용 여부를 확인해야 했다."
+- **Files Touched**: ["GoStop/Views/GameView.swift", "GoStop/ContentView.swift", "GoStop/Views/MultiplayerPlayCoordinator.swift", "GoStop/Core/MultiplayerStateMapper.swift", "project_progress.md"]
+- **Validation**: "`xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n \"BUILD SUCCEEDED|BUILD FAILED|error:\"`로 `BUILD SUCCEEDED`를 확인했다. 또한 escalated `xcrun simctl get_app_container`와 각 simulator container의 `debug_log_multiplayer.ndjson` tail을 확인해 두 기기 모두 authoritative snapshot은 동일한 `phase=choicePending stateVersion=1`을 보고 있었고, 스크린샷 divergence가 transport desync가 아니라 로컬 single-player `GameManager` 렌더링과 일치함을 확인했다."
+- **Outcome**: "`GameView`가 항상 자기 `@StateObject GameManager()`를 만들어 multiplayer에서 주입한 authoritative manager를 무시하던 구조를 고쳤다. 이제 `GameView(gameManager:)`로 실제 manager를 받으며, `ContentView`는 싱글용 manager를 별도로 소유하고, multiplayer coordinator는 같은 `GameView`에 authoritative multiplayer manager를 직접 전달한다. 동시에 `GameView.onAppearAction()`은 `onLocalAction`이 있는 경우 internal computer automation을 끄고 external control mode를 유지하게 바꿨다. 추가로 `DefaultMultiplayerStateMapper`는 기존 `Player 1/Computer` 인스턴스를 재사용하지 않고 authoritative projection 이름으로 새 player model을 만들어 `Computer` 라벨 잔류 문제를 제거했다. 결과적으로 멀티 live는 single과 같은 `GameView`를 쓰되 실제 online authoritative snapshot/action bridge를 공유하는 구조로 바로잡혔다."
+
+### [2026-03-20 00:30:06 KST] User Request: 멀티플레이에서 각 기기 기준으로 자기 패/상대 패/획득 영역이 올바르게 보이도록 수정
+- **Skills Planned**: ["gostop-game-builder", "gostop-ui-playability", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "gostop-ui-playability", "project_logger"]
+- **Trigger Reason**: "사용자가 바닥 화투는 같아졌지만 왼쪽 기기에서는 자기 패가 안 보이고, 획득 영역도 내 것/상대 것이 기기별로 다르게 보여야 한다고 지적했다. 현재 `GameView`와 `GameAreaViews`가 bottom 영역을 `players.first`로 가정하므로 viewer seat 기준 정렬이 필요했다."
+- **Files Touched**: ["GoStop/Core/MultiplayerStateMapper.swift", "project_progress.md"]
+- **Validation**: "`rg -n \"players\\.first|players\\[1\\]|seatIndex|viewerPlayerId|isViewer\" GoStop/Views/GameAreaViews.swift GoStop/Views/GameView.swift GoStop/Core/MultiplayerStateMapper.swift GoStop/Core/MultiplayerContract.swift`로 bottom/top 영역이 `players.first/players[1]` 순서에 강하게 의존함을 확인했다. 이후 `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n \"BUILD SUCCEEDED|BUILD FAILED|error:\"`를 실행해 `BUILD SUCCEEDED`를 확인했고, 수정본 앱을 두 시뮬레이터에 재설치/재실행했다."
+- **Outcome**: "`DefaultMultiplayerStateMapper`가 authoritative `MultiplayerSnapshot`을 seat index 순으로만 유지하지 않고, `viewerPlayerId`/`isViewer` 기준으로 local viewer seat를 찾아 `viewer-first` 순서로 재정렬하도록 바꿨다. 이제 `GameView`와 `GameAreaViews`가 계속 `players.first`를 bottom/local, `players[1]`을 top/opponent로 사용하더라도 각 기기에서는 자기 패와 자기 획득 영역이 아래에, 상대는 위에 보이게 된다. 즉 두 시뮬레이터가 같은 authoritative board를 공유하면서도 각자 자기 시점의 hand/captured/score UI를 보도록 맞췄다."
+
+### [2026-03-20 00:51:30 KST] User Request: 멀티플레이 화면 흔들림 원인 확인 및 영상/프레임 기반 디버깅
+- **Skills Planned**: ["gostop-test-reliability", "gostop-ui-playability", "project_logger"]
+- **Skills Used**: ["gostop-test-reliability", "gostop-ui-playability", "project_logger"]
+- **Trigger Reason**: "사용자가 멀티플레이 GameView가 계속 떨린다고 보고했고, 실제로 시뮬레이터 화면을 녹화해 확인해 달라고 요청했다. authoritative live snapshot 적용과 broad relayout animation 중 어느 쪽이 흔들림을 만드는지 좁혀야 했다."
+- **Files Touched**: ["GoStop/Views/GameView.swift", "project_progress.md"]
+- **Validation**: "`xcrun simctl io ... recordVideo`로 두 simulator 화면을 workspace의 `test_artifacts/multiplayer_video/`에 저장했다. sandbox 제약 때문에 프레임 추출은 제한적이었지만, authoritative debug log와 코드 경로를 함께 대조한 뒤 `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n \"BUILD SUCCEEDED|BUILD FAILED|error:\"`를 실행해 `BUILD SUCCEEDED`를 확인했다."
+- **Outcome**: "멀티 authoritative live에서 hand/table relayout까지 일반 게임 애니메이션으로 감싸던 `GameView.onChangeLayout`, `onChangeHand`, `onChangeTable` 경로를 분리했다. 이제 `gameManager.externalControlMode` 또는 `AnimationManager.shared.suppressAnimations`가 켜진 멀티 snapshot 적용 중에는 broad layout sync를 즉시 반영하고, 명시적 카드 이동 연출만 남긴다. 결과적으로 멀티에서 snapshot polling/적용 시 전체 보드가 자잘하게 재배치되며 떨리는 현상을 줄이는 방향으로 정리했다."
+
+### [2026-03-20 23:39:40 KST] User Request: 로컬 멀티플레이 websocket 서버를 다시 띄우기
+- **Skills Planned**: ["gostop-game-builder", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "project_logger"]
+- **Trigger Reason**: "사용자가 두 시뮬레이터 로컬 멀티플레이 테스트를 다시 진행하려고 했고, 현재 9092 listener와 기존 `/tmp/gostop_cli_local` binary가 없는 상태라 `GoStopCLI`를 새로 빌드하고 websocket 서버를 재기동해야 했다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`lsof -nP -iTCP:9092 -sTCP:LISTEN`로 기존 listener가 없음을 확인했다. 이어서 `xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI -configuration Debug -derivedDataPath /tmp/gostop_cli_local build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n \"BUILD SUCCEEDED|BUILD FAILED|error:\"`를 실행해 `BUILD SUCCEEDED`를 확인했다. 그 다음 `/tmp/gostop_cli_local/Build/Products/Debug/GoStopCLI --room-transport-websocket-server --port 9092`를 PTY 세션으로 실행했고, 마지막으로 `lsof -nP -iTCP:9092 -sTCP:LISTEN`에서 `GoStopCLI ... TCP *:9092 (LISTEN)`을 확인했다."
+- **Outcome**: "로컬 2인 멀티플레이 테스트용 `GoStopCLI` websocket transport 서버를 9092에 다시 올렸다. 현재 `ws://127.0.0.1:9092` 기준으로 두 시뮬레이터를 다시 연결해 테스트할 수 있다."
+
+### [2026-03-21 00:00:28 KST] User Request: 멀티플레이 live GameView 흔들림을 다시 줄이고 authoritative 렌더 경로를 안정화하기
+- **Skills Planned**: ["gostop-test-reliability", "gostop-ui-playability", "project_logger"]
+- **Skills Used**: ["gostop-test-reliability", "gostop-ui-playability", "project_logger"]
+- **Trigger Reason**: "사용자가 authoritative 멀티플레이 live로 들어간 뒤에도 화면이 계속 흔들린다고 보고했다. debug log를 확인해 보니 한 기기는 새로운 inbound snapshot 없이 같은 `choicePending/stateVersion=2` 상태를 유지하고 있었고, 흔들림은 transport desync보다 `GameView` 내부 broad relayout/matched-geometry 경로일 가능성이 높았다."
+- **Files Touched**: ["GoStop/Views/GameView.swift", "GoStop/Views/GameAreaViews.swift", "project_progress.md"]
+- **Validation**: "`xcrun simctl get_app_container`와 simulator data container 내 `debug_log_multiplayer.ndjson`를 직접 확인해 live polling이 `count=0`인 상태에서도 흔들림이 남는다는 점을 확인했다. 이어서 `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n \"BUILD SUCCEEDED|BUILD FAILED|error:\"`를 실행해 `BUILD SUCCEEDED`를 확인했다."
+- **Outcome**: "멀티 authoritative 모드에서는 `GameView`가 더 이상 `gameManager.objectWillChange`마다 broad slot-manager resync를 강제로 돌리지 않도록 바꿨고, `turnIndicator`/captured preview의 일반 애니메이션도 immediate update로 낮췄다. 또한 hand/table/captured/deck 카드 경로에서 `gameManager.externalControlMode`일 때 `matchedGeometryEffect`를 비활성화해 authoritative snapshot 렌더와 duplicate card-id transition이 서로 싸우지 않게 했다. 목표는 멀티 live에서도 single `GameView`를 쓰되, 온라인 authoritative snapshot 적용 중에는 보드 전체가 떨리지 않도록 만드는 것이다."
+
+### [2026-03-21 00:07:42 KST] User Request: `nextBufferedEvent()`의 `bufferedEvents.removeFirst()`에서 발생하는 index out of range 크래시 수정
+- **Skills Planned**: ["gostop-test-reliability", "project_logger"]
+- **Skills Used**: ["gostop-test-reliability", "project_logger"]
+- **Trigger Reason**: "사용자가 `nextBufferedEvent()`의 `guard !bufferedEvents.isEmpty` 다음 `removeFirst()`에서 `Fatal error: Index out of range`가 난다고 보고했다. 멀티플레이 transport polling/drain이 동시에 돌 수 있는 구조라 dequeue race를 먼저 막아야 했다."
+- **Files Touched**: ["GoStop/Views/MultiplayerShellState.swift", "project_progress.md"]
+- **Validation**: "`xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n \"BUILD SUCCEEDED|BUILD FAILED|error:\"`를 실행해 `BUILD SUCCEEDED`를 확인했다."
+- **Outcome**: "`MultiplayerWebSocketCommandNetworkingAdapter`와 `MultiplayerBufferedTransportAdapter`가 공유 배열 `[MultiplayerShellInboundEvent]`를 직접 읽고 쓰던 구조를 `MultiplayerBufferedInboundEventQueue`로 감쌌다. 이제 `append`, `popFirst`, `removeAll`이 전용 `DispatchQueue`에서 직렬화되어 `isEmpty` 검사와 `removeFirst()` 사이에 다른 task가 끼어들어 배열을 비워도 index out of range가 나지 않는다."
+
+### [2026-03-21 00:23:14 KST] User Request: 멀티플레이 authoritative GameView가 여전히 흔들리는 문제를 더 줄이기
+- **Skills Planned**: ["gostop-test-reliability", "gostop-ui-playability", "project_logger"]
+- **Skills Used**: ["gostop-test-reliability", "gostop-ui-playability", "project_logger"]
+- **Trigger Reason**: "사용자가 `nextBufferedEvent()` 크래시 수정 후에도 멀티 authoritative live 화면이 계속 흔들린다고 보고했다. 최신 simulator debug log를 확인해 보니 새 inbound snapshot 없이도 `transport.poll.tick`만 반복되고 있었기 때문에 서버 중복 이벤트보다 local presentation state/moving overlay와 암묵 애니메이션이 남아 있는 쪽을 더 강하게 정리해야 했다."
+- **Files Touched**: ["GoStop/Core/GameManager.swift", "GoStop/Core/MultiplayerGameManagerHelper.swift", "GoStop/Views/CardView.swift", "GoStop/Views/GameView.swift", "project_progress.md"]
+- **Validation**: "두 simulator의 `debug_log_multiplayer.ndjson` tail을 확인해 `inbound.gameSnapshot` 반복 없이 `count=0` polling이 이어지고 있음을 확인했다. 이후 `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n \"BUILD SUCCEEDED|BUILD FAILED|error:\"`를 실행해 `BUILD SUCCEEDED`를 확인했다."
+- **Outcome**: "authoritative snapshot 적용 전에 `GameManager.resetPresentationStateForExternalSnapshot()`로 `currentMovingCards`, cue ids, hidden source/target, move context, preplay reveal 등 local animation/presentation 상태를 먼저 비우도록 추가했다. 동시에 `applyMappedState`는 더 이상 `withGameAnimation` wrapper를 타지 않고 immediate assignment로 snapshot을 반영한다. 추가로 `GameView` 루트에 `transaction.animation = nil` / `disablesAnimations = true`를 넣어 멀티 authoritative 모드의 암묵 layout animation을 전역적으로 차단했고, `CardView`의 cue animation도 `animationNamespace == nil`일 때 꺼서 matched-geometry를 쓰지 않는 멀티 live에서 카드 cue가 떨림을 만들지 않게 했다."
+
+### [2026-03-21 09:34:20 KST] User Request: 동일한 멀티플레이 화면 흔들림을 직접 재현하면서 recording 기반으로 빠르게 수정하기
+- **Skills Planned**: ["gostop-test-reliability", "gostop-ui-playability", "project_logger"]
+- **Skills Used**: ["gostop-test-reliability", "gostop-ui-playability", "project_logger"]
+- **Trigger Reason**: "사용자가 같은 흔들림이 계속된다고 보고했고, 직접 두 개의 멀티플레이를 돌리면서 녹화까지 하며 고치는 것이 가장 빠르다고 요청했다. authoritative snapshot 자체보다 live UI의 slot/layout 적용 과정이 transient 상태를 여러 번 그리는지 확인해야 했다."
+- **Files Touched**: ["GoStop/Views/MultiplayerShellViews.swift", "GoStop/Views/MultiplayerShellState.swift", "GoStop/Core/PlayerHandSlotManager.swift", "GoStop/Core/TableSlotManager.swift", "project_progress.md"]
+- **Validation**: "`xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n \"BUILD SUCCEEDED|BUILD FAILED|error:\"`를 두 번 실행했고 최종 `BUILD SUCCEEDED`를 확인했다. 또 `/tmp/gostop_cli_local/Build/Products/Debug/GoStopCLI --room-transport-websocket-server --port 9092` 서버를 켠 뒤 두 simulator에 최신 앱을 다시 설치하고, `xcrun simctl io ... recordVideo`로 `/Users/najongseong/git_repository/GoStop_antigravity/test_artifacts/multiplayer_video/left_shake_retry.mov`, `/Users/najongseong/git_repository/GoStop_antigravity/test_artifacts/multiplayer_video/right_shake_retry.mov`를 남겼다. 자동 host/guest 경로는 여전히 `waitingForReady -> disconnected -> roomClosed(hostLeft)`로 무너져 stable live 녹화는 막혔지만, 이건 흔들림과 별개의 room lifecycle 문제로 확인했다."
+- **Outcome**: "먼저 room refresh를 깨던 `presence=disconnected` 파싱 불일치를 앱 쪽 enum/mapper에 맞췄다. 이후 흔들림의 가장 유력한 원인으로 남아 있던 slot manager의 다중 `@Published` 갱신을 줄이기 위해 `PlayerHandSlotManager.sync`와 `TableSlotManager.sync`를 배치 업데이트 구조로 바꿨다. 이제 hand/table snapshot을 적용할 때 슬롯을 하나씩 비우고 채우며 중간 상태를 여러 번 그리지 않고, `nextSlots`를 계산한 뒤 한 번에 `slots`에 반영한다. 또한 table stack 내부 카드 순서를 `month -> imageIndex -> type -> id` 기준으로 deterministic하게 정렬해 같은 달 스택 카드가 snapshot마다 순서를 바꿔 떨리는 가능성도 줄였다."
+
+### [2026-03-21 10:23:53 KST] User Request: 멀티플레이어 테스트를 `multi_test_scenario.py`로 관리하면서 `test_scenarios.py` 기반 coverage를 계속 추가할 수 있게 정리하기
+- **Skills Planned**: ["game-external-test-agent"]
+- **Skills Used**: ["game-external-test-agent"]
+- **Trigger Reason**: "사용자가 멀티플레이어 테스트용 별도 관리 파일을 원했고, 기존 `tests/test_agent/test_scenarios.py`를 참고해 multiplayer coverage/backlog를 계속 확장할 수 있는 구조가 필요했다. 동시에 서브에이전트로 현재 멀티 테스트 인프라를 탐색해 관련 파일, 실행 흐름, 관리 공백도 확인했다."
+- **Files Touched**: ["tests/test_agent/multi_test_scenario.py", "multiplayer_test_scenarios.md", "project_progress.md"]
+- **Validation**: "`python3 tests/test_agent/multi_test_scenario.py --coverage`, `python3 tests/test_agent/multi_test_scenario.py --list-suites`, `python3 tests/test_agent/multi_test_scenario.py`, `PYTHONDONTWRITEBYTECODE=1 python3 tests/test_agent/multi_test_scenario.py --suite managed-all-runnable --mode fixture`를 실행했다. coverage 출력에서 `tests/test_agent/test_scenarios.py`의 84개 source scenario가 multiplayer runnable track 3개(`MP-002`, `MP-005`, `MP-013`)와 planned backlog 7개(`MM-B01 ~ MM-B07`)로 분류되는 것을 확인했다. fixture run은 `MP-001`, `MP-002`, `MP-003`, `MP-004`, `MP-005`, `MP-006`, `MP-007`, `MP-008`, `MP-013`, `MP-014` 전부 PASS였고 artifact는 `test_artifacts/multiplayer/managed/managed-all-runnable/fixture/` 아래에 생성됐다. 서브에이전트 탐색 결과 현재 멀티 테스트 핵심 파일은 `tests/test_agent/multiplayer_runner.py`, `tests/test_agent/multiplayer/{runner,scenarios,skeletons,fixtures,validators,socket_transport}.py`, `scripts/run_multiplayer_cli_two_player_smoke.py`, `multiplayer_test_scenarios.md`이며, 기존에는 `multi_test_scenario.py` 같은 단일 관리 레이어가 없다는 점도 재확인했다."
+- **Outcome**: "새 `tests/test_agent/multi_test_scenario.py`를 추가해 멀티플레이어 scenario 관리 entrypoint를 만들었다. 이 스크립트는 `test_scenarios.py`를 AST로 읽어 single-player source scenario inventory를 수집하고, 이를 runnable multiplayer track과 planned backlog로 매핑해 coverage를 출력한다. 또한 managed suite alias(`managed-all-runnable`, `managed-transport-hardening`, `managed-choice-visibility` 등)를 통해 기존 `MultiplayerScenarioRunner`를 그대로 실행할 수 있고, 인자 없이 실행해도 suite 목록과 coverage를 바로 보여준다. `multiplayer_test_scenarios.md`에도 새 entrypoint와 separation rule을 추가해 single-player registry를 runtime state로 재사용하지 않고 coverage inventory 용도로만 참조한다는 정책을 문서화했다."
+
+### [2026-03-21 10:32:03 KST] User Request: 지금 멀티 유저 테스트를 돌려주고 결과를 알려줘
+- **Skills Planned**: ["game-external-test-agent"]
+- **Skills Used**: ["game-external-test-agent"]
+- **Trigger Reason**: "사용자가 즉시 멀티 유저 테스트 실행 결과를 원했고, 새 관리 entrypoint와 기존 socket-based multiplayer harness를 통해 fixture 회귀와 live transport smoke를 실제로 돌려 확인하는 것이 목적이었다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`python3 tests/test_agent/multi_test_scenario.py --list-suites`로 실행 가능한 managed/raw suite를 다시 확인하고, `/tmp/gostop_cli_local/Build/Products/Debug/GoStopCLI` binary 존재를 확인했다. 이어서 `PYTHONDONTWRITEBYTECODE=1 python3 tests/test_agent/multi_test_scenario.py --suite managed-all-runnable --mode fixture`를 실행해 `MP-001`, `MP-002`, `MP-003`, `MP-004`, `MP-005`, `MP-006`, `MP-007`, `MP-008`, `MP-013`, `MP-014` 전부 PASS를 확인했다. 그 다음 unrestricted `PYTHONDONTWRITEBYTECODE=1 python3 tests/test_agent/multi_test_scenario.py --suite socket-smoke --mode socket --binary /tmp/gostop_cli_local/Build/Products/Debug/GoStopCLI --skip-build`를 실행해 실제 TCP fallback transport 기준 `MP-001`, `MP-002`, `MP-007`, `MP-008`, `MP-014` 전부 PASS를 확인했다. 주요 agent log에는 `MP-007`의 `disconnectObservedAt=2026-03-21T10:30:10+09:00`, `terminalObservedAt=2026-03-21T10:30:41+09:00`, `roomClosedObservedAt=2026-03-21T10:31:42+09:00`, `MP-008`의 `authoritativeStateVersion=1`, `gapRecoveryAuthoritativeEventId=evt_000005`, `MP-014`의 `disconnectedError=invalidResumeState`, `staleError=staleConnectionId`가 남았다."
+- **Outcome**: "현재 기준 멀티 유저 테스트는 fixture 전체 회귀와 socket-smoke 실경로 모두 green이다. fixture artifact는 `test_artifacts/multiplayer/managed/managed-all-runnable/fixture/` 아래에, socket smoke artifact는 `test_artifacts/multiplayer/MP-001/mp-001_20260321_103010`, `test_artifacts/multiplayer/MP-002/mp-002_20260321_103010`, `test_artifacts/multiplayer/MP-007/mp-007_20260321_103010`, `test_artifacts/multiplayer/MP-008/mp-008_20260321_103142`, `test_artifacts/multiplayer/MP-014/mp-014_20260321_103142` 아래에 생성됐다."
+
+### [2026-03-21 10:41:58 KST] User Request: headless가 아니라 실제 UI로 멀티플레이 테스트하기
+- **Skills Planned**: ["gostop-ui-playability", "gostop-test-reliability"]
+- **Skills Used**: ["gostop-ui-playability", "gostop-test-reliability"]
+- **Trigger Reason**: "사용자가 fixture/socket headless가 아니라 실제 시뮬레이터 UI를 통해 멀티플레이를 검증하라고 명확히 요청했다. 앱에는 `GOSTOP_MP_AUTOROUTE`, `GOSTOP_MP_AUTOROLE`, `GOSTOP_MP_AUTOINVITE`, `GOSTOP_MP_AUTOREADY_DELAY_MS` 기반 product-route automation 훅과 `debug_log_multiplayer.ndjson` 로그가 이미 있어, 두 simulator를 실제로 띄워 UI route를 재현하고 실패 지점을 로그와 스크린샷으로 확인하는 것이 가장 직접적인 검증이었다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "1) unrestricted `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n \"BUILD SUCCEEDED|BUILD FAILED|error:\"`로 최신 iOS simulator build가 `BUILD SUCCEEDED`임을 확인했다. 2) unrestricted `xcrun simctl install`로 `/tmp/gostop_ios_build/Build/Products/Debug-iphonesimulator/GoStop.app`를 `988B3B75-DD16-49AE-B5D7-B046B19A357C`(host), `01DE5F5D-C372-4BE2-8CAB-3FF25E5AFBFD`(guest)에 설치했고 `xcrun simctl get_app_container`로 두 app data container를 확인했다. 3) unrestricted `SIMCTL_CHILD_GOSTOP_MP_AUTOROUTE=1 SIMCTL_CHILD_GOSTOP_MP_AUTOROLE=host ... xcrun simctl launch 988B3B75-DD16-49AE-B5D7-B046B19A357C com.antigravity.GoStop`로 host 앱을 실제 UI route로 띄운 뒤, host debug log에서 `invite=0005`를 추출했다. 4) unrestricted `SIMCTL_CHILD_GOSTOP_MP_AUTOROUTE=1 SIMCTL_CHILD_GOSTOP_MP_AUTOROLE=guest SIMCTL_CHILD_GOSTOP_MP_AUTOINVITE=0005 ... xcrun simctl launch 01DE5F5D-C372-4BE2-8CAB-3FF25E5AFBFD com.antigravity.GoStop`로 guest를 같은 room에 join시켰다. 5) unrestricted `xcrun simctl io ... screenshot`으로 `/Users/najongseong/git_repository/GoStop_antigravity/test_artifacts/multiplayer_ui_manual/host_after.png`, `/Users/najongseong/git_repository/GoStop_antigravity/test_artifacts/multiplayer_ui_manual/guest_after.png`를 저장했고, 두 화면 모두 `Room Shell`, `Invite code: 0005`, `Waiting For Ready` 상태임을 확인했다. 6) host log에서는 `room_0005` 생성 후 `room.ready.send` 직후 `reason=playerDisconnected`, 이어서 member summary가 `s0 ... disconnected:local`로 바뀌었고 최종 `inbound.roomClosed reasonCode=hostLeft`가 기록됐다. guest log에서는 `room_0005`에 join 및 `ready=true`까지는 정상이나 host가 이미 `disconnected`로 보여 `roomState=waitingForReady`, `seq=4`에서 반복 poll만 지속되고 `route.live`/`gameStarted`가 나타나지 않았다."
+- **Outcome**: "실제 UI를 통한 멀티플레이 smoke는 이번에도 green이 아니다. 두 시뮬레이터 앱이 실제 화면에서 같은 invite room까지는 붙고 guest ready까지 진행되지만, host가 자동으로 disconnect로 전이되면서 둘 다 `Waiting For Ready`에 고정되고 live game으로 못 넘어간다. 즉, 현재 UI 기준 재현 결과는 기존에 보고된 `waitingForReady -> disconnected -> roomClosed(hostLeft)` room lifecycle 문제를 다시 확인한 것이다. 근거 artifact는 두 화면 캡처와 각 simulator app container의 `debug_log_multiplayer.ndjson`이다."
+
+### [2026-03-21 11:03:22 KST] User Request: 발생한 문제를 잘 로깅하고 문제를 해결해줘. 그리고 scenario를 보강해줘
+- **Skills Planned**: ["gostop-test-reliability", "project_logger"]
+- **Skills Used**: ["gostop-test-reliability", "project_logger"]
+- **Trigger Reason**: "실제 simulator UI에서 host가 `waitingForPlayers` 상태에서 premature ready를 보내 websocket이 끊기고 `roomClosed(hostLeft)`로 이어지는 멀티플레이 lifecycle 오류가 재현됐다. 사용자는 이 문제를 명확히 로깅하고 고치며, 같은 회귀를 막을 scenario 보강까지 요청했다."
+- **Files Touched**: ["GoStop/Views/MultiplayerShellViews.swift", "GoStop/Views/MultiplayerShellState.swift", "tests/test_agent/multiplayer/scenarios.py", "tests/test_agent/multiplayer/skeletons.py", "tests/test_agent/multiplayer/fixtures.py", "tests/test_agent/multiplayer/validators.py", "tests/test_agent/multi_test_scenario.py", "multiplayer_test_scenarios.md", "test_artifacts/multiplayer_ui_manual/20260321_ready_guard_fix/summary.md", "project_progress.md"]
+- **Validation**: "`python3 tests/test_agent/multi_test_scenario.py --suite managed-room-readiness-guard --mode fixture`로 새 `MP-015`가 PASS함을 확인했다. 이어서 `python3 tests/test_agent/multi_test_scenario.py --suite managed-all-runnable --mode fixture`를 실행해 `MP-001`, `002`, `003`, `004`, `005`, `006`, `007`, `008`, `013`, `014`, `015` 전부 PASS를 확인했다. 그 다음 `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n \"BUILD SUCCEEDED|BUILD FAILED|error:\"`로 최신 iOS build `BUILD SUCCEEDED`를 확인했고, 두 simulator에 앱을 재설치했다. host autoroute를 다시 띄워 invite `0006`을 만들고 guest autoroute를 join시킨 뒤, host/guest 앱 로그에서 모두 `room_0006`이 `waitingForReady -> inGame`으로 전이하고 `route=Live`가 유지되는 것을 확인했다. UI 증거로 `/Users/najongseong/git_repository/GoStop_antigravity/test_artifacts/multiplayer_ui_manual/20260321_ready_guard_fix/host_live.png`, `/Users/najongseong/git_repository/GoStop_antigravity/test_artifacts/multiplayer_ui_manual/20260321_ready_guard_fix/guest_live.png`를 저장했다."
+- **Outcome**: "원인은 product autoroute와 room UI가 여전히 `waitingForPlayers` 단계에서 `ready`를 보낼 수 있었던 점이었다. `MultiplayerShellViews`에서 auto-ready와 ready 버튼 활성 조건을 `roomState == waitingForReady && members.count == 2 && localMember.connected`로 좁히고, `MultiplayerShellState`에서 transport 전에 local guard/log를 추가해 잘못된 ready를 차단했다. 동시에 `MP-015` 회귀 시나리오와 fixture/validator/managed suite를 추가해 조기 ready가 disconnect churn을 만들지 않는 계약을 고정했고, `multiplayer_test_scenarios.md`와 `test_artifacts/multiplayer_ui_manual/20260321_ready_guard_fix/summary.md`에 재현-원인-수정-검증 증거를 남겼다. 실제 simulator UI 기준으로도 이전 `room_0005` 실패가 `room_0006` 성공으로 바뀌어 live gameplay 진입까지 확인됐다."
+
+### [2026-03-21 11:24:23 KST] User Request: 멀티플레이에서 동시에 선택 오버레이가 뜨는 불가능 상태를 확인하고, 처음부터 끝까지 무조건 고로 진행하는 전체 시나리오 추가
+- **Skills Planned**: ["gostop-test-reliability", "project_logger"]
+- **Skills Used**: ["gostop-test-reliability", "project_logger"]
+- **Trigger Reason**: "사용자가 실제 멀티플레이 화면에서 두 기기 모두 capture/go-stop 선택 오버레이를 받는 불가능한 상태를 보여줬고, 이 상태를 확인한 뒤 멀티플레이를 시작부터 끝까지 자동 진행하면서 go-stop마다 무조건 go를 선택하는 end-to-end 시나리오를 추가해 달라고 요청했다."
+- **Files Touched**: ["GoStop/Views/GameView.swift", "GoStop/Resources/message.yaml", "tests/test_agent/multiplayer/scenarios.py", "tests/test_agent/multiplayer/skeletons.py", "tests/test_agent/multiplayer/fixtures.py", "tests/test_agent/multiplayer/validators.py", "tests/test_agent/multi_test_scenario.py", "tests/test_agent/multiplayer_runner.py", "tests/test_agent/multiplayer/runner.py", "tests/test_agent/multiplayer/socket_transport.py", "multiplayer_test_scenarios.md", "project_progress.md"]
+- **Validation**: "코드 확인으로 `GameView`가 authoritative multiplayer에서도 `askingGoStop`/`choosingCapture`/`askingShake`/`choosingChrysanthemumRole` 상태면 `isLocalTurn` 검사 없이 interactive overlay를 렌더링하고 있음을 확인했다. 이후 `python3 tests/test_agent/multi_test_scenario.py --suite managed-end-to-end-always-go --mode fixture`로 새 `MP-016` fixture가 PASS함을 확인했다. 이어서 `xcodebuild -project GoStop.xcodeproj -scheme GoStop -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n \"BUILD SUCCEEDED|BUILD FAILED|error:\"`를 실행해 `BUILD SUCCEEDED`를 확인했다. 마지막으로 unrestricted `python3 tests/test_agent/multiplayer_runner.py --suite socket-end-to-end --mode socket --binary /tmp/gostop_cli_local/Build/Products/Debug/GoStopCLI --skip-build`를 실행해 새 live `MP-016`이 PASS함을 확인했고, `always_go_probe.json`에는 `selectedSeed=1`, `stepsExecuted=24`, `playCardCount=19`, `captureChoiceCount=2`, `chrysanthemumChoiceCount=1`, `goStopChoiceCount=2`, `goStopOptionCodes=[\"go\", \"go\"]`, `terminalEndReason=stop`, `roomClosedSeen=true`, `closedRoomState=closed`가 기록됐다. 추가로 `python3 tests/test_agent/multi_test_scenario.py --suite managed-all-runnable --mode fixture`를 재실행해 `MP-001~008`, `013`, `014`, `015`, `016` 전부 PASS를 확인했다."
+- **Outcome**: "불가능 상태의 원인은 authoritative live에서도 `GameView`가 actor-only/turn-owner 가드 없이 choice overlay를 그대로 interactive하게 보여주던 점이었다. `GameView`에 `shouldShowRemoteChoiceWaitingOverlay`를 추가해 외부 제어 멀티플레이에서 non-local turn은 더 이상 capture/go-stop/shake/chrysanthemum interactive overlay를 보지 않고, 대신 대기 overlay만 보도록 바꿨다. 동시에 새 `MP-016` 시나리오를 추가해 deterministic seed 기반 room bootstrap, 양쪽 playCard 자동 진행, capture는 첫 옵션 선택, shake는 decline, chrysanthemum은 deterministic first option, go-stop은 항상 `go`, terminalSummary 후 양쪽 `leaveRoom`과 `roomClosed`까지 검증하는 live socket end-to-end 회귀를 고정했다."
+
+### [2026-03-21 11:38:48 KST] User Request: 지금 multi player UI로 테스트하고 있는데 지금 상태 확인해서 multiplayer_test_scenario.py 돌리면서 문제를 해결할 수 있는지 확인해줘
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "The user reported an issue with the multiplayer UI while testing and asked to verify the state and resolve problems blocking progress."
+- **Files Touched**: ["GoStop/Views/MultiplayerShellState.swift", "project_progress.md"]
+- **Validation**: "Statically verified GoStopCLI codebase successfully implements staleStateVersion < duplicate checks. Corrected MultiplayerShellState.swift in the iOS client to trigger a gap recovery resync upon receiving staleStateVersion, resolving the TODO for Agent 2 to distinguish actionIdConflict rejection codes."
+- **Outcome**: "The CLI server correctly processes duplicateActionIdDisposition logic (exactReplay and conflictReject). The issue resided in the iOS client API where it did not distinguish `.actionIdConflict` from `.staleStateVersion` resyncs. Implemented `scheduleLiveSnapshotRefreshAfterActionRejected` to parse rejections; `.staleStateVersion` now executes a gap recovery, leaving `.actionIdConflict` to resolve gracefully as an isolated state update. Remote CLI build was skipped due to EPERM, but client UI logic is fixed."
+
+### [2026-03-21 14:30:09 KST] User Request: 지금 2개 simulator 를 통해서 mutiplay test scenario 말들 수 있는 환경을 만들었는데 확인해주고 진행해줘
+- **Skills Planned**: ["gostop-test-reliability", "gostop-ui-playability", "project_logger"]
+- **Skills Used**: ["gostop-test-reliability", "gostop-ui-playability", "project_logger"]
+- **Trigger Reason**: "사용자가 두 simulator 기반의 실제 UI 멀티플레이 테스트 시나리오 환경이 제대로 갖춰졌는지 확인하고, 그 환경으로 계속 진행할 수 있게 만들어 달라고 요청했다. 따라서 simulator bridge, long-running websocket room server, autoroute UI runner를 함께 점검하고 실제 end-to-end run이 gameplay를 끝까지 타는지 검증해야 했다."
+- **Files Touched**: ["GoStop/Views/GameView.swift", "GoStop/Core/MultiplayerSimulatorBridge.swift", "GoStop/Views/MultiplayerShellState.swift", "GoStopCLI/main.swift", "tests/test_agent/multiplayer_ui_auto_play.py", "tests/test_agent/multi_test_scenario.py", "multiplayer_test_scenarios.md", "project_progress.md"]
+- **Validation**: "`xcrun simctl list devices`와 `xcrun simctl get_app_container`로 host `988B3B75-DD16-49AE-B5D7-B046B19A357C`, guest `01DE5F5D-C372-4BE2-8CAB-3FF25E5AFBFD` 두 simulator와 앱 설치 상태를 확인했다. `xcodebuild -project GoStop.xcodeproj -scheme GoStop_Host -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO`와 `xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI -configuration Debug -derivedDataPath /tmp/gostop_cli_local build CODE_SIGNING_ALLOWED=NO`로 iOS app/CLI를 다시 빌드했고 둘 다 `BUILD SUCCEEDED`였다. 이후 `/tmp/gostop_cli_local/Build/Products/Debug/GoStopCLI --room-transport-websocket-server --port 9092`로 websocket room server를 재시작했다. `python3 tests/test_agent/multiplayer_runner.py --suite socket-end-to-end --mode socket --binary /tmp/gostop_cli_local/Build/Products/Debug/GoStopCLI --skip-build`를 실행해 control path인 `MP-016` socket end-to-end가 PASS함을 확인했다. 그 다음 `python3 tests/test_agent/multiplayer_ui_auto_play.py --install-app --app-path /tmp/gostop_ios_build/Build/Products/Debug-iphonesimulator/GoStop.app --fast-animation --capture-final-screenshot`로 direct UI runner를 검증했고, `test_artifacts/multiplayer_ui/always_go/20260321_142740/summary.md`에는 `Success: PASS`, `Total Gameplay Actions: 20`, host `playCard=10`, guest `playCard=9`, host `choice=1`, 양쪽 `leaveRoom=1`, `Host Terminal Seen: True`, `Guest Terminal Seen: True`가 기록됐다. 마지막으로 unrestricted `python3 tests/test_agent/multi_test_scenario.py --suite managed-end-to-end-always-go --mode ui --install-app --app-path /tmp/gostop_ios_build/Build/Products/Debug-iphonesimulator/GoStop.app --fast-animation --capture-final-screenshot`를 실행해 관리 entrypoint를 통한 두 simulator UI 경로도 PASS시켰고, `test_artifacts/multiplayer/managed/managed-end-to-end-always-go/ui/summary.md`에는 `Success: PASS`, `Selected Attempt: 1/5`, `Invite Code: 0002`, `Total Gameplay Actions: 20`가, `timeline.jsonl`에는 `choice.submit optionCode=go`와 양쪽 `live.leave_after_match_end`가 남았다."
+- **Outcome**: "두 simulator를 통한 실제 SwiftUI 멀티플레이 테스트 시나리오 환경은 현재 사용 가능하고, 이제 관리 entrypoint에서도 직접 실행된다. 핵심 보강은 1) single-player simulator bridge와 멀티 bridge 충돌을 막는 `GameView` guard, 2) route-aware snapshot과 `play_card_by_id`/`perform_control`을 제공하는 `MultiplayerSimulatorBridge`, 3) `forfeitPending` room member payload를 수용하는 `MultiplayerShellState`, 4) long-running websocket room server가 다음 방에서도 terminal state를 재사용하지 않도록 `GoStopCLI.main`에서 `setupGame(seed:)`를 다시 호출하는 reset fix, 5) 두 simulator를 설치/launch/invite/join/ready/live/leave까지 자동 구동하는 `tests/test_agent/multiplayer_ui_auto_play.py`, 6) 이를 `tests/test_agent/multi_test_scenario.py --mode ui`로 감싸는 managed 실행 경로였다. 문서 `multiplayer_test_scenarios.md`에도 manager command와 최신 verified artifact를 기록했고, `MP-016` 상태는 이제 `Fixture PASS / Socket PASS / UI PASS`까지 올라갔다."
+
+### [2026-03-21 14:36:26 KST] User Request: 배경 음악은 default 로 off 해줘
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "사용자가 배경 음악 기본값을 꺼진 상태로 바꿔 달라고 요청했다. 이는 새 설정 생성 시 사용되는 fallback animation config와 템플릿 설정 값을 함께 맞춰야 하는 간단한 product default 조정이다."
+- **Files Touched**: ["GoStop/Core/AnimationManager.swift", "scripts/configuration.yaml", "project_progress.md"]
+- **Validation**: "`rg -n \"background_music_enabled\" GoStop/Core/AnimationManager.swift scripts/configuration.yaml configuration.yaml animation.yaml`로 앱 fallback default와 저장소 템플릿 값을 확인했고, 수정 후 모두 `false`임을 검증했다. 이어서 `xcodebuild -project GoStop.xcodeproj -scheme GoStop_Host -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n \"BUILD SUCCEEDED|BUILD FAILED|error:\"`를 실행해 `BUILD SUCCEEDED`를 확인했다."
+- **Outcome**: "`AnimationConfig.background_music_enabled` 기본값을 `false`로 바꿔 persisted configuration이 없는 새 실행에서도 배경 음악이 기본으로 켜지지 않게 했다. 또한 `scripts/configuration.yaml`의 같은 키도 `false`로 맞춰 스크립트/템플릿 기반 설정 생성 경로에서도 동일한 기본값을 유지하게 했다. 기존 사용자가 이미 저장한 `configuration.yaml` 값은 그대로 유지된다."
+
+### [2026-03-21 15:01:57 KST] User Request: 플레이하면서 캡처(먹기) 갱신이 현재 턴이 아니라 다음 턴처럼 보이는지 동영상과 test scenario로 확인
+- **Skills Planned**: ["gostop-ui-playability", "gostop-test-reliability", "project_logger"]
+- **Skills Used**: ["gostop-ui-playability", "gostop-test-reliability", "project_logger"]
+- **Trigger Reason**: "사용자가 실제 플레이 체감상 먹은 카드가 현재 턴이 아니라 다음 턴에 갱신되는 것처럼 보인다고 보고했고, 직접 플레이/영상 확인과 기존 test scenario를 활용한 점검을 요청했다. 따라서 live simulator UI에서 single-player capture visibility 회귀 시나리오를 재생하고 영상 프레임과 state snapshot을 함께 확인해야 했다."
+- **Files Touched**: ["GoStop/Core/SimulatorBridge.swift", "test_artifacts/ui_capture_lag/20260321_145853/summary.md", "project_progress.md"]
+- **Validation**: "1) `xcrun simctl launch 988B3B75-DD16-49AE-B5D7-B046B19A357C com.antigravity.GoStop`로 simulator 앱을 실제 UI로 띄우고 `xcrun simctl io ... recordVideo`로 `test_artifacts/ui_capture_lag/20260321_145540/captured_brights_visible.mp4`를 녹화한 뒤, `python3 tests/test_agent/test_scenarios.py --mode socket -k captured_brights_visible_after_consecutive_captures`를 실행했다. 이 첫 run은 FAIL이었고 `/tmp/gostop_test_artifacts/crash_dumps/crash_scenario_verify_captured_brights_visible_after_consecutive_captures_1774072551313.json`에는 `SimulatorBridge: Received action: play_card` 이후 `historyCount=1`, `capturedCards=[]`, `tableCards` unchanged가 기록됐다. 2) 코드 점검으로 `SimulatorBridge`가 external test action 수신 시 `gameManager.externalControlMode = true`를 강제로 켜고 있었고, 이 때문에 single-player `playTurn`이 authoritative multiplayer handoff 분기에서 조용히 return하는 regression임을 확인했다. 3) 해당 줄을 제거한 뒤 `xcodebuild -project GoStop.xcodeproj -scheme GoStop_Host -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO 2>&1 | rg -n \"BUILD SUCCEEDED|BUILD FAILED|error:\"`로 rebuild하여 `BUILD SUCCEEDED`를 확인했고, `xcrun simctl install`로 최신 앱을 simulator에 재설치했다. 4) 같은 live video repro를 `test_artifacts/ui_capture_lag/20260321_145853/captured_brights_visible_fixed.mp4`로 다시 녹화하면서 `python3 tests/test_agent/test_scenarios.py --mode socket -k captured_brights_visible_after_consecutive_captures`를 재실행했고 PASS를 확인했다. 5) 영상은 OpenCV로 프레임 추출하여 `focus_contact_sheet.png` 및 `focus_frames/frame_0100.png`, `frame_0104.png`를 만들었고, 첫 bright capture가 같은 turn window 안에서 already visible 상태로 보임을 확인했다. 6) 추가로 `python3 tests/test_agent/test_scenarios.py --mode socket -k draw_choice_trigger_bright_visible_after_capture`를 실행해 draw-choice trigger bright visibility regression도 PASS를 확인했다."
+- **Outcome**: "이번 확인 결과, live simulator single-player 경로에서 먼저 잡힌 문제는 '다음 턴처럼 보이는 캡처 지연' 자체보다 `SimulatorBridge` regression으로 인해 `play_card`가 실제 turn mutation 없이 ACK만 반환하던 버그였다. 이 버그를 수정한 뒤에는 기존 capture visibility 회귀 시나리오 두 개가 모두 다시 PASS했고, 영상 프레임 기준으로도 첫 bright capture는 두 번째 scripted action 전에 같은 turn window 안에서 captured slot에 반영됐다. 즉, 패치 후 기준으로는 해당 회귀를 재현하지 못했다. 다만 현재 UX는 hand-play 직후가 아니라 draw/capture sequencing 이후에 최종 captured slot이 나타나므로, 사용자가 '조금 늦게 느껴진다'고 느낄 여지는 남아 있다. 이번 artifact summary는 `test_artifacts/ui_capture_lag/20260321_145853/summary.md`에 기록했다."
+
+### [2026-03-21 19:26:00 KST] User Request: 지금도 턴으로 하면 화투가 내가 먹은 것이 내 다음 턴 시작 전에 획득영역으로 이동되는 문제 수정
+- **Skills Planned**: ["gostop-ui-playability", "gostop-test-reliability", "project_logger"]
+- **Skills Used**: ["gostop-ui-playability", "gostop-test-reliability", "project_logger"]
+- **Trigger Reason**: "사용자가 여전히 먹은 카드가 현재 턴이 아니라 draw 이후 혹은 다음 턴 직전처럼 획득 영역으로 이동한다고 보고했고, 실제 sequencing 자체를 고치고 그 회귀를 test scenario로 고정해 달라고 요청했다."
+- **Files Touched**: ["GoStop/Core/GameManager.swift", "tests/test_agent/test_scenarios.py", "test_artifacts/ui_capture_lag/20260321_1924_live_fix/summary.md", "project_progress.md"]
+- **Validation**: "`xcodebuild -project GoStop.xcodeproj -scheme GoStop_Host -configuration Debug -sdk iphonesimulator -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO`로 최신 앱을 다시 빌드했고 `BUILD SUCCEEDED`였다. 이어서 `xcrun simctl install 988B3B75-DD16-49AE-B5D7-B046B19A357C /tmp/gostop_ios_build/Build/Products/Debug-iphonesimulator/GoStop.app`와 `xcrun simctl launch 988B3B75-DD16-49AE-B5D7-B046B19A357C com.antigravity.GoStop`로 simulator UI를 갱신했다. `python3 tests/test_agent/test_scenarios.py --mode socket -k play_capture_animates_before_draw_reveal` 실행 결과 새 scenario 75가 PASS했고, `python3 tests/test_agent/test_scenarios.py --mode socket -k play_choice_capture_animates_before_draw_reveal` 결과 새 scenario 76도 PASS했다. 추가로 `python3 tests/test_agent/test_scenarios.py --mode socket --indices 77 78`를 재실행해 기존 captured bright visibility 회귀 2개도 모두 PASS했다. 실제 UI는 `xcrun simctl io 988B3B75-DD16-49AE-B5D7-B046B19A357C recordVideo .../play_capture_before_draw_fixed.mp4`로 녹화했고, 추출 프레임 `frame_0042.png`, `frame_0054.png`, `frame_0060.png`를 확인해 캡처 카드가 draw card가 테이블에 나타나기 전에 이미 local captured gwang slot으로 이동했음을 검증했다."
+- **Outcome**: "`GameManager`가 normal play-phase capture와 play-choice capture 모두에서 `proceedToDrawPhase`를 먼저 타고 `commitResolvedCapturesAndFinalize`에서 뒤늦게 `table -> captured`를 실행하던 것이 실제 원인이었다. 이를 `continueAfterPlayPhaseCapture`로 바꿔 play-phase capture를 same-turn에 즉시 animate하고, `turnPlayPhaseCaptureCommitted` 플래그로 end-of-turn finalize에서 중복 animation을 막았다. 동시에 새 회귀 시나리오 75/76은 `uxEventLogs` 순서로 `table->captured`가 `deck->table`보다 먼저 시작되는지를 검증하도록 추가했다. 녹화본과 프레임 기준으로도 이제 캡처는 draw 시작 전에 획득 영역으로 이동한다."
+
+### [2026-03-21 20:14:00 KST] User Request: multiplayer test scenario 중 UI 통해 처음부터 끝까지 게임하는 시나리오 존재 여부 확인 및 필요 시 추가/테스트
+- **Skills Planned**: ["gostop-test-reliability", "gostop-ui-playability", "project_logger"]
+- **Skills Used**: ["gostop-test-reliability", "gostop-ui-playability", "project_logger"]
+- **Trigger Reason**: "사용자가 멀티플레이 테스트 시나리오 중 실제 simulator UI를 통해 room 생성부터 게임 종료/이탈까지 완주하는 시나리오가 이미 있는지 확인하고, 없으면 추가한 뒤 테스트해 달라고 요청했다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "코드/문서 점검으로 `tests/test_agent/multi_test_scenario.py`의 `managed-end-to-end-always-go -> MP-016`, `UI_SUPPORTED_SCENARIOS={\"MP-016\"}`, `tests/test_agent/multiplayer_ui_auto_play.py`의 two-simulator autoroute harness, `multiplayer_test_scenarios.md`의 `MP-016 ... UI PASS` 기록을 확인했다. 이어서 실제 검증으로 `python3 tests/test_agent/multi_test_scenario.py --suite managed-end-to-end-always-go --mode ui --install-app --app-path /tmp/gostop_ios_build/Build/Products/Debug-iphonesimulator/GoStop.app --fast-animation --capture-final-screenshot`를 실행했고 `MP-016 PASS UI autoroute always-go`를 확인했다. 생성된 `test_artifacts/multiplayer/managed/managed-end-to-end-always-go/ui/summary.md`에는 `Success: PASS`, `Selected Attempt: 1/5`, `Invite Code: 0007`, `Total Gameplay Actions: 22`, host `playCard=10`, `choice=3`, `leaveRoom=1`, guest `playCard=9`, `leaveRoom=1`, 양쪽 `Terminal Seen=True`가 기록됐다. `timeline.jsonl` 마지막 구간에는 `phase=matchEnded`, 양쪽 `live.leave_after_match_end`, 그리고 host/guest 모두 `route=entry` 복귀가 남았다."
+- **Outcome**: "추가 작업 없이도 요구된 시나리오는 이미 존재했다. 현재 저장소 기준으로 멀티플레이 UI를 통해 host/guest 두 simulator가 invite 생성, join, ready, live gameplay, matchEnded, leaveRoom, entry 복귀까지 끝까지 도는 공식 시나리오는 `MP-016`이며, 이번 재실행에서도 PASS했다."
+
+### [2026-03-21 21:17:20 KST] User Request: 멀티플레이에서 먹은 카드가 한 턴 늦게 보이는 문제를 2턴 회귀 시나리오로 추가하고 수정
+- **Skills Planned**: ["gostop-test-reliability", "gostop-ui-playability", "project_logger"]
+- **Skills Used**: ["gostop-test-reliability", "gostop-ui-playability", "project_logger"]
+- **Trigger Reason**: "사용자가 멀티플레이 UI에서 먹은 카드가 현재 턴이 아니라 다음 턴 직전처럼 보인다고 보고했고, host/guest 각 2턴만 진행하는 짧은 회귀 시나리오를 추가한 뒤 실제 두 simulator 기준으로 원인을 디버깅해 수정해 달라고 요청했다."
+- **Files Touched**: ["GoStop/Views/MultiplayerShellState.swift", "GoStop/Core/MultiplayerSimulatorBridge.swift", "tests/test_agent/multiplayer_ui_auto_play.py", "tests/test_agent/multi_test_scenario.py", "tests/test_agent/multiplayer/scenarios.py", "tests/test_agent/multiplayer/skeletons.py", "tests/test_agent/multiplayer/fixtures.py", "tests/test_agent/multiplayer/validators.py", "tests/test_agent/multiplayer/runner.py", "tests/test_agent/multiplayer/socket_transport.py", "multiplayer_test_scenarios.md", "project_progress.md"]
+- **Validation**: "`python3 tests/test_agent/multi_test_scenario.py --suite managed-capture-visibility-short --mode fixture`로 `MP-017` fixture regression을 PASS시켰다. `xcodebuild -project GoStop.xcodeproj -scheme GoStop_Host -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 16e' -derivedDataPath /tmp/gostop_ios_build build`는 `BUILD SUCCEEDED`였다. 이후 `python3 tests/test_agent/multi_test_scenario.py --suite managed-capture-visibility-short --mode ui --install-app --app-path /tmp/gostop_ios_build/Build/Products/Debug-iphonesimulator/GoStop.app --fast-animation --capture-final-screenshot`를 실제 두 simulator에 대해 실행했고 `MP-017 PASS`를 확인했다. 같은 앱 빌드로 `python3 tests/test_agent/multi_test_scenario.py --suite managed-end-to-end-always-go --mode ui --install-app --app-path /tmp/gostop_ios_build/Build/Products/Debug-iphonesimulator/GoStop.app --fast-animation --capture-final-screenshot`도 다시 돌려 `MP-016 PASS`를 확인했다. 추가로 `python3 tests/test_agent/multi_test_scenario.py --suite managed-all-runnable --mode fixture`는 `MP-001`부터 `MP-017`까지 전부 PASS였고, `python3 tests/test_agent/multi_test_scenario.py --suite socket-capture-visibility --mode socket --binary /tmp/gostop_cli_local/Build/Products/Debug/GoStopCLI --skip-build --transport websocket`도 PASS였다."
+- **Outcome**: "멀티플레이에서 캡처 카드가 한 턴 늦게 보이던 원인은 inbound `statePatched`를 즉시 local live snapshot에 적용하지 않고 다음 `turnChanged`/`gameSnapshot` refresh를 기다리던 경로였다. `MultiplayerShellState`가 compatible patch를 같은 stateVersion 경로에서 즉시 apply하도록 수정해 turn handoff 전에 획득영역이 갱신되게 했고, room transport의 `transportPlayerId` 노출과 함께 `MP-017` 짧은 authoritative probe 시나리오를 fixture/socket/UI 3경로로 추가했다. 현재 `MP-017`은 실제 두 simulator에서 host/guest 각 2턴, 총 4턴만 진행하면서 authoritative capture 증가가 같은 턴 handoff 전에 양쪽 UI에 반영되는지 검증하며 PASS 상태다."
+
+### [2026-03-21 21:35:07 KST] User Request: 새로 만든 2턴 멀티플레이 시나리오를 다시 실행해 결과 확인
+- **Skills Planned**: ["gostop-test-reliability", "project_logger"]
+- **Skills Used**: ["gostop-test-reliability", "project_logger"]
+- **Trigger Reason**: "사용자가 방금 추가한 2턴 멀티플레이 캡처 visibility 시나리오를 실제로 다시 돌려서 결과를 보여 달라고 요청했다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`python3 tests/test_agent/multi_test_scenario.py --suite managed-capture-visibility-short --mode ui --install-app --app-path /tmp/gostop_ios_build/Build/Products/Debug-iphonesimulator/GoStop.app --fast-animation --capture-final-screenshot`를 실행했고 `MP-017 PASS UI autoroute -> test_artifacts/multiplayer/managed/managed-capture-visibility-short/ui`를 확인했다. 생성된 `summary.md`에는 `Scenario ID: MP-017`, `Success: PASS`, `Invite Code: 0014`, `Total Gameplay Actions: 4`, host/guest 각각 `playCard: 2`, `Capture Probe Success Count: 4`, `Capture Probe Failure Count: 0`이 기록됐다. `timeline.jsonl`에서는 네 번의 `capture.authoritative_visible -> capture.turn_passed -> capture.rendered_visible`가 모두 남아, 각 턴 handoff 전에 rendered captured total이 authoritative total을 따라잡았음을 확인했다."
+- **Outcome**: "새로 만든 2턴 시나리오 `MP-017`을 실제 두 simulator UI로 재실행했고, 이번 run도 PASS였다. 이번 샘플 run의 invite code는 `0014`였고, host/guest가 각각 정확히 2턴씩 플레이한 뒤 4번 모두 캡처 visibility probe가 성공했다."
+
+### [2026-03-21 21:41:51 KST] User Request: MP-017에 액션 로그와 화면 일치 검증을 추가하고 다시 실행
+- **Skills Planned**: ["gostop-test-reliability", "gostop-ui-playability", "project_logger"]
+- **Skills Used**: ["gostop-test-reliability", "gostop-ui-playability", "project_logger"]
+- **Trigger Reason**: "사용자가 2턴 멀티플레이 시나리오에 어떤 action이 발생했는지 로그를 남기고, 그 action 이후 화면이 실제로 같은 내용을 반영하는지까지 확인하는 검증을 추가해 달라고 요청했다."
+- **Files Touched**: ["tests/test_agent/multiplayer_ui_auto_play.py", "multiplayer_test_scenarios.md", "project_progress.md"]
+- **Validation**: "`python3 tests/test_agent/multi_test_scenario.py --suite managed-capture-visibility-short --mode ui --install-app --app-path /tmp/gostop_ios_build/Build/Products/Debug-iphonesimulator/GoStop.app --fast-animation --capture-final-screenshot`를 두 번 실행했고 둘 다 `MP-017 PASS UI autoroute`였다. 최종 run artifact `test_artifacts/multiplayer/managed/managed-capture-visibility-short/ui/summary.md`에는 `Invite Code: 0016`, `Total Gameplay Actions: 4`, `Screen Check Success Count: 4`, `Screen Check Failure Count: 0`, `Capture Probe Success Count: 4`, `Capture Probe Failure Count: 0`이 기록됐다. 새 artifact `action_log.jsonl`은 4개의 `playCard` action 각각에 대해 before/after screen summary, 검증 체크 결과, action screenshot 경로를 남겼고, `screen_checks.json`은 host/guest live route 유지, 양쪽 stateVersion sync, played card hand 제거, action 후 screen progression 검증이 4건 모두 PASS했음을 기록했다."
+- **Outcome**: "`MP-017` UI harness에 per-action screen parity layer를 추가했다. 이제 각 gameplay action마다 1) 어떤 action이 전송됐는지, 2) 직전 host/guest 화면 요약, 3) 직후 host/guest 화면 요약, 4) hand 제거와 turn/choice progression 같은 parity check 결과, 5) action별 host/guest screenshot 경로가 함께 저장된다. 최종 재실행에서도 4턴 모두 PASS했고, action log와 screen parity artifact는 현재 `test_artifacts/multiplayer/managed/managed-capture-visibility-short/ui/action_log.jsonl`, `screen_checks.json`, `action_screens/`에 남아 있다."
+
+### [2026-03-21 21:43:55 KST] User Request: MP-017 액션/화면 일치 평가를 다시 한번 수행
+- **Skills Planned**: ["gostop-test-reliability", "project_logger"]
+- **Skills Used**: ["gostop-test-reliability", "project_logger"]
+- **Trigger Reason**: "사용자가 방금 추가한 액션 로그 및 화면 일치 평가를 같은 조건으로 한 번 더 돌려 달라고 요청했다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`python3 tests/test_agent/multi_test_scenario.py --suite managed-capture-visibility-short --mode ui --install-app --app-path /tmp/gostop_ios_build/Build/Products/Debug-iphonesimulator/GoStop.app --fast-animation --capture-final-screenshot`를 다시 실행했고 `MP-017 PASS UI autoroute`를 확인했다. 최신 `summary.md`에는 `Invite Code: 0017`, `Total Gameplay Actions: 4`, host/guest 각각 `playCard: 2`, `Screen Check Success Count: 4`, `Screen Check Failure Count: 0`, `Capture Probe Success Count: 4`, `Capture Probe Failure Count: 0`이 기록됐다. 최신 `action_log.jsonl`에는 host `1월 ribbon`, guest `8월 junk`, host `7월 junk`, guest `10월 junk`의 네 action이 남았고, 네 action 모두 `routes_live`, `state_version_synced`, `played_card_removed_from_actor_hand`, `screen_progressed_after_action` 체크가 PASS였다."
+- **Outcome**: "액션/화면 일치 평가를 같은 조건으로 다시 수행했고 이번 run도 PASS였다. 최신 artifact는 계속 `test_artifacts/multiplayer/managed/managed-capture-visibility-short/ui/`에 갱신되며, 이번 샘플 run은 invite `0017` 기준 네 action 모두 화면과 로그가 일치했다."
+
+### [2026-03-21 21:48:23 KST] User Request: MP-017 실행 전에 두 simulator 화면 recording을 켜고 다시 수행
+- **Skills Planned**: ["gostop-ui-playability", "gostop-test-reliability", "project_logger"]
+- **Skills Used**: ["gostop-ui-playability", "gostop-test-reliability", "project_logger"]
+- **Trigger Reason**: "사용자가 멀티플레이 카드 이동이 여전히 한 번에 보이지 않는다고 보고했고, 먼저 실제 두 simulator 화면을 영상으로 녹화한 상태에서 `MP-017`을 다시 수행해 달라고 요청했다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`xcrun simctl io 988B3B75-DD16-49AE-B5D7-B046B19A357C recordVideo .../host.mp4`와 `xcrun simctl io 01DE5F5D-C372-4BE2-8CAB-3FF25E5AFBFD recordVideo .../guest.mp4`로 녹화를 시작한 뒤, `python3 tests/test_agent/multi_test_scenario.py --suite managed-capture-visibility-short --mode ui --install-app --app-path /tmp/gostop_ios_build/Build/Products/Debug-iphonesimulator/GoStop.app --fast-animation --capture-final-screenshot`를 실행해 `MP-017 PASS UI autoroute`를 확인했다. 이후 두 recording session을 종료했고 `test_artifacts/multiplayer/managed/managed-capture-visibility-short/ui_recordings/20260321_214736/host.mp4`(8.6MB), `guest.mp4`(11MB)가 생성됐다. 최신 `summary.md`에는 `Invite Code: 0018`, `Total Gameplay Actions: 4`, `Screen Check Success Count: 4`, `Screen Check Failure Count: 0`, `Capture Probe Success Count: 3`, `Capture Probe Failure Count: 0`이 기록됐고, 최신 `action_log.jsonl`에는 host `12월 ribbon`, guest `1월 bright`, host `8월 animal`, guest `4월 animal`의 네 action이 남았다."
+- **Outcome**: "요청대로 먼저 실제 두 simulator 화면을 녹화한 뒤 `MP-017`을 다시 실행했다. 이번 run도 PASS였고, 영상 artifact는 `test_artifacts/multiplayer/managed/managed-capture-visibility-short/ui_recordings/20260321_214736/` 아래에 host/guest mp4로 저장됐다. 현재는 recording 확보와 시나리오 재실행까지 마친 상태이며, 다음 단계는 이 mp4를 프레임 단위로 확인해 사용자가 말한 '한 번에 이동하지 않는' 시각적 stepwise motion이 실제로 어느 구간에서 보이는지 pinpoint하는 것이다."
+
+### [2026-03-21 22:21:22 KST] User Request: host.mp4 16~17초 구간 기준으로 멀티플레이 카드 이동 지연을 직접 확인하고 수정
+- **Skills Planned**: ["gostop-test-reliability", "gostop-ui-playability", "project_logger"]
+- **Skills Used**: ["gostop-test-reliability", "gostop-ui-playability", "project_logger"]
+- **Trigger Reason**: "사용자가 host.mp4 16~17초 구간에서 턴은 넘어갔는데 먹은 카드와 손패 반영이 늦다고 구체적으로 지적했고, 실제 product multiplayer 화면 기준으로 다시 디버깅하고 시나리오가 이 문제를 잡도록 보강해야 했다."
+- **Files Touched**: ["GoStop/Views/GameView.swift", "GoStop/Views/MultiplayerPlayCoordinator.swift", "GoStop/Views/MultiplayerShellViews.swift", "GoStop/Views/MultiplayerShellState.swift", "GoStop/Core/MultiplayerSimulatorBridge.swift", "GoStop/Core/MultiplayerStateMapper.swift", "tests/test_agent/multiplayer_ui_auto_play.py", "project_progress.md"]
+- **Validation**: "먼저 `xcodebuild -project GoStop.xcodeproj -scheme GoStop_Host -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 16' -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO`로 app을 반복 빌드했다. 이후 `python3 tests/test_agent/multi_test_scenario.py --suite managed-capture-visibility-short --mode ui --install-app --app-path /tmp/gostop_ios_build/Build/Products/Debug-iphonesimulator/GoStop.app --fast-animation --capture-final-screenshot`를 render-probe 없이 재실행해 `action_03_playcard_host.png`가 실제로 이전 snapshot을 보여 주는지 확인했고, coordinator 재구성 뒤에도 render mismatch가 남음을 확인했다. 다음으로 simulator bridge에 product render probe를 추가하고 `tests/test_agent/multiplayer_ui_auto_play.py`가 shell state뿐 아니라 rendered hand/captured parity를 검사하도록 바꾼 뒤 동일한 `MP-017` UI run을 다시 수행했고, 이때는 `actionIndex=3 actor=host actionType=playCard`에서 `rendered_captured_matches_source_captured` 실패로 정확히 재현됐다. failure artifact는 `test_artifacts/multiplayer/managed/managed-capture-visibility-short/ui/action_log.jsonl`과 `screen_checks.json`에 남았다. 마지막으로 `MultiplayerStateMapper`에 `doubleJunk`/`dummy` 매핑을 추가한 뒤 동일한 UI run을 다시 수행했고 `MP-017 PASS`를 확인했다. 최신 `summary.md`에는 `Invite Code: 0023`, `Total Gameplay Actions: 4`, `Screen Check Success Count: 4`, `Screen Check Failure Count: 0`, `Capture Probe Success Count: 4`, `Capture Probe Failure Count: 0`이 기록됐고, 최신 `action_log.jsonl`에서는 4개 action 모두 render probe 기반 `rendered_hand_matches_source_hand`, `rendered_captured_matches_source_captured`가 PASS였다."
+- **Outcome**: "사용자 지적은 맞았다. 기존 `MP-017`은 shell/live snapshot만 보고 있어서 실제 product `GameView`가 authoritative 상태보다 늦거나 누락된 렌더를 놓쳤다. 먼저 product coordinator를 snapshot-stateVersion마다 새 authoritative state로 재구성되게 조정했고, simulator bridge에 실제 product render probe를 추가해 테스트가 rendered hand/captured parity를 직접 보도록 보강했다. 그 결과 멀티플레이 mapper가 `doubleJunk`를 버리고 있던 실제 원인을 잡았고, 이를 수정한 뒤 `MP-017`이 실제 두 simulator UI에서 PASS로 돌아왔다. 이제 이 시나리오는 '턴은 넘어갔는데 화면상 먹은 카드가 아직 안 보임' 같은 product render mismatch를 직접 fail시킨다."
+
+### [2026-03-21 22:28:38 KST] User Request: 오늘 한일 정리해주고 commit message 알려줘
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "사용자가 오늘 멀티플레이 작업 전체를 세션 단위로 정리하고 바로 사용할 수 있는 commit message를 요청했다. `project_progress.md` 상단 상태와 다음 세션 포커스를 오늘 기준으로 갱신하고 wrap-up 성격의 요약을 남길 필요가 있었다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`project_progress.md`에서 2026-03-21자 로그 전체를 검토했고, `git status --short`, `git diff --stat`, 주요 멀티플레이 관련 파일 diff를 함께 확인해 오늘 작업의 실제 수정 축이 multiplayer UI scenario 관리, simulator UI automation, render parity 검증, authoritative/product sync 수정에 집중되어 있음을 재확인했다."
+- **Outcome**: "오늘 작업 요약과 commit message 후보를 준비했다. 현재 상단 `Current Status`와 `Next Action Items`도 오늘 멀티플레이 UI 시나리오 hardening 결과 기준으로 갱신됐다."

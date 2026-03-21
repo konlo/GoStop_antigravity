@@ -6,7 +6,7 @@ import Yams
 struct AnimationConfig: Codable {
     var card_move_duration: Double = 0.4
     var card_move_delay_per_item: Double = 0.05
-    var background_music_enabled: Bool = true
+    var background_music_enabled: Bool = false
     var animation_style: String = "spring"
     var spring_response: Double = 0.4
     var spring_damping: Double = 0.75
@@ -39,6 +39,7 @@ class AnimationManager: ObservableObject {
     static let shared = AnimationManager()
     
     @Published var config = AnimationConfig()
+    var suppressAnimations: Bool = false
 
     struct CardMovePlan {
         let animation: Animation?
@@ -202,8 +203,12 @@ class AnimationManager: ObservableObject {
 
     /// Helper to run a block with the configured animation
     func withGameAnimation(_ action: @escaping () -> Void) {
-        withAnimation(moveAnimation) {
+        if suppressAnimations {
             action()
+        } else {
+            withAnimation(moveAnimation) {
+                action()
+            }
         }
     }
 }

@@ -362,6 +362,49 @@ locales:
         seolsa: "{player}의 뻑(설사) 이벤트가 발생했습니다."
         seolsa_eat: "{player}이(가) 뻑 먹기를 성공했습니다."
         self_seolsa_eat: "{player}의 자뻑 먹기 이벤트가 발생했습니다."
+    match:
+      end:
+        disconnect_timeout: "재연결 허용 시간이 초과되어 연결 끊김으로 종료되었습니다."
+        stop: "스탑 선언으로 종료되었습니다."
+        max_score: "최대 점수 도달로 종료되었습니다."
+        nagari: "나가리로 종료되었습니다."
+        chongtong: "총통으로 종료되었습니다."
+        three_seolsa: "3뻑으로 종료되었습니다."
+        voluntary_quit: "플레이어가 나가서 종료되었습니다."
+        admin_forfeit: "관리자 강제 종료로 게임이 끝났습니다."
+      result:
+        leave:
+          ready: "결과를 다 읽으신 후 나가기를 눌러주세요."
+          pending: "방 나가기 요청 중입니다. 서버 응답을 기다리고 있습니다."
+          wait_room_closed: "방에서 나갔습니다. 최종 종료 신호를 기다리고 있습니다."
+          acknowledged: "방 나가기가 확인되었습니다."
+          completed_by_room_closed: "방이 닫혀서 나가기가 완료되었습니다."
+          transport_error: "통신 오류로 나가기 요청을 완료할 수 없습니다."
+      choice:
+        actor_only_waiting: "상대방이 선택을 결정하고 있습니다."
+        shake:
+          actor_only_waiting: "상대방이 흔들기 여부를 결정하고 있습니다."
+      reject:
+        stale_state_version: "이전 버전의 보드를 대상으로 한 행동입니다. 최신 상태로 갱신될 때까지 잠시 기다려주세요."
+        action_id_conflict: "동일한 작업 ID가 다른 명령어로 이미 사용되어 거절되었습니다."
+        out_of_turn: "아직 당신의 턴이 아닙니다. 차례를 기다려주세요."
+        invalid_phase: "현재 단계에서 유효하지 않은 행동입니다."
+        invalid_card: "현재 보드에서 유효하지 않은 카드입니다."
+        invalid_choice: "유효하지 않은 선택지입니다."
+        choice_expired: "시간 초과로 선택이 만료되었습니다."
+        choice_owner_mismatch: "다른 플레이어의 선택 차례입니다."
+        not_participant: "현재 세션이 더 이상 이 게임에 속해 있지 않습니다."
+        resume_expired: "재연결 가능 시간이 초과되어 이어할 수 없습니다."
+        game_not_resumable: "더 이상 이어할 수 없는 게임입니다."
+        invalid_state: "서버가 현재 상태에서 해당 행동을 거절했습니다."
+    room:
+      closed:
+        hostLeft: "방장이 결과를 확인하고 나가서 방이 닫혔습니다."
+        allPlayersLeft: "모든 플레이어가 나가서 방이 닫혔습니다."
+        resultExpired: "결과 확인 시간이 초과되어 방이 닫혔습니다."
+        explicitClose: "방이 명시적으로 닫혔습니다."
+        idleExpired: "대기 시간이 초과되어 방이 닫혔습니다."
+        bootstrapFailed: "방 생성 초기화 실패로 닫혔습니다."
   en:
     players:
       default:
@@ -724,3 +767,46 @@ locales:
         seolsa: "{player} triggered a Seolsa event."
         seolsa_eat: "{player} succeeded with Seolsa Eat."
         self_seolsa_eat: "{player} triggered Self Seolsa Eat."
+    match:
+      end:
+        disconnect_timeout: "Match ended on disconnect timeout after the grace period expired."
+        stop: "Match ended because Stop was called."
+        max_score: "Match ended because the maximum score threshold was reached."
+        nagari: "Match ended in nagari."
+        chongtong: "Match ended on chongtong."
+        three_seolsa: "Match ended on three seolsa."
+        voluntary_quit: "A player left and the match ended."
+        admin_forfeit: "The match ended on an administrative forfeit."
+      result:
+        leave:
+          ready: "Leave the retained result room when you are finished reading."
+          pending: "Leaving room... Waiting for server acknowledgement."
+          wait_room_closed: "Left the room. Waiting for the final termination signal."
+          acknowledged: "Room exit acknowledged."
+          completed_by_room_closed: "The leave completed because the room closed."
+          transport_error: "The leave request could not complete due to a transport error."
+      choice:
+        actor_only_waiting: "The opponent is resolving the current choice."
+        shake:
+          actor_only_waiting: "The opponent is deciding whether to shake."
+      reject:
+        stale_state_version: "The action targeted an older board version. Please wait for the resync."
+        action_id_conflict: "That actionId was reused with different data and was rejected."
+        out_of_turn: "It is not your turn yet. Please wait for the turn change."
+        invalid_phase: "That action is not valid in the current phase."
+        invalid_card: "That card is no longer a valid target."
+        invalid_choice: "That choice option is no longer valid."
+        choice_expired: "The choice expired before the command arrived."
+        choice_owner_mismatch: "The choice belongs to the other player."
+        not_participant: "The session is no longer part of this match."
+        resume_expired: "Resume time expired. Cannot continue."
+        game_not_resumable: "The match is no longer resumable."
+        invalid_state: "The server rejected the action in the current state."
+    room:
+      closed:
+        hostLeft: "The host left after reviewing the result, so the room closed."
+        allPlayersLeft: "All players left the room, so it has been closed."
+        resultExpired: "Result retention expired and the room closed."
+        explicitClose: "The room was explicitly closed."
+        idleExpired: "The room expired after staying idle too long."
+        bootstrapFailed: "The room closed because bootstrap completion failed."

@@ -15,6 +15,10 @@ struct CardView: View {
     var targetCueScaleMultiplier: CGFloat = 1.03
     @ObservedObject var config = ConfigManager.shared
     
+    private var shouldAnimateCueChanges: Bool {
+        animationNamespace != nil
+    }
+    
     var body: some View {
         let size = config.cardSize(scale: scale)
         
@@ -106,8 +110,8 @@ struct CardView: View {
         )
         .scaleEffect(cueScale)
         .shadow(color: cueColor.opacity(cueGlowOpacity), radius: cueGlowRadius, x: 0, y: 0)
-        .animation(.easeOut(duration: 0.09), value: isMoveSourceCue)
-        .animation(.easeOut(duration: 0.09), value: isMoveTargetCue)
+        .animation(shouldAnimateCueChanges ? .easeOut(duration: 0.09) : nil, value: isMoveSourceCue)
+        .animation(shouldAnimateCueChanges ? .easeOut(duration: 0.09) : nil, value: isMoveTargetCue)
         .ifLet(animationNamespace) { view, ns in
             view.matchedGeometryEffect(id: card.id, in: ns, isSource: isSource)
         }

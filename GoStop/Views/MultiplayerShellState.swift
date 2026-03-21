@@ -8,6 +8,80 @@ private enum MultiplayerShellDateFormatting {
     }()
 }
 
+func multiplayerNormalizedInviteCodeValue(_ rawValue: String?) -> String? {
+    guard let rawValue else { return nil }
+    let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    let digits = trimmed.filter(\.isNumber)
+    guard !digits.isEmpty else { return nil }
+    if digits.count >= 4 {
+        return digits
+    }
+    return String(repeating: "0", count: 4 - digits.count) + digits
+}
+
+private enum MultiplayerShellDebugLog {
+    private static let queue = DispatchQueue(label: "com.antigravity.gostop.multiplayer-shell-debug-log")
+    private static let fileName = "debug_log_multiplayer.ndjson"
+
+    static var fileURL: URL {
+        let fileManager = FileManager.default
+        if let applicationSupport = try? fileManager.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        ) {
+            let directory = applicationSupport.appendingPathComponent("GoStop", isDirectory: true)
+            try? fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+            return directory.appendingPathComponent(fileName)
+        }
+        return URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+            .appendingPathComponent(fileName)
+    }
+
+    static var displayPath: String {
+        fileURL.path
+    }
+
+    static func append(event: String, fields: [String: String?] = [:]) {
+        let timestamp = MultiplayerShellDateFormatting.full.string(from: .now)
+        var payload: [String: String] = [
+            "event": event,
+            "ts": timestamp
+        ]
+        for (key, value) in fields {
+            guard let value, !value.isEmpty else { continue }
+            payload[key] = value
+        }
+        let line = payload.keys.sorted().map { key in
+            "\(key)=\(payload[key] ?? "")"
+        }.joined(separator: " | ") + "\n"
+
+        queue.async {
+            let url = fileURL
+            let fileManager = FileManager.default
+            try? fileManager.createDirectory(
+                at: url.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            if !fileManager.fileExists(atPath: url.path) {
+                fileManager.createFile(atPath: url.path, contents: nil)
+            }
+            if let handle = try? FileHandle(forWritingTo: url) {
+                defer { try? handle.close() }
+                _ = try? handle.seekToEnd()
+                try? handle.write(contentsOf: Data(line.utf8))
+            } else {
+                try? Data(line.utf8).write(to: url, options: .atomic)
+            }
+        }
+
+#if DEBUG
+        print("[MultiplayerDebug] \(line.trimmingCharacters(in: .whitespacesAndNewlines))")
+#endif
+    }
+}
+
 enum MultiplayerShellRoute: String {
     case entry
     case room
@@ -132,7 +206,9 @@ struct MultiplayerShellReadyRequest {
 enum MultiplayerShellInboundEvent {
     case helloAck(MultiplayerHelloAckShellPayload)
     case roomSnapshot(MultiplayerRoomSnapshotPayload)
+    case roomEventRefresh(reason: String, roomSequence: Int?)
     case gameSnapshot(MultiplayerSnapshot, serverTime: String?)
+    case statePatched(MultiplayerPatch, serverTime: String?)
     case turnChanged(MultiplayerTurnChangedPayload, serverTime: String?)
     case actionRejected(MultiplayerActionRejectedPayload)
     case matchEnded(roundEnded: MultiplayerRoundEndedPayload?, matchEnded: MultiplayerMatchEndedPayload)
@@ -160,95 +236,9 @@ func multiplayerShellFallbackText(for key: String) -> String? {
         return "This multiplayer entry action is not available in the current transport route."
     case "entry.resume.transport_unavailable":
         return "The transport source is not ready to create, join, or resume right now."
-    case "match.end.disconnect_timeout":
-        return "Reconnect grace expired, so the match ended on disconnect timeout."
-    case "match.end.stop":
-        return "The match ended because Stop was called."
-    case "match.end.max_score":
-        return "The match ended because the maximum score threshold was reached."
-    case "match.end.nagari":
-        return "The round ended in nagari."
-    case "match.end.chongtong":
-        return "The match ended on chongtong."
-    case "match.end.three_seolsa":
-        return "The match ended on three seolsa."
-    case "match.end.voluntary_quit":
-        return "A player quit and the match ended."
-    case "match.end.admin_forfeit":
-        return "The match ended on an administrative forfeit."
-    case "match.result.leave.ready":
-        return "Leave the retained result room when you are finished reading."
-    case "match.result.leave.pending":
-        return "leaveRoom was sent. Waiting for the authoritative completion signal."
-    case "match.result.leave.wait_room_closed":
-        return "The local session already left. Waiting for the final roomClosed signal."
-    case "match.result.leave.acknowledged":
-        return "The room lifecycle acknowledged the local leave request."
-    case "match.result.leave.completed_by_room_closed":
-        return "The leave completed because the room closed immediately afterward."
-    case "match.result.leave.transport_error":
-        return "The leave request could not complete over the current transport source."
-    case "room.closed.hostLeft":
-        return "The host left after result delivery, so the room closed."
-    case "room.closed.allPlayersLeft":
-        return "All players left the retained result room, so the room closed."
-    case "room.closed.resultExpired":
-        return "Result retention expired and the room closed."
-    case "room.closed.explicitClose":
-        return "The room was explicitly closed after result delivery."
-    case "room.closed.idleExpired":
-        return "The room expired after staying idle too long."
-    case "room.closed.bootstrapFailed":
-        return "The room closed because bootstrap completion failed."
-    case "match.choice.capture":
-        return "Choose which same-month line to capture."
-    case "match.choice.capture.take_pair":
-        return "Take this capture pair."
-    case "match.choice.shake":
-        return "Decide whether to shake before continuing."
-    case "match.choice.shake.yes":
-        return "Shake"
-    case "match.choice.shake.no":
-        return "Keep Playing"
-    case "match.choice.go_stop":
-        return "Choose whether to continue with Go or finish with Stop."
-    case "match.choice.go_stop.go":
-        return "Go"
-    case "match.choice.go_stop.stop":
-        return "Stop"
-    case "match.choice.chrysanthemum_role":
-        return "Choose how the chrysanthemum card should score."
-    case "match.choice.chrysanthemum_role.animal":
-        return "Score As Animal"
-    case "match.choice.chrysanthemum_role.double_pi":
-        return "Score As Double Pi"
-    case "match.choice.shake.actor_only_waiting":
-        return "The opponent is deciding whether to shake."
-    case "match.reject.stale_state_version":
-        return "The action targeted an older board version. Wait for the authoritative resync."
-    case "match.reject.action_id_conflict":
-        return "That actionId was reused with different command data and was rejected."
-    case "match.reject.out_of_turn":
-        return "It is not your turn yet. Wait for the authoritative turn change."
-    case "match.reject.invalid_phase":
-        return "That action is not valid in the current phase."
-    case "match.reject.invalid_card":
-        return "That card is no longer a valid target on the current board."
-    case "match.reject.invalid_choice":
-        return "That choice option is no longer valid."
-    case "match.reject.choice_expired":
-        return "The choice expired before the command arrived."
-    case "match.reject.choice_owner_mismatch":
-        return "The choice belongs to the other player."
-    case "match.reject.not_participant":
-        return "The current session no longer belongs to this match."
-    case "match.reject.resume_expired":
-        return "Resume can no longer complete because the grace window expired."
-    case "match.reject.game_not_resumable":
-        return "The match is no longer resumable."
-    case "match.reject.invalid_state":
-        return "The server rejected the action because the live state is no longer valid."
     default:
+        // Shell-level fallbacks are now primary handled via MessageCatalog (message.yaml).
+        // Prefixes are kept as a last resort for unknown authoritative codes.
         if key.hasPrefix("match.end.") {
             return "The match ended for an authoritative server reason."
         }
@@ -388,6 +378,14 @@ protocol MultiplayerShellResettableNetworkingAdapter: AnyObject {
     func resetTransportState() async
 }
 
+protocol MultiplayerShellMailboxPollingNetworkingAdapter: AnyObject {
+    func pollMailbox() async throws
+}
+
+protocol MultiplayerShellGapRecoveryNetworkingAdapter: AnyObject {
+    func triggerGapRecovery(expectedStateVersion: Int) async throws
+}
+
 protocol MultiplayerShellTransportEnvelopeIngesting: AnyObject {
     func ingestTransportEnvelope(data: Data) throws
     func ingestTransportEnvelope(jsonObject: [String: Any]) throws
@@ -475,12 +473,12 @@ enum MultiplayerTransportMountMode: Equatable {
     func descriptionText(endpointURL: URL) -> String {
         switch self {
         case .labPreview:
-            return "Transport-backed shell route mounted on Agent 2 websocket command frames. MP Lab uses this same boundary, but the source itself is no longer lab-only. Endpoint: \(endpointURL.absoluteString)."
+            return "Transport-backed shell route mounted on Agent 2 websocket command frames. MP Lab uses this same boundary, but the source itself is no longer lab-only. Endpoint: \(endpointURL.absoluteString). Debug log: \(MultiplayerShellDebugLog.displayPath)."
         case .productPreparation(let inviteCode):
             if let inviteCode {
-                return "The product route mounts this transport source directly. Create, join, resume, and authoritative result dismissal all stay on helloAck, roomSnapshot, leaveAcknowledged, and roomClosed. Pending inviteCode: \(inviteCode). Phase 0 keeps inviteCode == roomId. Endpoint: \(endpointURL.absoluteString)."
+                return "The product route mounts this transport source directly. Create, join, resume, and authoritative result dismissal all stay on helloAck, roomSnapshot, leaveAcknowledged, and roomClosed. Pending inviteCode: \(inviteCode). Phase 0 exposes numeric invite codes and resolves them to room ids at the bootstrap boundary. Endpoint: \(endpointURL.absoluteString). Debug log: \(MultiplayerShellDebugLog.displayPath)."
             }
-            return "The product route mounts this transport source directly. Create, resume, and authoritative result dismissal already stay on helloAck, roomSnapshot, leaveAcknowledged, and roomClosed. Join Invite remains hidden until an outer route or local product entry input provides inviteCode. Endpoint: \(endpointURL.absoluteString)."
+            return "The product route mounts this transport source directly. Create, resume, and authoritative result dismissal already stay on helloAck, roomSnapshot, leaveAcknowledged, and roomClosed. Join Invite remains hidden until an outer route or local product entry input provides inviteCode. Endpoint: \(endpointURL.absoluteString). Debug log: \(MultiplayerShellDebugLog.displayPath)."
         }
     }
 
@@ -499,7 +497,7 @@ enum MultiplayerTransportMountMode: Equatable {
             return "Create Room will hit the Agent 2 websocket command server, then attach through helloAck -> roomSnapshot. `GOSTOP_MP_TRANSPORT_URL` overrides the default endpoint."
         case .productPreparation(let inviteCode):
             if let inviteCode {
-                return "This product route can create, join, and resume now. Join Invite will use inviteCode \(inviteCode), which Phase 0 resolves as the roomId alias, and still wait for helloAck -> roomSnapshot before entering the room."
+                return "This product route can create, join, and resume now. Join Invite will use numeric inviteCode \(inviteCode), and Phase 0 resolves it to the authoritative room id before helloAck -> roomSnapshot attach."
             }
             return "This product route can create and resume now. Join Invite stays hidden until the outer app route or entry input supplies inviteCode."
         }
@@ -512,11 +510,16 @@ struct MultiplayerTransportRouteConfiguration {
     let persistenceStorageKey: String
     let hostClientId: String
 
+    private static func generatedHostClientId(prefix: String) -> String {
+        let suffix = UUID().uuidString.replacingOccurrences(of: "-", with: "")
+        return "\(prefix)_\(suffix)"
+    }
+
     static let lab = MultiplayerTransportRouteConfiguration(
         mode: .labPreview,
         transportOptions: .labDefault,
         persistenceStorageKey: "multiplayer.shell.transport.persisted-session",
-        hostClientId: "ios_transport_lab_host"
+        hostClientId: generatedHostClientId(prefix: "ios_transport_lab_host")
     )
 
     static func productPreparation(inviteCode: String? = nil) -> MultiplayerTransportRouteConfiguration {
@@ -524,7 +527,7 @@ struct MultiplayerTransportRouteConfiguration {
             mode: .productPreparation(inviteCode: inviteCode),
             transportOptions: .productDefault,
             persistenceStorageKey: "multiplayer.shell.product.persisted-session",
-            hostClientId: "ios_transport_product_route"
+            hostClientId: generatedHostClientId(prefix: "ios_transport_product_route")
         )
     }
 }
@@ -589,6 +592,34 @@ private struct MultiplayerShellTransportCursor {
             }
         default:
             return
+        }
+    }
+}
+
+private final class MultiplayerBufferedInboundEventQueue {
+    private let queue: DispatchQueue
+    private var events: [MultiplayerShellInboundEvent] = []
+
+    init(label: String) {
+        self.queue = DispatchQueue(label: label)
+    }
+
+    func append(contentsOf newEvents: [MultiplayerShellInboundEvent]) {
+        queue.sync {
+            events.append(contentsOf: newEvents)
+        }
+    }
+
+    func popFirst() -> MultiplayerShellInboundEvent? {
+        queue.sync {
+            guard !events.isEmpty else { return nil }
+            return events.removeFirst()
+        }
+    }
+
+    func removeAll() {
+        queue.sync {
+            events.removeAll()
         }
     }
 }
@@ -694,8 +725,10 @@ private actor MultiplayerCommandFrameWebSocketClient {
 final class MultiplayerWebSocketCommandNetworkingAdapter:
     MultiplayerShellRoomLifecycleNetworkingAdapter,
     MultiplayerShellGameplayNetworkingAdapter,
+    MultiplayerShellGapRecoveryNetworkingAdapter,
     MultiplayerShellTransportEnvelopeIngesting,
-    MultiplayerShellResettableNetworkingAdapter {
+    MultiplayerShellResettableNetworkingAdapter,
+    MultiplayerShellMailboxPollingNetworkingAdapter {
 
     let label: String
 
@@ -703,7 +736,9 @@ final class MultiplayerWebSocketCommandNetworkingAdapter:
     private let clientId: String
     private let webSocketClient: MultiplayerCommandFrameWebSocketClient
     private var latestAttachRequest: MultiplayerShellAttachRequest?
-    private var bufferedEvents: [MultiplayerShellInboundEvent] = []
+    private let bufferedEvents = MultiplayerBufferedInboundEventQueue(
+        label: "com.antigravity.gostop.multiplayer-shell.websocket-buffer"
+    )
     private var cursor = MultiplayerShellTransportCursor()
 
     init(
@@ -714,11 +749,26 @@ final class MultiplayerWebSocketCommandNetworkingAdapter:
         self.clientId = clientId
         self.webSocketClient = MultiplayerCommandFrameWebSocketClient(endpointURL: options.endpointURL)
         self.label = "WS \(options.endpointLabel)"
+        MultiplayerShellDebugLog.append(
+            event: "transport.adapter.init",
+            fields: [
+                "clientId": clientId,
+                "endpoint": options.endpointURL.absoluteString
+            ]
+        )
     }
 
     func createRoomBootstrap(_ request: MultiplayerShellCreateRoomRequest) async throws -> MultiplayerShellAttachRequest {
         cursor = MultiplayerShellTransportCursor()
         latestAttachRequest = nil
+        MultiplayerShellDebugLog.append(
+            event: "transport.bootstrap.create.send",
+            fields: [
+                "clientId": clientId,
+                "playerId": request.hostPlayerId,
+                "deviceId": request.deviceId
+            ]
+        )
         let payload = try await webSocketClient.sendCommand(
             action: "room_create",
             data: [
@@ -738,6 +788,15 @@ final class MultiplayerWebSocketCommandNetworkingAdapter:
     func joinRoomBootstrap(_ request: MultiplayerShellJoinRoomRequest) async throws -> MultiplayerShellAttachRequest {
         cursor = MultiplayerShellTransportCursor()
         latestAttachRequest = nil
+        MultiplayerShellDebugLog.append(
+            event: "transport.bootstrap.join.send",
+            fields: [
+                "clientId": clientId,
+                "roomId": request.roomId,
+                "playerId": request.playerId,
+                "deviceId": request.deviceId
+            ]
+        )
         let payload = try await webSocketClient.sendCommand(
             action: "room_join",
             data: [
@@ -756,6 +815,16 @@ final class MultiplayerWebSocketCommandNetworkingAdapter:
     func connect(using request: MultiplayerShellAttachRequest) async throws {
         latestAttachRequest = request
         let connectionId = request.connectionId ?? "conn_\(clientId.prefix(12))"
+        MultiplayerShellDebugLog.append(
+            event: "transport.connect.hello",
+            fields: [
+                "clientId": clientId,
+                "roomId": request.roomId,
+                "sessionId": request.sessionId,
+                "playerId": request.playerId,
+                "connectionId": connectionId
+            ]
+        )
         _ = try await webSocketClient.sendCommand(
             action: "room_transport_connect",
             data: [
@@ -790,6 +859,15 @@ final class MultiplayerWebSocketCommandNetworkingAdapter:
     }
 
     func setReady(_ request: MultiplayerShellReadyRequest) async throws {
+        MultiplayerShellDebugLog.append(
+            event: "transport.room.setReady.send",
+            fields: [
+                "clientId": clientId,
+                "roomId": request.roomId,
+                "playerId": request.playerId,
+                "ready": request.ready ? "true" : "false"
+            ]
+        )
         _ = try await webSocketClient.sendCommand(
             action: "room_transport_send",
             data: transportSendPayload(
@@ -801,6 +879,14 @@ final class MultiplayerWebSocketCommandNetworkingAdapter:
     }
 
     func requestRoomSnapshot(roomId: String) async throws {
+        MultiplayerShellDebugLog.append(
+            event: "transport.room.snapshot.send",
+            fields: [
+                "clientId": clientId,
+                "roomId": roomId,
+                "lastSeen": cursor.payload.map { "\($0)" }
+            ]
+        )
         _ = try await webSocketClient.sendCommand(
             action: "room_transport_send",
             data: transportSendPayload(action: "snapshot")
@@ -809,6 +895,14 @@ final class MultiplayerWebSocketCommandNetworkingAdapter:
     }
 
     func recordGameStarted(roomId: String, gameId: String?) async throws {
+        MultiplayerShellDebugLog.append(
+            event: "transport.room.gameStarted.send",
+            fields: [
+                "clientId": clientId,
+                "roomId": roomId,
+                "gameId": gameId
+            ]
+        )
         var extra: [String: Any] = [:]
         if let gameId {
             extra["gameId"] = gameId
@@ -849,6 +943,25 @@ final class MultiplayerWebSocketCommandNetworkingAdapter:
         try await pullMailbox()
     }
 
+    func triggerGapRecovery(expectedStateVersion: Int) async throws {
+        MultiplayerShellDebugLog.append(
+            event: "transport.live.gapRecovery.send",
+            fields: [
+                "clientId": clientId,
+                "expectedStateVersion": String(expectedStateVersion),
+                "lastSeen": cursor.payload.map { "\($0)" }
+            ]
+        )
+        _ = try await webSocketClient.sendCommand(
+            action: "room_transport_send",
+            data: transportSendPayload(
+                action: "triggerGapRecovery",
+                extra: ["expectedStateVersion": expectedStateVersion]
+            )
+        )
+        try await pullMailbox()
+    }
+
     func playCard(_ request: MultiplayerShellPlayCardRequest) async throws {
         try await sendGameplayCommand(
             action: "playCard",
@@ -884,8 +997,7 @@ final class MultiplayerWebSocketCommandNetworkingAdapter:
     }
 
     func nextBufferedEvent() async throws -> MultiplayerShellInboundEvent? {
-        guard !bufferedEvents.isEmpty else { return nil }
-        return bufferedEvents.removeFirst()
+        bufferedEvents.popFirst()
     }
 
     func ingestTransportEnvelope(data: Data) throws {
@@ -911,12 +1023,30 @@ final class MultiplayerWebSocketCommandNetworkingAdapter:
         bufferedEvents.removeAll()
     }
 
+    func pollMailbox() async throws {
+        try await pullMailbox()
+    }
+
     private func pullMailbox() async throws {
+        MultiplayerShellDebugLog.append(
+            event: "transport.mailbox.receive.send",
+            fields: [
+                "clientId": clientId,
+                "lastSeen": cursor.payload.map { "\($0)" }
+            ]
+        )
         let response = try await webSocketClient.sendCommand(
             action: "room_transport_receive",
             data: ["clientId": clientId]
         )
         let rawEnvelopes = try requireArray("envelopes", in: response)
+        MultiplayerShellDebugLog.append(
+            event: "transport.mailbox.receive.result",
+            fields: [
+                "clientId": clientId,
+                "count": String(rawEnvelopes.count)
+            ]
+        )
         for rawEnvelope in rawEnvelopes {
             let envelope = try requireDictionary(rawEnvelope, context: "room_transport_receive.envelopes[]")
             cursor.update(from: envelope)
@@ -1046,7 +1176,9 @@ final class MultiplayerBufferedTransportAdapter: MultiplayerShellNetworkingAdapt
     let label: String
 
     private let outboundHooks: MultiplayerShellTransportOutboundHooks
-    private var bufferedEvents: [MultiplayerShellInboundEvent] = []
+    private let bufferedEvents = MultiplayerBufferedInboundEventQueue(
+        label: "com.antigravity.gostop.multiplayer-shell.buffered-adapter"
+    )
     private var latestAttachRequest: MultiplayerShellAttachRequest?
 
     init(
@@ -1072,8 +1204,7 @@ final class MultiplayerBufferedTransportAdapter: MultiplayerShellNetworkingAdapt
     }
 
     func nextBufferedEvent() async throws -> MultiplayerShellInboundEvent? {
-        guard !bufferedEvents.isEmpty else { return nil }
-        return bufferedEvents.removeFirst()
+        bufferedEvents.popFirst()
     }
 
     func ingestTransportEnvelope(data: Data) throws {
@@ -1201,6 +1332,9 @@ private enum MultiplayerShellTransportEnvelopeMapper {
         case MultiplayerEventName.stateSnapshot.rawValue:
             let snapshotPayload = try requireDictionary("payload", in: engineEvent)
             return [.gameSnapshot(try decodeJSON(MultiplayerSnapshot.self, from: snapshotPayload), serverTime: serverTime)]
+        case MultiplayerEventName.statePatched.rawValue:
+            let patchPayload = try requireDictionary("payload", in: engineEvent)
+            return [.statePatched(try decodeJSON(MultiplayerPatch.self, from: patchPayload), serverTime: serverTime)]
         case MultiplayerEventName.turnChanged.rawValue:
             let turnChangedPayload = try requireDictionary("payload", in: engineEvent)
             return [.turnChanged(try decodeJSON(MultiplayerTurnChangedPayload.self, from: turnChangedPayload), serverTime: serverTime)]
@@ -1220,27 +1354,41 @@ private enum MultiplayerShellTransportEnvelopeMapper {
         attachRequest: MultiplayerShellAttachRequest?
     ) throws -> [MultiplayerShellInboundEvent] {
         let payload = try requireDictionary("payload", in: envelope)
-        switch try requireString("eventName", in: payload) {
+        // Room transport envelopes carry room event metadata at `payload`
+        // and the actual room event body under `payload.payload`.
+        let eventPayload = (payload["payload"] as? [String: Any]) ?? payload
+        let roomSequence =
+            (envelope["roomSequence"] as? Int)
+            ?? (envelope["roomSequence"] as? NSNumber)?.intValue
+        let roomId = try requireString("roomId", in: envelope)
+
+        func refreshEvent(_ reason: String) -> [MultiplayerShellInboundEvent] {
+            [.roomEventRefresh(reason: reason, roomSequence: roomSequence)]
+        }
+
+        switch try requireString("eventName", in: eventPayload) {
         case "roomClosed":
             return [
                 .roomClosed(
                     MultiplayerRoomClosedPayload(
-                        roomId: try requireString("roomId", in: envelope),
-                        reasonCode: try requireString("reason", in: payload),
-                        messageKey: "room.closed.\(try requireString("reason", in: payload))",
-                        closedAt: optionalString("closedAt", in: payload)
+                        roomId: roomId,
+                        reasonCode: try requireString("reason", in: eventPayload),
+                        messageKey: "room.closed.\(try requireString("reason", in: eventPayload))",
+                        closedAt: optionalString("closedAt", in: eventPayload)
                     )
                 )
             ]
+        case "memberJoined":
+            return refreshEvent("memberJoined")
         case "memberLeft":
             guard let attachRequest,
-                  optionalString("playerId", in: payload) == attachRequest.playerId else {
-                return []
+                  optionalString("playerId", in: eventPayload) == attachRequest.playerId else {
+                return refreshEvent("memberLeft")
             }
             return [
                 .leaveAcknowledged(
                     MultiplayerLeaveAcknowledgementPayload(
-                        roomId: try requireString("roomId", in: envelope),
+                        roomId: roomId,
                         playerId: attachRequest.playerId,
                         roomState: .ended,
                         messageKey: "match.result.leave.acknowledged",
@@ -1248,6 +1396,18 @@ private enum MultiplayerShellTransportEnvelopeMapper {
                     )
                 )
             ]
+        case "memberReadyChanged":
+            return refreshEvent("memberReadyChanged")
+        case "readyWindowExpired":
+            return refreshEvent("readyWindowExpired")
+        case "playerDisconnected":
+            return refreshEvent("playerDisconnected")
+        case "playerReconnected":
+            return refreshEvent("playerReconnected")
+        case "playerForfeited":
+            return refreshEvent("playerForfeited")
+        case "roomStateChanged":
+            return refreshEvent("roomStateChanged:\(optionalString("toState", in: eventPayload) ?? "unknown")")
         case "leaveAcknowledged":
             return [.leaveAcknowledged(try leaveAcknowledgementPayload(from: envelope))]
         default:
@@ -1458,6 +1618,8 @@ final class MultiplayerShellStore: ObservableObject {
     @Published var entryState: MultiplayerEntryShellState
     @Published var roomState: MultiplayerRoomShellState
     @Published var liveState: MultiplayerLiveShellState
+    @Published private(set) var authoritativeLiveSnapshot: MultiplayerSnapshot?
+    @Published private(set) var productRenderProbe: MultiplayerProductRenderProbe?
     @Published var reconnectOverlay: MultiplayerReconnectOverlayState?
     @Published var resultState: MultiplayerResultShellState
     @Published private(set) var sourceLabel: String
@@ -1469,6 +1631,11 @@ final class MultiplayerShellStore: ObservableObject {
     private let baseline: MultiplayerShellPreviewShowcaseState
     private let environment: MultiplayerShellEnvironment
     private var source: MultiplayerShellSource
+    private var transportMailboxPollingTask: Task<Void, Never>?
+    private var roomEventSnapshotRefreshTask: Task<Void, Never>?
+    private var liveStateGapRecoveryTask: Task<Void, Never>?
+    private var autoStartTaskRoomId: String?
+    private var simulatorBridge: MultiplayerSimulatorBridge?
 
     init(
         baseline: MultiplayerShellPreviewShowcaseState = .mock,
@@ -1487,6 +1654,8 @@ final class MultiplayerShellStore: ObservableObject {
         )
         self.roomState = baseline.room
         self.liveState = baseline.live
+        self.authoritativeLiveSnapshot = nil
+        self.productRenderProbe = nil
         self.reconnectOverlay = nil
         self.resultState = baseline.result
         self.sourceLabel = resolvedSource.label
@@ -1497,6 +1666,24 @@ final class MultiplayerShellStore: ObservableObject {
         self.source = resolvedSource
         resolvedSource.attach(store: self)
         resolvedSource.reset()
+        MultiplayerShellDebugLog.append(
+            event: "store.init",
+            fields: [
+                "route": route.label,
+                "source": resolvedSource.label,
+                "net": environment.networkingAdapter.label,
+                "persist": environment.sessionPersistence.label,
+                "debugLog": MultiplayerShellDebugLog.displayPath
+            ]
+        )
+#if DEBUG
+        if let portStr = ProcessInfo.processInfo.environment["SIMULATOR_BRIDGE_PORT"], let port = UInt16(portStr) {
+            let bridge = MultiplayerSimulatorBridge(port: port)
+            bridge.store = self
+            bridge.start()
+            self.simulatorBridge = bridge
+        }
+#endif
     }
 
     static func transportBacked(
@@ -1540,6 +1727,58 @@ final class MultiplayerShellStore: ObservableObject {
 
     var isGameplayTransportReady: Bool {
         gameplayNetworkingAdapter != nil && route == .live && reconnectOverlay == nil
+    }
+
+    func handleGameplayActionFromGameView(_ action: MultiplayerAction) {
+        switch action {
+        case .playCard(let cardId):
+            playCardFromLiveUI(cardId)
+        case .respondToCapture(let cardId):
+            guard let pendingChoice = actionablePendingChoice(for: .capture),
+                  let option = uniqueChoiceOption(in: pendingChoice, matchingCardId: cardId) else {
+                presentLiveActionMappingFailure(
+                    title: "Capture Mapping Failed",
+                    detail: "The tapped table card could not be mapped back to a single authoritative capture option."
+                )
+                return
+            }
+            submitChoiceFromLiveUI(pendingChoice.choiceId, optionCode: option.optionCode)
+        case .respondToGoStop(let isGo):
+            guard let pendingChoice = actionablePendingChoice(for: .goStop) else {
+                presentLiveActionMappingFailure(
+                    title: "Go/Stop Mapping Failed",
+                    detail: "The live route does not have an active authoritative Go/Stop choice to answer."
+                )
+                return
+            }
+            submitChoiceFromLiveUI(
+                pendingChoice.choiceId,
+                optionCode: isGo ? "go" : "stop"
+            )
+        case .respondToShake(_, let didShake):
+            guard let pendingChoice = actionablePendingChoice(for: .shake) else {
+                presentLiveActionMappingFailure(
+                    title: "Shake Mapping Failed",
+                    detail: "The live route does not have an active authoritative shake choice to answer."
+                )
+                return
+            }
+            submitChoiceFromLiveUI(
+                pendingChoice.choiceId,
+                optionCode: didShake ? "shake_yes" : "shake_no"
+            )
+        case .respondToChrysanthemumChoice(let role):
+            guard let pendingChoice = actionablePendingChoice(for: .chrysanthemumRole) else {
+                presentLiveActionMappingFailure(
+                    title: "Role Mapping Failed",
+                    detail: "The live route does not have an active authoritative chrysanthemum choice to answer."
+                )
+                return
+            }
+            submitChoiceFromLiveUI(pendingChoice.choiceId, optionCode: role)
+        case .chat:
+            break
+        }
     }
 
     func playCardFromLiveUI(_ cardId: String) {
@@ -1592,11 +1831,15 @@ final class MultiplayerShellStore: ObservableObject {
     }
 
     func reset() {
+        stopTransportMailboxPolling()
+        autoStartTaskRoomId = nil
         source.reset()
         refreshSourceUI()
     }
 
     func replaceSource(_ newSource: MultiplayerShellSource, reset: Bool = true) {
+        stopTransportMailboxPolling()
+        autoStartTaskRoomId = nil
         source.detach()
         source = newSource
         sourceLabel = newSource.label
@@ -1657,8 +1900,23 @@ final class MultiplayerShellStore: ObservableObject {
     fileprivate func showEntry(_ state: MultiplayerEntryShellState) {
         route = .entry
         entryState = state
+        authoritativeLiveSnapshot = nil
+        productRenderProbe = nil
         reconnectOverlay = nil
+        autoStartTaskRoomId = nil
+        liveStateGapRecoveryTask?.cancel()
+        liveStateGapRecoveryTask = nil
+        roomEventSnapshotRefreshTask?.cancel()
+        roomEventSnapshotRefreshTask = nil
+        stopTransportMailboxPolling()
         refreshSourceUI()
+        debugLog(
+            "route.entry",
+            fields: [
+                "banner": state.lastError?.title,
+                "resume": state.persistedResume?.roomId
+            ]
+        )
     }
 
     fileprivate func showRoom(
@@ -1669,7 +1927,11 @@ final class MultiplayerShellStore: ObservableObject {
     ) {
         route = .room
         roomState = state
+        authoritativeLiveSnapshot = nil
+        productRenderProbe = nil
         reconnectOverlay = overlay
+        liveStateGapRecoveryTask?.cancel()
+        liveStateGapRecoveryTask = nil
         if let persistedResume {
             environment.sessionPersistence.savePersistedSession(persistedResume)
             entryState = MultiplayerEntryShellState(
@@ -1679,6 +1941,14 @@ final class MultiplayerShellStore: ObservableObject {
             )
         }
         refreshSourceUI()
+        debugLog(
+            "route.room",
+            fields: [
+                "persistedResume": persistedResume?.roomId,
+                "entryBanner": entryBanner?.title
+            ]
+        )
+        maybeAutoStartGameIfNeeded(for: state)
     }
 
     fileprivate func cacheRoom(
@@ -1696,32 +1966,82 @@ final class MultiplayerShellStore: ObservableObject {
             )
         }
         refreshSourceUI()
+        debugLog(
+            "route.room.cache",
+            fields: [
+                "persistedResume": persistedResume?.roomId,
+                "entryBanner": entryBanner?.title
+            ]
+        )
+        maybeAutoStartGameIfNeeded(for: state)
     }
 
     fileprivate func showLive(
         _ state: MultiplayerLiveShellState,
-        overlay: MultiplayerReconnectOverlayState? = nil
+        overlay: MultiplayerReconnectOverlayState? = nil,
+        authoritativeSnapshot: MultiplayerSnapshot? = nil
     ) {
         route = .live
         liveState = state
+        if let authoritativeSnapshot {
+            authoritativeLiveSnapshot = authoritativeSnapshot
+        }
         reconnectOverlay = overlay
+        autoStartTaskRoomId = nil
+        roomEventSnapshotRefreshTask?.cancel()
+        roomEventSnapshotRefreshTask = nil
         refreshSourceUI()
+        debugLog(
+            "route.live",
+            fields: [
+                "roomId": state.roomId,
+                "gameId": state.gameId,
+                "stateVersion": String(state.stateVersion)
+            ]
+        )
     }
 
     fileprivate func showResult(_ state: MultiplayerResultShellState) {
         route = .result
         resultState = state
+        authoritativeLiveSnapshot = nil
+        productRenderProbe = nil
         reconnectOverlay = nil
+        autoStartTaskRoomId = nil
+        liveStateGapRecoveryTask?.cancel()
+        liveStateGapRecoveryTask = nil
         refreshSourceUI()
+        debugLog(
+            "route.result",
+            fields: [
+                "winner": state.winnerPlayerId,
+                "loser": state.loserPlayerId,
+                "reason": state.endReasonCode
+            ]
+        )
+    }
+
+    func updateProductRenderProbe(_ probe: MultiplayerProductRenderProbe) {
+        guard route == .live else { return }
+        guard productRenderProbe != probe else { return }
+        productRenderProbe = probe
     }
 
     fileprivate func updateOverlay(_ overlay: MultiplayerReconnectOverlayState?) {
         reconnectOverlay = overlay
         refreshSourceUI()
+        debugLog(
+            "overlay.update",
+            fields: [
+                "overlay": debugOverlaySummary(overlay)
+            ]
+        )
     }
 
     fileprivate func restoreBaselineEntry() {
         route = .entry
+        liveStateGapRecoveryTask?.cancel()
+        liveStateGapRecoveryTask = nil
         entryState = MultiplayerEntryShellState(
             pendingAction: baseline.entry.pendingAction,
             persistedResume: environment.sessionPersistence.loadPersistedSession() ?? baseline.entry.persistedResume,
@@ -1729,6 +2049,7 @@ final class MultiplayerShellStore: ObservableObject {
         )
         roomState = baseline.room
         liveState = baseline.live
+        authoritativeLiveSnapshot = nil
         reconnectOverlay = nil
         resultState = baseline.result
         refreshSourceUI()
@@ -1743,8 +2064,49 @@ final class MultiplayerShellStore: ObservableObject {
             MultiplayerShellStatusItem(label: "Persist", value: environment.sessionPersistence.label),
             MultiplayerShellStatusItem(label: "Net", value: environment.networkingAdapter.label),
             MultiplayerShellStatusItem(label: "Resume Req", value: persistedAttachRequestCandidate() == nil ? "Missing" : "Ready"),
-            MultiplayerShellStatusItem(label: "Leave Req", value: leaveRoomRequestCandidate() == nil ? "Missing" : "Ready")
+            MultiplayerShellStatusItem(label: "Leave Req", value: leaveRoomRequestCandidate() == nil ? "Missing" : "Ready"),
+            MultiplayerShellStatusItem(label: "Debug Log", value: MultiplayerShellDebugLog.fileURL.lastPathComponent)
         ]
+    }
+
+    fileprivate func debugLog(_ event: String, fields: [String: String?] = [:]) {
+        var merged: [String: String?] = [
+            "route": route.label,
+            "overlay": debugOverlaySummary(reconnectOverlay),
+            "roomRoute": roomStateDebugSummary(roomState),
+            "liveRoute": liveStateDebugSummary(liveState),
+            "resultLeave": route == .result ? resultState.leavePolicy.title : nil
+        ]
+        for (key, value) in fields {
+            merged[key] = value
+        }
+        MultiplayerShellDebugLog.append(event: event, fields: merged)
+    }
+
+    private func roomStateDebugSummary(_ state: MultiplayerRoomShellState) -> String {
+        let memberSummary = state.members
+            .sorted(by: { $0.seat < $1.seat })
+            .map { member in
+                let localSuffix = member.isLocalPlayer ? ":local" : ""
+                return "s\(member.seat):\(shortDebug(member.playerId)):\(member.ready ? "R" : "NR"):\(String(describing: member.presence))\(localSuffix)"
+            }
+            .joined(separator: ",")
+        return "room=\(state.roomId)|lifecycle=\(state.roomState.rawValue)|seq=\(state.lastRoomSequence)|game=\(state.activeGameId ?? "nil")|invite=\(state.inviteCode ?? "nil")|members=\(memberSummary)"
+    }
+
+    private func liveStateDebugSummary(_ state: MultiplayerLiveShellState) -> String {
+        "room=\(state.roomId)|game=\(state.gameId)|phase=\(String(describing: state.phase))|stateVersion=\(state.stateVersion)|turn=\(shortDebug(state.currentPlayerId))|choice=\(state.pendingChoice?.choiceId ?? "nil")"
+    }
+
+    private func debugOverlaySummary(_ overlay: MultiplayerReconnectOverlayState?) -> String? {
+        guard let overlay else { return nil }
+        return "phase=\(String(describing: overlay.phase))|room=\(overlay.roomId)|roomSeq=\(overlay.lastRoomSequence)|stateVersion=\(overlay.lastAppliedStateVersion.map(String.init) ?? "nil")"
+    }
+
+    private func shortDebug(_ value: String?) -> String {
+        guard let value, !value.isEmpty else { return "nil" }
+        if value.count <= 10 { return value }
+        return String(value.prefix(6)) + "…" + String(value.suffix(4))
     }
 
     fileprivate func persistedResumeCandidate() -> MultiplayerPersistedSessionSummary? {
@@ -1766,6 +2128,10 @@ final class MultiplayerShellStore: ObservableObject {
 
     fileprivate var gameplayNetworkingAdapter: (any MultiplayerShellGameplayNetworkingAdapter)? {
         environment.networkingAdapter as? any MultiplayerShellGameplayNetworkingAdapter
+    }
+
+    fileprivate var gapRecoveryNetworkingAdapter: (any MultiplayerShellGapRecoveryNetworkingAdapter)? {
+        environment.networkingAdapter as? any MultiplayerShellGapRecoveryNetworkingAdapter
     }
 
     fileprivate func resetNetworkingAdapterTransportState() async {
@@ -1871,13 +2237,36 @@ final class MultiplayerShellStore: ObservableObject {
         try await connectUsingNetworkingAdapter(attachRequest)
     }
 
-    fileprivate func setReadyUsingNetworkingAdapter(ready: Bool) async throws {
+    func setReadyUsingNetworkingAdapter(ready: Bool) async throws {
         guard let adapter = roomLifecycleNetworkingAdapter else {
             throw MultiplayerShellRuntimeError.notImplemented("MultiplayerShellRoomLifecycleNetworkingAdapter.setReady")
         }
         guard let localPlayerId = roomState.members.first(where: \.isLocalPlayer)?.playerId else {
             throw MultiplayerShellRuntimeError.invalidBoundaryState("Room ready cannot be sent before the local room member exists.")
         }
+        guard roomState.roomState == .waitingForReady, roomState.members.count == 2 else {
+            debugLog(
+                "room.ready.skip.invalidState",
+                fields: [
+                    "roomId": roomState.roomId,
+                    "playerId": localPlayerId,
+                    "roomState": roomState.roomState.rawValue,
+                    "memberCount": String(roomState.members.count),
+                ]
+            )
+            throw MultiplayerShellRuntimeError.invalidBoundaryState(
+                "Ready can only be sent after both players are present and the room is waiting for ready."
+            )
+        }
+        debugLog(
+            "room.ready.send",
+            fields: [
+                "roomId": roomState.roomId,
+                "playerId": localPlayerId,
+                "ready": ready ? "true" : "false",
+                "roomSequence": String(roomState.lastRoomSequence)
+            ]
+        )
         try await adapter.setReady(
             MultiplayerShellReadyRequest(
                 roomId: roomState.roomId,
@@ -1885,8 +2274,23 @@ final class MultiplayerShellStore: ObservableObject {
                 ready: ready
             )
         )
+        debugLog(
+            "room.ready.sent",
+            fields: [
+                "roomId": roomState.roomId,
+                "playerId": localPlayerId,
+                "ready": ready ? "true" : "false"
+            ]
+        )
         try await adapter.requestRoomSnapshot(roomId: roomState.roomId)
-        try await drainBufferedNetworkingEvents()
+        let drained = try await drainBufferedNetworkingEvents()
+        debugLog(
+            "room.ready.afterDrain",
+            fields: [
+                "roomId": roomState.roomId,
+                "drained": String(drained)
+            ]
+        )
     }
 
     fileprivate func requestRoomSnapshotUsingNetworkingAdapter() async throws {
@@ -1913,8 +2317,22 @@ final class MultiplayerShellStore: ObservableObject {
         guard let adapter = roomLifecycleNetworkingAdapter else {
             throw MultiplayerShellRuntimeError.notImplemented("MultiplayerShellRoomLifecycleNetworkingAdapter.recordGameStarted")
         }
+        debugLog(
+            "room.gameStarted.send",
+            fields: [
+                "roomId": roomState.roomId,
+                "gameId": gameId
+            ]
+        )
         try await adapter.recordGameStarted(roomId: roomState.roomId, gameId: gameId)
-        try await drainBufferedNetworkingEvents()
+        let drained = try await drainBufferedNetworkingEvents()
+        debugLog(
+            "room.gameStarted.afterDrain",
+            fields: [
+                "roomId": roomState.roomId,
+                "drained": String(drained)
+            ]
+        )
     }
 
     fileprivate func recordMatchEndedUsingNetworkingAdapter(
@@ -1981,8 +2399,33 @@ final class MultiplayerShellStore: ObservableObject {
         try await drainBufferedNetworkingEvents()
     }
 
+    fileprivate func triggerGapRecoveryUsingNetworkingAdapter(expectedStateVersion: Int) async throws {
+        guard let adapter = gapRecoveryNetworkingAdapter else {
+            throw MultiplayerShellRuntimeError.notImplemented("MultiplayerShellGapRecoveryNetworkingAdapter.triggerGapRecovery")
+        }
+        try await adapter.triggerGapRecovery(expectedStateVersion: expectedStateVersion)
+        let drained = try await drainBufferedNetworkingEvents()
+        debugLog(
+            "live.gapRecovery.afterDrain",
+            fields: [
+                "expectedStateVersion": String(expectedStateVersion),
+                "drained": String(drained),
+                "liveStateVersion": String(liveState.stateVersion)
+            ]
+        )
+    }
+
     fileprivate func connectUsingNetworkingAdapter(_ request: MultiplayerShellAttachRequest) async throws {
         primePersistedResume(from: request)
+        debugLog(
+            "transport.connect.send",
+            fields: [
+                "roomId": request.roomId,
+                "sessionId": shortDebug(request.sessionId),
+                "playerId": request.playerId,
+                "resumeToken": shortDebug(request.resumeToken)
+            ]
+        )
         try await environment.networkingAdapter.connect(using: request)
         try await drainBufferedNetworkingEvents()
     }
@@ -1994,6 +2437,15 @@ final class MultiplayerShellStore: ObservableObject {
             )
         }
         primePersistedResume(from: resolvedRequest)
+        debugLog(
+            "transport.resume.send",
+            fields: [
+                "roomId": resolvedRequest.roomId,
+                "sessionId": shortDebug(resolvedRequest.sessionId),
+                "playerId": resolvedRequest.playerId,
+                "resumeToken": shortDebug(resolvedRequest.resumeToken)
+            ]
+        )
         try await environment.networkingAdapter.resume(using: resolvedRequest)
         try await drainBufferedNetworkingEvents()
     }
@@ -2011,13 +2463,27 @@ final class MultiplayerShellStore: ObservableObject {
         try await drainBufferedNetworkingEvents()
     }
 
-    fileprivate func drainBufferedNetworkingEvents(maxEvents: Int = 16) async throws {
+    @discardableResult
+    fileprivate func drainBufferedNetworkingEvents(maxEvents: Int = 16) async throws -> Int {
+        var drained = 0
         for _ in 0..<maxEvents {
             guard let nextEvent = try await environment.networkingAdapter.nextBufferedEvent() else {
-                return
+                if drained > 0 {
+                    debugLog("transport.buffer.drain", fields: ["count": String(drained)])
+                }
+                return drained
             }
+            drained += 1
             handleInboundEvent(nextEvent)
         }
+        debugLog(
+            "transport.buffer.maxReached",
+            fields: [
+                "count": String(drained),
+                "maxEvents": String(maxEvents)
+            ]
+        )
+        return drained
     }
 
     fileprivate func updateResultLeavePolicy(_ policy: MultiplayerResultLeavePolicy) {
@@ -2028,6 +2494,14 @@ final class MultiplayerShellStore: ObservableObject {
     fileprivate func handleInboundEvent(_ event: MultiplayerShellInboundEvent) {
         switch event {
         case .helloAck(let payload):
+            debugLog(
+                "inbound.helloAck",
+                fields: [
+                    "roomId": payload.roomId,
+                    "resumeMode": payload.resumeMode.rawValue,
+                    "resumeToken": shortDebug(payload.resumeToken)
+                ]
+            )
             if let persistedResume = persistedResumeCandidate() {
                 savePersistedResumeSummary(
                     MultiplayerPersistedSessionSummary(
@@ -2064,6 +2538,21 @@ final class MultiplayerShellStore: ObservableObject {
                 refreshSourceUI()
             }
         case .roomSnapshot(let payload):
+            debugLog(
+                "inbound.roomSnapshot",
+                fields: [
+                    "roomId": payload.roomId,
+                    "roomState": payload.roomState.rawValue,
+                    "sequence": String(payload.lastRoomSequence),
+                    "activeGameId": payload.activeGameId,
+                    "members": payload.members
+                        .sorted(by: { $0.seat < $1.seat })
+                        .map { member in
+                            "s\(member.seat):\(shortDebug(member.playerId)):\(member.ready ? "R" : "NR"):\(member.presence.rawValue)\(member.isLocalPlayer ? ":local" : "")"
+                        }
+                        .joined(separator: ",")
+                ]
+            )
             let mappedRoom = MultiplayerShellMapper.roomState(from: payload)
             let persistedResume = payload.persistedResume ?? persistedResumeCandidate()
 
@@ -2113,24 +2602,121 @@ final class MultiplayerShellStore: ObservableObject {
             }
 
             showRoom(mappedRoom, persistedResume: persistedResume)
+        case let .roomEventRefresh(reason, roomSequence):
+            debugLog(
+                "inbound.roomEventRefresh",
+                fields: [
+                    "reason": reason,
+                    "roomSequence": roomSequence.map(String.init)
+                ]
+            )
+            scheduleRoomSnapshotRefreshAfterRoomEvent(reason: reason, roomSequence: roomSequence)
         case let .gameSnapshot(snapshot, serverTime):
+            debugLog(
+                "inbound.gameSnapshot",
+                fields: [
+                    "gameId": snapshot.state.gameId,
+                    "stateVersion": String(snapshot.state.stateVersion),
+                    "phase": snapshot.state.phase.rawValue,
+                    "currentPlayerId": snapshot.state.currentPlayerId
+                ]
+            )
             showLive(
                 MultiplayerShellMapper.liveState(from: snapshot, serverTime: serverTime),
-                overlay: nil
+                overlay: nil,
+                authoritativeSnapshot: snapshot
             )
-        case let .turnChanged(turnChanged, serverTime):
+        case let .statePatched(patch, serverTime):
+            debugLog(
+                "inbound.statePatched",
+                fields: [
+                    "patchFormat": patch.patchFormat.rawValue,
+                    "baseStateVersion": String(patch.baseStateVersion),
+                    "targetStateVersion": String(patch.targetStateVersion),
+                    "opCount": String(patch.ops.count),
+                    "serverTime": serverTime
+                ]
+            )
             guard route == .live else { return }
+            if reconnectOverlay == nil,
+               let snapshot = authoritativeLiveSnapshot,
+               snapshot.state.stateVersion == patch.baseStateVersion {
+                do {
+                    let patchedSnapshot = try snapshotApplying(
+                        patch: patch,
+                        serverTime: serverTime,
+                        to: snapshot
+                    )
+                    debugLog(
+                        "live.statePatched.applied",
+                        fields: [
+                            "baseStateVersion": String(patch.baseStateVersion),
+                            "targetStateVersion": String(patch.targetStateVersion),
+                            "liveStateVersion": String(liveState.stateVersion)
+                        ]
+                    )
+                    showLive(
+                        MultiplayerShellMapper.liveState(from: patchedSnapshot, serverTime: serverTime),
+                        overlay: reconnectOverlay,
+                        authoritativeSnapshot: patchedSnapshot
+                    )
+                    return
+                } catch {
+                    debugLog(
+                        "live.statePatched.apply_failed",
+                        fields: [
+                            "baseStateVersion": String(patch.baseStateVersion),
+                            "targetStateVersion": String(patch.targetStateVersion),
+                            "error": error.localizedDescription
+                        ]
+                    )
+                }
+            }
+            scheduleLiveSnapshotRefreshAfterStatePatch(patch, serverTime: serverTime)
+        case let .turnChanged(turnChanged, serverTime):
+            debugLog(
+                "inbound.turnChanged",
+                fields: [
+                    "turnId": turnChanged.turnId,
+                    "currentPlayerId": turnChanged.currentPlayerId,
+                    "serverTime": serverTime
+                ]
+            )
+            guard route == .live else { return }
+            if let snapshot = authoritativeLiveSnapshot {
+                authoritativeLiveSnapshot = snapshotApplying(turnChanged: turnChanged, serverTime: serverTime, to: snapshot)
+            }
             showLive(
                 MultiplayerShellMapper.applying(turnChanged: turnChanged, serverTime: serverTime, to: liveState),
                 overlay: reconnectOverlay
             )
         case .actionRejected(let actionRejected):
+            debugLog(
+                "inbound.actionRejected",
+                fields: [
+                    "code": actionRejected.rejectReason.code.rawValue,
+                    "messageKey": actionRejected.rejectReason.messageKey
+                ]
+            )
+            // Agent 2 - Ensure actionIdConflict rejection codes land here to distinguish from staleStateVersion resyncs.
+            // Duplicate-action exactReplay (exactResend) might result in a re-delivered confirmation or patched effect 
+            // instead of actionIdConflict rejection.
             guard route == .live else { return }
+            scheduleLiveSnapshotRefreshAfterActionRejected(actionRejected.rejectReason)
             showLive(
                 MultiplayerShellMapper.applying(actionRejected: actionRejected, to: liveState),
                 overlay: reconnectOverlay
             )
         case let .matchEnded(roundEnded, matchEnded):
+            debugLog(
+                "inbound.matchEnded",
+                fields: [
+                    "winner": matchEnded.winnerPlayerId,
+                    "loser": matchEnded.loserPlayerId,
+                    "reason": matchEnded.endReason.rawValue,
+                    "roundIndex": roundEnded.map { String($0.roundIndex) }
+                ]
+            )
             let preservedLeavePolicy = route == .result ? resultState.leavePolicy : MultiplayerResultLeavePolicy.leaveAvailable
             showResult(
                 MultiplayerShellMapper.resultState(
@@ -2141,8 +2727,25 @@ final class MultiplayerShellStore: ObservableObject {
                 ).with(leavePolicy: preservedLeavePolicy)
             )
         case .roomClosed(let payload):
+            debugLog(
+                "inbound.roomClosed",
+                fields: [
+                    "roomId": payload.roomId,
+                    "reasonCode": payload.reasonCode,
+                    "messageKey": payload.messageKey
+                ]
+            )
             handleRoomClosed(payload)
         case .leaveAcknowledged(let payload):
+            debugLog(
+                "inbound.leaveAcknowledged",
+                fields: [
+                    "roomId": payload.roomId,
+                    "playerId": payload.playerId,
+                    "roomState": payload.roomState.rawValue,
+                    "messageKey": payload.messageKey
+                ]
+            )
             handleLeaveAcknowledged(payload)
         }
     }
@@ -2190,6 +2793,285 @@ final class MultiplayerShellStore: ObservableObject {
         entryActions = source.visibleEntryActions()
         controls = source.visibleControls()
         statusItems = source.statusItems
+        maintainTransportMailboxPolling()
+    }
+
+    private func maintainTransportMailboxPolling() {
+        guard environment.networkingAdapter is any MultiplayerShellMailboxPollingNetworkingAdapter,
+              route != .entry else {
+            stopTransportMailboxPolling()
+            return
+        }
+        guard transportMailboxPollingTask == nil else { return }
+        debugLog("transport.poll.start")
+        transportMailboxPollingTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(nanoseconds: 600_000_000)
+                } catch {
+                    break
+                }
+                guard !Task.isCancelled else { break }
+                do {
+                    try await self.pollTransportMailboxUsingNetworkingAdapter()
+                } catch {
+                    if Task.isCancelled {
+                        break
+                    }
+                    self.debugLog(
+                        "transport.poll.tick.failed",
+                        fields: ["error": error.localizedDescription]
+                    )
+                }
+            }
+        }
+    }
+
+    private func stopTransportMailboxPolling() {
+        if transportMailboxPollingTask != nil {
+            debugLog("transport.poll.stop")
+        }
+        transportMailboxPollingTask?.cancel()
+        transportMailboxPollingTask = nil
+    }
+
+    private func scheduleRoomSnapshotRefreshAfterRoomEvent(
+        reason: String,
+        roomSequence: Int?
+    ) {
+        guard route != .entry, roomLifecycleNetworkingAdapter != nil else { return }
+        if let roomSequence, roomSequence <= roomState.lastRoomSequence {
+            return
+        }
+        guard roomEventSnapshotRefreshTask == nil else {
+            debugLog(
+                "room.eventRefresh.coalesce",
+                fields: [
+                    "reason": reason,
+                    "roomSequence": roomSequence.map(String.init)
+                ]
+            )
+            return
+        }
+
+        debugLog(
+            "room.eventRefresh.schedule",
+            fields: [
+                "reason": reason,
+                "roomSequence": roomSequence.map(String.init)
+            ]
+        )
+        roomEventSnapshotRefreshTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.roomEventSnapshotRefreshTask = nil }
+            do {
+                try await self.requestRoomSnapshotUsingNetworkingAdapter()
+                self.debugLog(
+                    "room.eventRefresh.success",
+                    fields: [
+                        "reason": reason,
+                        "roomSequence": roomSequence.map(String.init)
+                    ]
+                )
+            } catch {
+                if Task.isCancelled {
+                    return
+                }
+                self.debugLog(
+                    "room.eventRefresh.failed",
+                    fields: [
+                        "reason": reason,
+                        "roomSequence": roomSequence.map(String.init),
+                        "error": error.localizedDescription
+                    ]
+                )
+            }
+        }
+    }
+
+    private func scheduleLiveSnapshotRefreshAfterStatePatch(
+        _ patch: MultiplayerPatch,
+        serverTime: String?
+    ) {
+        guard route == .live,
+              reconnectOverlay == nil,
+              gapRecoveryNetworkingAdapter != nil else { return }
+        guard patch.targetStateVersion > liveState.stateVersion else { return }
+        guard liveStateGapRecoveryTask == nil else {
+            debugLog(
+                "live.statePatchRefresh.coalesce",
+                fields: [
+                    "baseStateVersion": String(patch.baseStateVersion),
+                    "targetStateVersion": String(patch.targetStateVersion),
+                    "serverTime": serverTime
+                ]
+            )
+            return
+        }
+
+        let expectedStateVersion = liveState.stateVersion
+        debugLog(
+            "live.statePatchRefresh.schedule",
+            fields: [
+                "currentStateVersion": String(expectedStateVersion),
+                "baseStateVersion": String(patch.baseStateVersion),
+                "targetStateVersion": String(patch.targetStateVersion),
+                "serverTime": serverTime
+            ]
+        )
+        liveStateGapRecoveryTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.liveStateGapRecoveryTask = nil }
+            do {
+                try await self.triggerGapRecoveryUsingNetworkingAdapter(
+                    expectedStateVersion: expectedStateVersion
+                )
+                self.debugLog(
+                    "live.statePatchRefresh.success",
+                    fields: [
+                        "requestedStateVersion": String(expectedStateVersion),
+                        "targetStateVersion": String(patch.targetStateVersion),
+                        "liveStateVersion": String(self.liveState.stateVersion)
+                    ]
+                )
+            } catch {
+                if Task.isCancelled {
+                    return
+                }
+                self.debugLog(
+                    "live.statePatchRefresh.failed",
+                    fields: [
+                        "requestedStateVersion": String(expectedStateVersion),
+                        "targetStateVersion": String(patch.targetStateVersion),
+                        "error": error.localizedDescription
+                    ]
+                )
+            }
+        }
+    }
+
+    private func scheduleLiveSnapshotRefreshAfterActionRejected(
+        _ reason: MultiplayerRejectReason
+    ) {
+        guard route == .live,
+              reconnectOverlay == nil,
+              gapRecoveryNetworkingAdapter != nil else { return }
+        
+        guard reason.code == .staleStateVersion else {
+            return
+        }
+
+        guard liveStateGapRecoveryTask == nil else {
+            debugLog("live.rejectRefresh.coalesce", fields: ["code": reason.code.rawValue])
+            return
+        }
+
+        let expectedStateVersion = liveState.stateVersion
+        debugLog(
+            "live.rejectRefresh.schedule",
+            fields: [
+                "currentStateVersion": String(expectedStateVersion),
+                "code": reason.code.rawValue
+            ]
+        )
+        liveStateGapRecoveryTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.liveStateGapRecoveryTask = nil }
+            do {
+                try await self.triggerGapRecoveryUsingNetworkingAdapter(
+                    expectedStateVersion: expectedStateVersion
+                )
+                self.debugLog(
+                    "live.rejectRefresh.success",
+                    fields: [
+                        "requestedStateVersion": String(expectedStateVersion),
+                        "liveStateVersion": String(self.liveState.stateVersion)
+                    ]
+                )
+            } catch {
+                if Task.isCancelled {
+                    return
+                }
+                self.debugLog(
+                    "live.rejectRefresh.failed",
+                    fields: [
+                        "requestedStateVersion": String(expectedStateVersion),
+                        "error": error.localizedDescription
+                    ]
+                )
+            }
+        }
+    }
+
+    fileprivate func pollTransportMailboxUsingNetworkingAdapter() async throws {
+        guard let pollingAdapter = environment.networkingAdapter as? any MultiplayerShellMailboxPollingNetworkingAdapter else {
+            return
+        }
+        debugLog("transport.poll.tick.begin")
+        try await pollingAdapter.pollMailbox()
+        let drained = try await drainBufferedNetworkingEvents()
+        debugLog("transport.poll.tick.end", fields: ["drained": String(drained)])
+    }
+
+    private func maybeAutoStartGameIfNeeded(for state: MultiplayerRoomShellState) {
+        guard state.roomState == .starting,
+              state.activeGameId == nil,
+              reconnectOverlay == nil,
+              state.members.first(where: \.isLocalPlayer)?.playerId == state.hostPlayerId else {
+            if autoStartTaskRoomId == state.roomId {
+                autoStartTaskRoomId = nil
+            }
+            if state.roomState == .starting {
+                debugLog(
+                    "room.autoStart.skip",
+                    fields: [
+                        "roomId": state.roomId,
+                        "activeGameId": state.activeGameId,
+                        "isHostLocal": state.members.first(where: \.isLocalPlayer)?.playerId == state.hostPlayerId ? "true" : "false",
+                        "hasOverlay": reconnectOverlay == nil ? "false" : "true"
+                    ]
+                )
+            }
+            return
+        }
+        guard autoStartTaskRoomId != state.roomId else { return }
+
+        autoStartTaskRoomId = state.roomId
+        let roomId = state.roomId
+        debugLog("room.autoStart.trigger", fields: ["roomId": roomId])
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer {
+                if self.autoStartTaskRoomId == roomId {
+                    self.autoStartTaskRoomId = nil
+                }
+            }
+            do {
+                try await self.recordGameStartedUsingNetworkingAdapter(
+                    gameId: "transport_game_\(roomId)"
+                )
+                self.debugLog("room.autoStart.success", fields: ["roomId": roomId])
+            } catch {
+                self.debugLog(
+                    "room.autoStart.failed",
+                    fields: [
+                        "roomId": roomId,
+                        "error": error.localizedDescription
+                    ]
+                )
+                self.entryState = MultiplayerEntryShellState(
+                    pendingAction: nil,
+                    persistedResume: self.persistedResumeCandidate(),
+                    lastError: MultiplayerBannerState(
+                        style: .warning,
+                        title: "gameStarted Failed",
+                        detail: error.localizedDescription
+                    )
+                )
+                self.refreshSourceUI()
+            }
+        }
     }
 
     private func roomClosedDetail(for payload: MultiplayerRoomClosedPayload) -> String {
@@ -2261,6 +3143,158 @@ final class MultiplayerShellStore: ObservableObject {
                 )
             ),
             overlay: reconnectOverlay
+        )
+    }
+
+    private func presentLiveActionMappingFailure(title: String, detail: String) {
+        showLive(
+            liveState.with(
+                connectionBanner: MultiplayerBannerState(
+                    style: .error,
+                    title: title,
+                    detail: detail
+                )
+            ),
+            overlay: reconnectOverlay
+        )
+    }
+
+    private func actionablePendingChoice(for kind: MultiplayerChoiceKind) -> MultiplayerChoiceShellState? {
+        guard let pendingChoice = liveState.pendingChoice,
+              pendingChoice.choiceKind == kind,
+              pendingChoice.actorPlayerId == liveState.localPlayerId else {
+            return nil
+        }
+        return pendingChoice
+    }
+
+    private func uniqueChoiceOption(
+        in pendingChoice: MultiplayerChoiceShellState,
+        matchingCardId cardId: String
+    ) -> MultiplayerChoiceOptionShellState? {
+        let matches = pendingChoice.options.filter { option in
+            option.cardIds.contains(cardId)
+        }
+        guard matches.count == 1 else { return nil }
+        return matches.first
+    }
+
+    private func snapshotApplying(
+        patch: MultiplayerPatch,
+        serverTime _: String?,
+        to snapshot: MultiplayerSnapshot
+    ) throws -> MultiplayerSnapshot {
+        guard patch.patchFormat == .jsonPatch else {
+            throw MultiplayerShellRuntimeError.invalidBoundaryState(
+                "Unsupported patch format for local live application: \(patch.patchFormat.rawValue)"
+            )
+        }
+
+        let encoder = JSONEncoder()
+        guard var stateObject = try JSONSerialization.jsonObject(
+            with: encoder.encode(snapshot.state)
+        ) as? [String: Any] else {
+            throw MultiplayerShellRuntimeError.invalidBoundaryState(
+                "Failed to encode authoritative live snapshot for local patch application."
+            )
+        }
+
+        for operation in patch.ops {
+            let key = try patchTopLevelKey(from: operation.path)
+            switch operation.op {
+            case "add", "replace":
+                guard let value = operation.value?.value else {
+                    throw MultiplayerShellRuntimeError.invalidBoundaryState(
+                        "Patch op \(operation.op) at \(operation.path) is missing a value."
+                    )
+                }
+                stateObject[key] = sanitizedPatchJSONObjectValue(value)
+            case "remove":
+                stateObject.removeValue(forKey: key)
+            default:
+                throw MultiplayerShellRuntimeError.invalidBoundaryState(
+                    "Unsupported json-patch op for local live application: \(operation.op)"
+                )
+            }
+        }
+
+        stateObject["stateVersion"] = patch.targetStateVersion
+        let patchedStateData = try JSONSerialization.data(withJSONObject: stateObject, options: [.sortedKeys])
+        let decoder = JSONDecoder()
+        let patchedState = try decoder.decode(MultiplayerMatchSnapshot.self, from: patchedStateData)
+        return MultiplayerSnapshot(
+            snapshotId: snapshot.snapshotId,
+            reason: snapshot.reason,
+            scope: snapshot.scope,
+            snapshotStateVersion: max(snapshot.snapshotStateVersion, patch.targetStateVersion),
+            lastIncludedEventId: snapshot.lastIncludedEventId,
+            state: patchedState
+        )
+    }
+
+    private func patchTopLevelKey(from path: String) throws -> String {
+        guard path.hasPrefix("/") else {
+            throw MultiplayerShellRuntimeError.invalidBoundaryState("Patch path must start with '/': \(path)")
+        }
+        let trimmed = String(path.dropFirst())
+        guard !trimmed.isEmpty, !trimmed.contains("/") else {
+            throw MultiplayerShellRuntimeError.invalidBoundaryState(
+                "Only top-level json-patch paths are supported for local live application: \(path)"
+            )
+        }
+        return trimmed
+    }
+
+    private func sanitizedPatchJSONObjectValue(_ value: Any) -> Any {
+        if let dictionary = value as? [String: Any] {
+            return dictionary.mapValues(sanitizedPatchJSONObjectValue)
+        }
+        if let array = value as? [Any] {
+            return array.map(sanitizedPatchJSONObjectValue)
+        }
+        return value
+    }
+
+    private func snapshotApplying(
+        turnChanged: MultiplayerTurnChangedPayload,
+        serverTime: String?,
+        to snapshot: MultiplayerSnapshot
+    ) -> MultiplayerSnapshot {
+        let updatedTimers = MultiplayerTimers(
+            turnDeadlineAt: turnChanged.turnDeadlineAt,
+            choiceDeadlineAt: snapshot.state.timers.choiceDeadlineAt
+        )
+        let updatedState = MultiplayerMatchSnapshot(
+            traceId: snapshot.state.traceId,
+            roomId: snapshot.state.roomId,
+            gameId: snapshot.state.gameId,
+            viewerPlayerId: snapshot.state.viewerPlayerId,
+            engineVersion: snapshot.state.engineVersion,
+            ruleConfigVersion: snapshot.state.ruleConfigVersion,
+            stateVersion: max(snapshot.state.stateVersion, liveState.stateVersion),
+            lastEventId: snapshot.state.lastEventId,
+            phase: snapshot.state.phase,
+            turnId: turnChanged.turnId,
+            currentPlayerId: turnChanged.currentPlayerId,
+            dealerPlayerId: snapshot.state.dealerPlayerId,
+            starterPlayerId: snapshot.state.starterPlayerId,
+            players: snapshot.state.players,
+            table: snapshot.state.table,
+            deck: snapshot.state.deck,
+            pendingChoice: snapshot.state.pendingChoice,
+            scoreboard: snapshot.state.scoreboard,
+            timers: updatedTimers,
+            resume: snapshot.state.resume,
+            lastActionEffect: snapshot.state.lastActionEffect,
+            lastChat: snapshot.state.lastChat
+        )
+        return MultiplayerSnapshot(
+            snapshotId: snapshot.snapshotId,
+            reason: snapshot.reason,
+            scope: snapshot.scope,
+            snapshotStateVersion: max(snapshot.snapshotStateVersion, liveState.stateVersion),
+            lastIncludedEventId: snapshot.lastIncludedEventId,
+            state: updatedState
         )
     }
 
@@ -3303,9 +4337,7 @@ final class MultiplayerTransportShellSource: MultiplayerShellSource {
     }
 
     private func normalizedInviteCode(_ rawValue: String?) -> String? {
-        guard let rawValue else { return nil }
-        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
+        multiplayerNormalizedInviteCodeValue(rawValue)
     }
 }
 
@@ -4091,7 +5123,16 @@ final class MultiplayerLocalDebugShellSource: MultiplayerShellSource {
                 return .replaced
             }
         }
-        return member.presence == .left ? .expired : .connected
+        switch member.presence {
+        case .connected:
+            return .connected
+        case .disconnected:
+            return .disconnected
+        case .forfeitPending:
+            return .disconnected
+        case .left:
+            return .expired
+        }
     }
 
     private func roomType(from type: RoomType) -> MultiplayerRoomType {
@@ -4243,9 +5284,9 @@ private struct MultiplayerLocalDebugContext {
 #endif
 
 enum MultiplayerHelloResumeMode: String {
-    case freshAttach
-    case resumed
-    case resumeRejected
+    case freshAttach = "fresh"
+    case resumed = "resume"
+    case resumeRejected = "resumeRejected"
 }
 
 struct MultiplayerEntryErrorPayload {
@@ -4266,6 +5307,8 @@ struct MultiplayerHelloAckShellPayload {
 
 enum MultiplayerRoomMemberPresencePayload: String {
     case connected
+    case disconnected
+    case forfeitPending
     case disconnectedGrace
     case resuming
     case expired
@@ -4624,7 +5667,11 @@ enum MultiplayerShellMapper {
         members: [MultiplayerRoomMemberShellState],
         inviteCode: String?
     ) -> MultiplayerBannerState? {
-        if members.contains(where: { $0.presence == .disconnectedGrace || $0.presence == .resuming }) {
+        if members.contains(where: {
+            $0.presence == .disconnected ||
+            $0.presence == .disconnectedGrace ||
+            $0.presence == .resuming
+        }) {
             return MultiplayerBannerState(
                 style: .warning,
                 title: "Member Reconnecting",
@@ -4925,6 +5972,10 @@ enum MultiplayerShellMapper {
         switch presence {
         case .connected:
             return .connected
+        case .disconnected:
+            return .disconnected
+        case .forfeitPending:
+            return .disconnected
         case .disconnectedGrace:
             return .disconnectedGrace
         case .resuming:

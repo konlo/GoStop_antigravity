@@ -6,7 +6,7 @@ class TableSlotManager: ObservableObject {
     private let config: LayoutConfigV2
     private let emptySlotPreferenceOrder: [Int]
     
-    struct TableSlotState {
+    struct TableSlotState: Equatable {
         var card: Card? // Table slots hold a stack of cards in GoStop, but for fixed layout usually the *base* card determines position? 
         // Wait, GoStop table cards stack. If I have a stack of 3 cards, do they take 1 slot? YES.
         // So `card` here should probably be a list of cards, or verify if we are slotting *stacks*.
@@ -53,49 +53,37 @@ class TableSlotManager: ObservableObject {
     }
     
     func sync(with tableCards: [Card]) {
-        // Group input cards by Month
-        // In GoStop, cards on table are conceptually piles.
-        // We need to map [Card] -> [Month: [Card]]
-        
-        let groups = Dictionary(grouping: tableCards, by: { $0.month })
-        
-        // Snapshot current slot state
-        // Map: Month -> SlotIndex
+        let groups = Dictionary(grouping: tableCards, by: { $0.month }).mapValues { cards in
+            cards.sorted(by: sortComparator)
+        }
+        var nextSlots = slots
         var existingMonths: [Month: Int] = [:]
         
-        for (idx, state) in slots {
+        for (idx, state) in nextSlots {
             if let first = state.cards.first {
                 existingMonths[first.month] = idx
             }
         }
         
-        // 1. Update existing slots / Remove cleared
         for (month, idx) in existingMonths {
             if let newCards = groups[month] {
-                // Update cards in this slot
-                var state = slots[idx]!
+                var state = nextSlots[idx]!
                 state.cards = newCards
-                slots[idx] = state
+                nextSlots[idx] = state
             } else {
-                // Month gone (captured) -> Clear slot
-                if var state = slots[idx] {
-                    state.cards = [] // Empty
-                    // User said "그 위치는 빈 slot으로 유지해줘야 해" -> implies we just clear it, we don't shift others.
-                    slots[idx] = state
+                if var state = nextSlots[idx] {
+                    state.cards = []
+                    nextSlots[idx] = state
                 }
             }
         }
         
-        // 2. Assign new months to empty slots
-        // Sort new months to be deterministic?
         let presentMonths = Set(existingMonths.keys)
         let incomingMonths = Set(groups.keys)
         let newMonths = incomingMonths.subtracting(presentMonths).sorted()
         
         if !newMonths.isEmpty {
-            // Find empty slots
-            // Sort empty slots by "centerOutwards" preference
-            let emptySlots = getEmptySlotsSortedByPreference()
+            let emptySlots = getEmptySlotsSortedByPreference(in: nextSlots)
             
             var slotCursor = 0
             for month in newMonths {
@@ -103,26 +91,50 @@ class TableSlotManager: ObservableObject {
                 
                 if slotCursor < emptySlots.count {
                     let slotIdx = emptySlots[slotCursor]
-                    var state = slots[slotIdx]!
+                    var state = nextSlots[slotIdx]!
                     state.cards = cards
-                    slots[slotIdx] = state
+                    nextSlots[slotIdx] = state
                     slotCursor += 1
                 } else {
                     print("Warning: Table full (12 slots), cannot place month \(month)")
                 }
             }
         }
+
+        assignSlotsIfNeeded(nextSlots)
     }
     
-    private func getEmptySlotsSortedByPreference() -> [Int] {
+    private func getEmptySlotsSortedByPreference(in slotMap: [Int: TableSlotState]) -> [Int] {
         if !emptySlotPreferenceOrder.isEmpty {
-            return emptySlotPreferenceOrder.filter { slots[$0]?.isOccupied == false }
+            return emptySlotPreferenceOrder.filter { slotMap[$0]?.isOccupied == false }
         }
-        return slots.compactMap { !$0.value.isOccupied ? $0.key : nil }.sorted()
+        return slotMap.compactMap { !$0.value.isOccupied ? $0.key : nil }.sorted()
     }
     
     func cards(at index: Int) -> [Card] {
         return slots[index]?.cards ?? []
+    }
+
+    private func assignSlotsIfNeeded(_ nextSlots: [Int: TableSlotState]) {
+        guard nextSlots != slots else { return }
+        slots = nextSlots
+    }
+
+    private func sortComparator(_ lhs: Card, _ rhs: Card) -> Bool {
+        if lhs.month != rhs.month { return lhs.month < rhs.month }
+        if lhs.imageIndex != rhs.imageIndex { return lhs.imageIndex < rhs.imageIndex }
+        if lhs.type != rhs.type { return typePriority(lhs.type) < typePriority(rhs.type) }
+        return lhs.id < rhs.id
+    }
+
+    private func typePriority(_ type: CardType) -> Int {
+        switch type {
+        case .bright: return 0
+        case .animal: return 1
+        case .ribbon: return 2
+        case .junk, .doubleJunk: return 3
+        case .dummy: return 4
+        }
     }
 
     private static func makeEmptySlotPreferenceOrder(config: LayoutConfigV2) -> [Int] {

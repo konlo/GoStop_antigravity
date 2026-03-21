@@ -1363,6 +1363,197 @@ def _collect_projection_players(snapshot: dict[str, Any]) -> list[dict[str, Any]
     return players
 
 
+def _fetch_room_projection(
+    harness: SocketTransportHarness,
+    room_id: str,
+    viewer_player_id: str,
+    *,
+    snapshot_reason: str = "localPreview",
+    state_version: int | None = None,
+    last_event_id: str | None = None,
+) -> dict[str, Any]:
+    request: dict[str, Any] = {
+        "roomId": room_id,
+        "viewerPlayerId": viewer_player_id,
+        "snapshotReason": snapshot_reason,
+    }
+    if state_version is not None:
+        request["stateVersion"] = state_version
+    if last_event_id is not None:
+        request["lastEventId"] = last_event_id
+
+    data = harness.require_ok(
+        "room_projection_preview",
+        request,
+    )
+    projection = data.get("projection")
+    if not isinstance(projection, dict):
+        raise RuntimeError(f"room_projection_preview is missing projection for viewer={viewer_player_id!r}.")
+    snapshot = projection.get("snapshot")
+    if isinstance(snapshot, dict):
+        return snapshot
+    return projection
+
+
+def _viewer_projection_player(snapshot: dict[str, Any]) -> dict[str, Any]:
+    for player in _projection_state(snapshot).get("players", []):
+        if isinstance(player, dict) and player.get("isViewer") is True:
+            return player
+    raise RuntimeError("Projection is missing the viewer player payload.")
+
+
+def _viewer_projection_authority_player_id(snapshot: dict[str, Any]) -> str:
+    viewer_player_id = _projection_state(snapshot).get("viewerPlayerId")
+    if not isinstance(viewer_player_id, str):
+        raise RuntimeError("Projection viewerPlayerId is missing.")
+    return viewer_player_id
+
+
+def _projection_captured_totals(snapshot: dict[str, Any]) -> dict[str, int]:
+    totals: dict[str, int] = {}
+    for player in _projection_state(snapshot).get("players", []):
+        if not isinstance(player, dict):
+            continue
+        player_id = player.get("playerId")
+        captured = player.get("captured")
+        if not isinstance(player_id, str) or not isinstance(captured, dict):
+            continue
+        totals[player_id] = sum(
+            len(captured.get(kind) or [])
+            for kind in ("bright", "animal", "ribbon", "junk")
+        )
+    return totals
+
+
+def _select_deterministic_hand_card(snapshot: dict[str, Any]) -> dict[str, Any]:
+    viewer_player = _viewer_projection_player(snapshot)
+    hand = viewer_player.get("hand")
+    if not isinstance(hand, list):
+        raise RuntimeError("Viewer hand is missing from the projection.")
+
+    candidates = [card for card in hand if isinstance(card, dict) and isinstance(card.get("cardId"), str)]
+    if not candidates:
+        raise RuntimeError("Viewer hand does not contain a playable card.")
+
+    candidates.sort(
+        key=lambda card: (
+            card.get("month", 99),
+            str(card.get("kind", "")),
+            card.get("imageIndex", 99),
+            str(card.get("cardId")),
+        )
+    )
+    return candidates[0]
+
+
+def _resolve_transport_actor(
+    host_projection: dict[str, Any],
+    guest_projection: dict[str, Any],
+    authority_player_id: str,
+) -> tuple[str, str, dict[str, Any]]:
+    host_viewer_id = _viewer_projection_authority_player_id(host_projection)
+    guest_viewer_id = _viewer_projection_authority_player_id(guest_projection)
+    if authority_player_id == host_viewer_id:
+        return "host_client", "p1", host_projection
+    if authority_player_id == guest_viewer_id:
+        return "guest_client", "p2", guest_projection
+    raise RuntimeError(
+        "Could not resolve the acting client from the current projections.\n"
+        f"authority_player_id={authority_player_id!r} host_viewer_id={host_viewer_id!r} guest_viewer_id={guest_viewer_id!r}"
+    )
+
+
+def _resolve_pending_choice(
+    host_projection: dict[str, Any],
+    guest_projection: dict[str, Any],
+) -> tuple[dict[str, Any], str, str, dict[str, Any]] | None:
+    host_pending = _projection_state(host_projection).get("pendingChoice")
+    guest_pending = _projection_state(guest_projection).get("pendingChoice")
+    for pending_choice in (host_pending, guest_pending):
+        if not isinstance(pending_choice, dict):
+            continue
+        actor_player_id = pending_choice.get("actorPlayerId")
+        if not isinstance(actor_player_id, str):
+            continue
+        actor_client_id, actor_room_player_id, actor_projection = _resolve_transport_actor(
+            host_projection,
+            guest_projection,
+            actor_player_id,
+        )
+        actor_pending_choice = _projection_state(actor_projection).get("pendingChoice")
+        if isinstance(actor_pending_choice, dict):
+            return actor_pending_choice, actor_client_id, actor_room_player_id, actor_projection
+        return pending_choice, actor_client_id, actor_room_player_id, actor_projection
+    return None
+
+
+def _choose_pending_choice_option_code(pending_choice: dict[str, Any]) -> str:
+    options = [
+        option
+        for option in pending_choice.get("options", [])
+        if isinstance(option, dict) and isinstance(option.get("optionCode"), str)
+    ]
+    if not options:
+        raise RuntimeError(f"Pending choice {pending_choice.get('choiceId')!r} does not expose any options.")
+
+    choice_kind = pending_choice.get("choiceKind")
+    if choice_kind == "goStop":
+        preferred_code = "go"
+    elif choice_kind == "shake":
+        preferred_code = "shake_no"
+    else:
+        preferred_code = None
+
+    if preferred_code is not None:
+        for option in options:
+            if option["optionCode"] == preferred_code:
+                return preferred_code
+        raise RuntimeError(
+            f"Pending choice {pending_choice.get('choiceId')!r} is missing the preferred optionCode={preferred_code!r}."
+        )
+
+    return options[0]["optionCode"]
+
+
+def _drain_live_mailboxes(harness: SocketTransportHarness) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    return (
+        harness.transport_receive("host_client"),
+        harness.transport_receive("guest_client"),
+    )
+
+
+def _close_room_after_terminal(
+    harness: SocketTransportHarness,
+    room_id: str,
+) -> dict[str, Any]:
+    host_leave = harness.transport_send_ok("host_client", "leaveRoom")
+    host_after_host_leave, guest_after_host_leave = _drain_live_mailboxes(harness)
+
+    guest_leave = harness.transport_send_ok("guest_client", "leaveRoom")
+    host_after_guest_leave, guest_after_guest_leave = _drain_live_mailboxes(harness)
+    closed_snapshot = harness.snapshot_room(room_id)
+
+    close_labels = [_frame_label(frame) for frame in host_after_guest_leave + guest_after_guest_leave]
+    room_closed_seen = "roomClosed" in close_labels
+    if not room_closed_seen:
+        raise RuntimeError("The final leaveRoom did not emit roomClosed.")
+    if closed_snapshot["room"]["roomState"] != "closed":
+        raise RuntimeError(
+            f"Closed room snapshot diverged: expected roomState='closed', got {closed_snapshot['room']['roomState']!r}."
+        )
+
+    return {
+        "hostLeaveResponse": host_leave,
+        "guestLeaveResponse": guest_leave,
+        "hostAfterHostLeaveLabels": [_frame_label(frame) for frame in host_after_host_leave],
+        "guestAfterHostLeaveLabels": [_frame_label(frame) for frame in guest_after_host_leave],
+        "hostAfterGuestLeaveLabels": [_frame_label(frame) for frame in host_after_guest_leave],
+        "guestAfterGuestLeaveLabels": [_frame_label(frame) for frame in guest_after_guest_leave],
+        "roomClosedSeen": room_closed_seen,
+        "closedSnapshot": closed_snapshot,
+    }
+
+
 def _probe_bootstrap_facade(harness: SocketTransportHarness) -> dict[str, Any]:
     create = harness.require_ok(
         "room_bootstrap_create",
@@ -1492,9 +1683,14 @@ def _bootstrap_transport_room(
     harness: SocketTransportHarness,
     *,
     warm_engine: bool = False,
+    rng_seed: int | None = None,
     hello_connection_aliases: dict[str, str] | None = None,
     probe_bootstrap_facade: bool = False,
 ) -> dict[str, Any]:
+    if rng_seed is not None:
+        harness.require_status("set_condition", "ok", {"rng_seed": rng_seed})
+        harness.agent_log_lines.append(f"rngSeed={rng_seed}")
+
     if warm_engine:
         harness.ensure_engine_started()
 
@@ -2976,6 +3172,737 @@ def _run_mp008_socket(harness: SocketTransportHarness) -> dict[str, Any]:
     }
 
 
+def _run_mp016_socket_attempt(
+    harness: SocketTransportHarness,
+    *,
+    seed: int,
+    max_steps: int = 160,
+) -> dict[str, Any]:
+    boot = _bootstrap_transport_room(harness, warm_engine=True, rng_seed=seed)
+    room_id = boot["room_id"]
+    game_id = boot["game_id"]
+    transport_label = _transport_summary_label(harness.transport)
+    authoritative_state_version = boot["authoritative_state_version"]
+    authoritative_event_id = boot["authoritative_event_id"]
+    host_projection = _fetch_room_projection(
+        harness,
+        room_id,
+        "p1",
+        state_version=authoritative_state_version,
+        last_event_id=authoritative_event_id,
+    )
+    guest_projection = _fetch_room_projection(
+        harness,
+        room_id,
+        "p2",
+        state_version=authoritative_state_version,
+        last_event_id=authoritative_event_id,
+    )
+
+    play_card_count = 0
+    capture_choice_count = 0
+    shake_choice_count = 0
+    chrysanthemum_choice_count = 0
+    go_stop_choice_count = 0
+    go_stop_option_codes: list[str] = []
+    step_summaries: list[dict[str, Any]] = []
+    host_terminal_labels: list[str] = []
+    guest_terminal_labels: list[str] = []
+    terminal_summary_frame: dict[str, Any] | None = None
+    terminal_summary_payload: dict[str, Any] | None = None
+    final_state_version: int | None = None
+
+    for step_index in range(1, max_steps + 1):
+        choice_resolution = _resolve_pending_choice(host_projection, guest_projection)
+        if choice_resolution is not None:
+            pending_choice, actor_client_id, actor_room_player_id, actor_projection = choice_resolution
+            choice_kind = pending_choice.get("choiceKind")
+            if not isinstance(choice_kind, str):
+                raise RuntimeError("Pending choiceKind is missing.")
+            option_code = _choose_pending_choice_option_code(pending_choice)
+            actor_state = _projection_state(actor_projection)
+            expected_state_version = actor_state.get("stateVersion")
+            if not isinstance(expected_state_version, int):
+                expected_state_version = authoritative_state_version
+            send_result = harness.transport_send_ok(
+                actor_client_id,
+                "submitChoice",
+                requestId=f"req_mp016_seed{seed}_choice_{step_index}",
+                actionId=f"act_mp016_seed{seed}_choice_{step_index}",
+                expectedStateVersion=expected_state_version,
+                commandPayload={
+                    "choiceId": pending_choice.get("choiceId"),
+                    "optionCode": option_code,
+                },
+            )
+            next_state_version = send_result.get("authoritativeStateVersion")
+            if isinstance(next_state_version, int):
+                authoritative_state_version = next_state_version
+            next_event_id = send_result.get("authoritativeEventId")
+            if isinstance(next_event_id, str):
+                authoritative_event_id = next_event_id
+            if choice_kind == "capture":
+                capture_choice_count += 1
+            elif choice_kind == "shake":
+                shake_choice_count += 1
+            elif choice_kind == "chrysanthemumRole":
+                chrysanthemum_choice_count += 1
+            elif choice_kind == "goStop":
+                go_stop_choice_count += 1
+                go_stop_option_codes.append(option_code)
+
+            step_summaries.append(
+                {
+                    "stepIndex": step_index,
+                    "kind": "choice",
+                    "choiceKind": choice_kind,
+                    "choiceId": pending_choice.get("choiceId"),
+                    "actorRoomPlayerId": actor_room_player_id,
+                    "actorAuthorityPlayerId": pending_choice.get("actorPlayerId"),
+                    "expectedStateVersion": expected_state_version,
+                    "optionCode": option_code,
+                }
+            )
+        else:
+            host_state = _projection_state(host_projection)
+            guest_state = _projection_state(guest_projection)
+            phase = host_state.get("phase")
+            if phase == "matchEnded":
+                raise RuntimeError(
+                    "Projection reached phase=matchEnded before terminalSummary was delivered on the transport mailbox."
+                )
+            current_player_id = host_state.get("currentPlayerId")
+            if not isinstance(current_player_id, str):
+                raise RuntimeError("Current playerId is missing from the host projection.")
+
+            actor_client_id, actor_room_player_id, actor_projection = _resolve_transport_actor(
+                host_projection,
+                guest_projection,
+                current_player_id,
+            )
+            actor_state = _projection_state(actor_projection)
+            expected_state_version = actor_state.get("stateVersion")
+            if not isinstance(expected_state_version, int):
+                expected_state_version = authoritative_state_version
+            card = _select_deterministic_hand_card(actor_projection)
+            send_result = harness.transport_send_ok(
+                actor_client_id,
+                "playCard",
+                requestId=f"req_mp016_seed{seed}_play_{step_index}",
+                actionId=f"act_mp016_seed{seed}_play_{step_index}",
+                expectedStateVersion=expected_state_version,
+                commandPayload={
+                    "cardId": card["cardId"],
+                    "source": "hand",
+                },
+            )
+            next_state_version = send_result.get("authoritativeStateVersion")
+            if isinstance(next_state_version, int):
+                authoritative_state_version = next_state_version
+            next_event_id = send_result.get("authoritativeEventId")
+            if isinstance(next_event_id, str):
+                authoritative_event_id = next_event_id
+            play_card_count += 1
+            step_summaries.append(
+                {
+                    "stepIndex": step_index,
+                    "kind": "playCard",
+                    "actorRoomPlayerId": actor_room_player_id,
+                    "actorAuthorityPlayerId": current_player_id,
+                    "expectedStateVersion": expected_state_version,
+                    "cardId": card["cardId"],
+                    "cardMonth": card.get("month"),
+                    "cardKind": card.get("kind"),
+                }
+            )
+
+        host_frames, guest_frames = _drain_live_mailboxes(harness)
+        host_terminal_labels.extend(_frame_label(frame) for frame in host_frames)
+        guest_terminal_labels.extend(_frame_label(frame) for frame in guest_frames)
+        final_state_version = max(
+            [
+                value
+                for value in (
+                    final_state_version,
+                    _projection_state(host_projection).get("stateVersion"),
+                    _projection_state(guest_projection).get("stateVersion"),
+                )
+                if isinstance(value, int)
+            ],
+            default=final_state_version,
+        )
+
+        terminal_summary_frame = next(
+            (frame for frame in host_frames + guest_frames if frame.get("type") == "terminalSummary"),
+            None,
+        )
+        if terminal_summary_frame is not None:
+            terminal_summary_payload = _terminal_summary_payload(terminal_summary_frame)
+            break
+
+        host_projection = _fetch_room_projection(
+            harness,
+            room_id,
+            "p1",
+            state_version=authoritative_state_version,
+            last_event_id=authoritative_event_id,
+        )
+        guest_projection = _fetch_room_projection(
+            harness,
+            room_id,
+            "p2",
+            state_version=authoritative_state_version,
+            last_event_id=authoritative_event_id,
+        )
+        final_state_version = authoritative_state_version
+    else:
+        raise RuntimeError(
+            f"MP-016 exceeded the gameplay loop limit without reaching terminalSummary (seed={seed}, transport={transport_label})."
+        )
+
+    if terminal_summary_payload is None:
+        raise RuntimeError("MP-016 did not capture a terminalSummary payload.")
+
+    close_result = _close_room_after_terminal(harness, room_id)
+    closed_snapshot = close_result["closedSnapshot"]
+    match_ended_payload = terminal_summary_payload.get("matchEnded", {})
+    if not isinstance(match_ended_payload, dict):
+        match_ended_payload = {}
+
+    return {
+        "boot": boot,
+        "roomId": room_id,
+        "gameId": game_id,
+        "seed": seed,
+        "transportLabel": transport_label,
+        "stepsExecuted": len(step_summaries),
+        "playCardCount": play_card_count,
+        "captureChoiceCount": capture_choice_count,
+        "shakeChoiceCount": shake_choice_count,
+        "chrysanthemumChoiceCount": chrysanthemum_choice_count,
+        "goStopChoiceCount": go_stop_choice_count,
+        "goStopOptionCodes": go_stop_option_codes,
+        "qualifiedAlwaysGo": go_stop_choice_count > 0,
+        "stepSummaries": step_summaries,
+        "terminalSummaryPayload": terminal_summary_payload,
+        "terminalEndReason": match_ended_payload.get("endReason"),
+        "terminalWinnerPlayerId": match_ended_payload.get("winnerPlayerId"),
+        "roomClosedSeen": close_result["roomClosedSeen"],
+        "closedRoomState": closed_snapshot["room"]["roomState"],
+        "closeResult": close_result,
+        "closedSnapshot": closed_snapshot,
+        "hostTerminalLabels": host_terminal_labels,
+        "guestTerminalLabels": guest_terminal_labels,
+        "finalStateVersion": final_state_version,
+    }
+
+
+def _run_mp016_socket(harness: SocketTransportHarness) -> dict[str, Any]:
+    seed_candidates = (1, 2, 3, 4, 5, 6, 7, 8)
+    attempt_summaries: list[dict[str, Any]] = []
+    selected_attempt: dict[str, Any] | None = None
+    transport_label = _transport_summary_label(harness.transport)
+
+    for seed in seed_candidates:
+        attempt = _run_mp016_socket_attempt(harness, seed=seed)
+        attempt_summary = {
+            "seed": seed,
+            "roomId": attempt["roomId"],
+            "gameId": attempt["gameId"],
+            "stepsExecuted": attempt["stepsExecuted"],
+            "playCardCount": attempt["playCardCount"],
+            "captureChoiceCount": attempt["captureChoiceCount"],
+            "shakeChoiceCount": attempt["shakeChoiceCount"],
+            "chrysanthemumChoiceCount": attempt["chrysanthemumChoiceCount"],
+            "goStopChoiceCount": attempt["goStopChoiceCount"],
+            "goStopOptionCodes": list(attempt["goStopOptionCodes"]),
+            "qualifiedAlwaysGo": attempt["qualifiedAlwaysGo"],
+            "terminalEndReason": attempt["terminalEndReason"],
+            "roomClosedSeen": attempt["roomClosedSeen"],
+            "closedRoomState": attempt["closedRoomState"],
+        }
+        attempt_summaries.append(attempt_summary)
+        if attempt["qualifiedAlwaysGo"]:
+            selected_attempt = attempt
+            break
+
+    if selected_attempt is None:
+        latest_attempt = attempt_summaries[-1] if attempt_summaries else {}
+        summary = (
+            f"Socket {transport_label} end-to-end gameplay reached terminal close, "
+            "but none of the seeded runs surfaced a go-stop choice to exercise the always-go policy."
+        )
+        return {
+            "status": ScenarioStatus.BLOCKED,
+            "summary": summary,
+            "roomId": latest_attempt.get("roomId"),
+            "gameId": latest_attempt.get("gameId"),
+            "players": _collect_players(
+                selected_attempt["closedSnapshot"] if selected_attempt is not None else {}
+            )
+            if selected_attempt is not None
+            else [],
+            "commands": list(harness.command_rows),
+            "frames": list(harness.frame_rows),
+            "snapshots": {},
+            "logs": {
+                "agent": [
+                    f"Socket mode attempted seeded end-to-end gameplay on the {harness.transport} transport backend.",
+                    f"attemptedSeeds={list(seed_candidates)}",
+                    *harness.agent_log_lines,
+                ],
+                "room": harness.room_log_lines,
+                "engine": harness.engine_log_lines,
+            },
+            "blockingReasons": [
+                "No seeded run reached a live go-stop choice; the always-go policy was not exercised.",
+            ],
+            "transportBackend": harness.transport,
+            "alwaysGoProbe": {
+                "scenarioId": "MP-016",
+                "transportBackend": harness.transport,
+                "attemptedSeeds": list(seed_candidates),
+                "selectedSeed": None,
+                "seedAttempts": attempt_summaries,
+                "qualifiedAlwaysGo": False,
+            },
+            "paritySignature": {
+                "scenarioId": "MP-016",
+                "selectedSeed": None,
+                "qualifiedAlwaysGo": False,
+                "attemptedSeeds": list(seed_candidates),
+            },
+        }
+
+    closed_snapshot = selected_attempt["closedSnapshot"]
+    players = _collect_players(closed_snapshot)
+    always_go_probe = {
+        "scenarioId": "MP-016",
+        "transportBackend": harness.transport,
+        "attemptedSeeds": list(seed_candidates),
+        "selectedSeed": selected_attempt["seed"],
+        "seedAttempts": attempt_summaries,
+        "stepsExecuted": selected_attempt["stepsExecuted"],
+        "playCardCount": selected_attempt["playCardCount"],
+        "captureChoiceCount": selected_attempt["captureChoiceCount"],
+        "shakeChoiceCount": selected_attempt["shakeChoiceCount"],
+        "chrysanthemumChoiceCount": selected_attempt["chrysanthemumChoiceCount"],
+        "goStopChoiceCount": selected_attempt["goStopChoiceCount"],
+        "goStopOptionCodes": list(selected_attempt["goStopOptionCodes"]),
+        "terminalSummaryPayload": selected_attempt["terminalSummaryPayload"],
+        "terminalEndReason": selected_attempt["terminalEndReason"],
+        "terminalWinnerPlayerId": selected_attempt["terminalWinnerPlayerId"],
+        "roomClosedSeen": selected_attempt["roomClosedSeen"],
+        "closedRoomState": selected_attempt["closedRoomState"],
+        "hostTerminalLabels": selected_attempt["hostTerminalLabels"],
+        "guestTerminalLabels": selected_attempt["guestTerminalLabels"],
+        "closeLabels": {
+            "hostAfterHostLeave": selected_attempt["closeResult"]["hostAfterHostLeaveLabels"],
+            "guestAfterHostLeave": selected_attempt["closeResult"]["guestAfterHostLeaveLabels"],
+            "hostAfterGuestLeave": selected_attempt["closeResult"]["hostAfterGuestLeaveLabels"],
+            "guestAfterGuestLeave": selected_attempt["closeResult"]["guestAfterGuestLeaveLabels"],
+        },
+    }
+
+    return {
+        "status": ScenarioStatus.PASS,
+        "summary": (
+            f"Socket {transport_label} seeded end-to-end gameplay completed from room bootstrap to roomClosed "
+            f"while always choosing go on every go-stop prompt (seed={selected_attempt['seed']})."
+        ),
+        "roomId": selected_attempt["roomId"],
+        "gameId": selected_attempt["gameId"],
+        "players": players,
+        "commands": list(harness.command_rows),
+        "frames": list(harness.frame_rows),
+        "snapshots": {
+            "player_a_initial": _player_snapshot_record(selected_attempt["boot"]["host_state_snapshot"], "p1"),
+            "player_b_initial": _player_snapshot_record(selected_attempt["boot"]["guest_state_snapshot"], "p2"),
+            "latest_server": _snapshot_record(
+                payload={
+                    "selectedSeed": selected_attempt["seed"],
+                    "terminalSummary": selected_attempt["terminalSummaryPayload"],
+                    "closedSnapshot": closed_snapshot,
+                    "goStopOptionCodes": list(selected_attempt["goStopOptionCodes"]),
+                    "goStopChoiceCount": selected_attempt["goStopChoiceCount"],
+                    "roomClosedSeen": selected_attempt["roomClosedSeen"],
+                },
+                snapshot_id=f"{selected_attempt['roomId']}_socket_always_go",
+                source="terminal",
+                scope="authority",
+                player_id=None,
+                state_version=closed_snapshot["room"]["lastRoomSequence"],
+                event_id=None,
+            ),
+        },
+        "logs": {
+            "agent": [
+                f"Socket mode executed seeded full-room gameplay on the {harness.transport} transport backend.",
+                f"selectedSeed={selected_attempt['seed']} attemptedSeeds={list(seed_candidates)}",
+                f"goStopChoiceCount={selected_attempt['goStopChoiceCount']} goStopOptionCodes={selected_attempt['goStopOptionCodes']}",
+                f"stepsExecuted={selected_attempt['stepsExecuted']} playCardCount={selected_attempt['playCardCount']}",
+                *harness.agent_log_lines,
+            ],
+            "room": harness.room_log_lines,
+            "engine": harness.engine_log_lines,
+        },
+        "blockingReasons": [],
+        "transportBackend": harness.transport,
+        "alwaysGoProbe": always_go_probe,
+        "paritySignature": {
+            "scenarioId": "MP-016",
+            "selectedSeed": selected_attempt["seed"],
+            "goStopChoiceCount": selected_attempt["goStopChoiceCount"],
+            "goStopOptionCodes": list(selected_attempt["goStopOptionCodes"]),
+            "stepsExecuted": selected_attempt["stepsExecuted"],
+            "playCardCount": selected_attempt["playCardCount"],
+            "terminalEndReason": selected_attempt["terminalEndReason"],
+            "roomClosedSeen": selected_attempt["roomClosedSeen"],
+            "closedRoomState": selected_attempt["closedRoomState"],
+        },
+    }
+
+
+def _run_mp017_socket_attempt(
+    harness: SocketTransportHarness,
+    *,
+    seed: int,
+    turn_limit_per_player: int = 2,
+    max_steps: int = 40,
+) -> dict[str, Any]:
+    boot = _bootstrap_transport_room(harness, warm_engine=True, rng_seed=seed)
+    room_id = boot["room_id"]
+    game_id = boot["game_id"]
+    transport_label = _transport_summary_label(harness.transport)
+    authoritative_state_version = boot["authoritative_state_version"]
+    authoritative_event_id = boot["authoritative_event_id"]
+    host_projection = _fetch_room_projection(
+        harness,
+        room_id,
+        "p1",
+        state_version=authoritative_state_version,
+        last_event_id=authoritative_event_id,
+    )
+    guest_projection = _fetch_room_projection(
+        harness,
+        room_id,
+        "p2",
+        state_version=authoritative_state_version,
+        last_event_id=authoritative_event_id,
+    )
+
+    turn_counts = {"host_client": 0, "guest_client": 0}
+    step_summaries: list[dict[str, Any]] = []
+    probe_rows: list[dict[str, Any]] = []
+    capture_probe_success_count = 0
+    active_probe: dict[str, Any] | None = None
+
+    for step_index in range(1, max_steps + 1):
+        choice_resolution = _resolve_pending_choice(host_projection, guest_projection)
+        if choice_resolution is not None:
+            pending_choice, actor_client_id, actor_room_player_id, actor_projection = choice_resolution
+            choice_kind = pending_choice.get("choiceKind")
+            if not isinstance(choice_kind, str):
+                raise RuntimeError("Pending choiceKind is missing.")
+            option_code = _choose_pending_choice_option_code(pending_choice)
+            actor_state = _projection_state(actor_projection)
+            expected_state_version = actor_state.get("stateVersion")
+            if not isinstance(expected_state_version, int):
+                expected_state_version = authoritative_state_version
+            send_result = harness.transport_send_ok(
+                actor_client_id,
+                "submitChoice",
+                requestId=f"req_mp017_seed{seed}_choice_{step_index}",
+                actionId=f"act_mp017_seed{seed}_choice_{step_index}",
+                expectedStateVersion=expected_state_version,
+                commandPayload={
+                    "choiceId": pending_choice.get("choiceId"),
+                    "optionCode": option_code,
+                },
+            )
+            next_state_version = send_result.get("authoritativeStateVersion")
+            if isinstance(next_state_version, int):
+                authoritative_state_version = next_state_version
+            next_event_id = send_result.get("authoritativeEventId")
+            if isinstance(next_event_id, str):
+                authoritative_event_id = next_event_id
+            step_summaries.append(
+                {
+                    "stepIndex": step_index,
+                    "kind": "choice",
+                    "choiceKind": choice_kind,
+                    "choiceId": pending_choice.get("choiceId"),
+                    "actorRoomPlayerId": actor_room_player_id,
+                    "actorAuthorityPlayerId": pending_choice.get("actorPlayerId"),
+                    "expectedStateVersion": expected_state_version,
+                    "optionCode": option_code,
+                }
+            )
+        else:
+            host_state = _projection_state(host_projection)
+            current_player_id = host_state.get("currentPlayerId")
+            if not isinstance(current_player_id, str):
+                raise RuntimeError("Current playerId is missing from the host projection.")
+
+            actor_client_id, actor_room_player_id, actor_projection = _resolve_transport_actor(
+                host_projection,
+                guest_projection,
+                current_player_id,
+            )
+            if turn_counts[actor_client_id] >= turn_limit_per_player:
+                if all(count >= turn_limit_per_player for count in turn_counts.values()):
+                    break
+                raise RuntimeError(
+                    f"MP-017 encountered an unexpected extra turn for {actor_client_id} before the short probe finished."
+                )
+            actor_state = _projection_state(actor_projection)
+            expected_state_version = actor_state.get("stateVersion")
+            if not isinstance(expected_state_version, int):
+                expected_state_version = authoritative_state_version
+            card = _select_deterministic_hand_card(actor_projection)
+            active_probe = {
+                "actorClientId": actor_client_id,
+                "actorRoomPlayerId": actor_room_player_id,
+                "actorAuthorityPlayerId": current_player_id,
+                "turnIndex": turn_counts[actor_client_id] + 1,
+                "baselineCapturedTotal": _projection_captured_totals(actor_projection).get(current_player_id, 0),
+                "expectedCapturedTotal": None,
+                "authoritativeCaptureStateVersion": None,
+                "turnPassedStateVersion": None,
+                "renderedCaptureStateVersion": None,
+            }
+            send_result = harness.transport_send_ok(
+                actor_client_id,
+                "playCard",
+                requestId=f"req_mp017_seed{seed}_play_{step_index}",
+                actionId=f"act_mp017_seed{seed}_play_{step_index}",
+                expectedStateVersion=expected_state_version,
+                commandPayload={
+                    "cardId": card["cardId"],
+                    "source": "hand",
+                },
+            )
+            next_state_version = send_result.get("authoritativeStateVersion")
+            if isinstance(next_state_version, int):
+                authoritative_state_version = next_state_version
+            next_event_id = send_result.get("authoritativeEventId")
+            if isinstance(next_event_id, str):
+                authoritative_event_id = next_event_id
+            turn_counts[actor_client_id] += 1
+            step_summaries.append(
+                {
+                    "stepIndex": step_index,
+                    "kind": "playCard",
+                    "actorClientId": actor_client_id,
+                    "actorRoomPlayerId": actor_room_player_id,
+                    "actorAuthorityPlayerId": current_player_id,
+                    "expectedStateVersion": expected_state_version,
+                    "cardId": card["cardId"],
+                    "cardMonth": card.get("month"),
+                    "cardKind": card.get("kind"),
+                    "turnIndex": turn_counts[actor_client_id],
+                }
+            )
+
+        _drain_live_mailboxes(harness)
+        host_projection = _fetch_room_projection(
+            harness,
+            room_id,
+            "p1",
+            state_version=authoritative_state_version,
+            last_event_id=authoritative_event_id,
+        )
+        guest_projection = _fetch_room_projection(
+            harness,
+            room_id,
+            "p2",
+            state_version=authoritative_state_version,
+            last_event_id=authoritative_event_id,
+        )
+
+        if active_probe is not None:
+            host_state = _projection_state(host_projection)
+            actor_authority_id = active_probe["actorAuthorityPlayerId"]
+            current_total = _projection_captured_totals(host_projection).get(
+                actor_authority_id,
+                active_probe["baselineCapturedTotal"],
+            )
+            if (
+                current_total > active_probe["baselineCapturedTotal"]
+                and active_probe["expectedCapturedTotal"] is None
+            ):
+                active_probe["expectedCapturedTotal"] = current_total
+                active_probe["authoritativeCaptureStateVersion"] = host_state.get("stateVersion")
+            if host_state.get("currentPlayerId") != actor_authority_id:
+                active_probe["turnPassedStateVersion"] = host_state.get("stateVersion")
+                if active_probe["expectedCapturedTotal"] is not None:
+                    active_probe["renderedCaptureStateVersion"] = host_state.get("stateVersion")
+                    capture_probe_success_count += 1
+                probe_rows.append(active_probe)
+                active_probe = None
+
+        if (
+            all(count >= turn_limit_per_player for count in turn_counts.values())
+            and _projection_state(host_projection).get("pendingChoice") is None
+            and _projection_state(guest_projection).get("pendingChoice") is None
+            and active_probe is None
+        ):
+            break
+    else:
+        raise RuntimeError(
+            f"MP-017 exceeded the gameplay loop limit without completing two turns per player (seed={seed}, transport={transport_label})."
+        )
+
+    if active_probe is not None:
+        probe_rows.append(active_probe)
+
+    room_snapshot = harness.snapshot_room(room_id)
+    return {
+        "boot": boot,
+        "roomId": room_id,
+        "gameId": game_id,
+        "seed": seed,
+        "transportLabel": transport_label,
+        "turnCounts": dict(turn_counts),
+        "stepSummaries": step_summaries,
+        "probeRows": probe_rows,
+        "captureProbeSuccessCount": capture_probe_success_count,
+        "qualifiedCaptureVisibility": capture_probe_success_count > 0,
+        "roomSnapshot": room_snapshot,
+    }
+
+
+def _run_mp017_socket(harness: SocketTransportHarness) -> dict[str, Any]:
+    seed_candidates = (1, 2, 3, 4, 5, 6, 7, 8)
+    attempt_summaries: list[dict[str, Any]] = []
+    selected_attempt: dict[str, Any] | None = None
+    transport_label = _transport_summary_label(harness.transport)
+
+    for seed in seed_candidates:
+        attempt = _run_mp017_socket_attempt(harness, seed=seed)
+        attempt_summary = {
+            "seed": seed,
+            "roomId": attempt["roomId"],
+            "gameId": attempt["gameId"],
+            "turnCounts": attempt["turnCounts"],
+            "captureProbeSuccessCount": attempt["captureProbeSuccessCount"],
+            "qualifiedCaptureVisibility": attempt["qualifiedCaptureVisibility"],
+            "roomState": attempt["roomSnapshot"]["room"]["roomState"],
+        }
+        attempt_summaries.append(attempt_summary)
+        if attempt["qualifiedCaptureVisibility"]:
+            selected_attempt = attempt
+            break
+
+    if selected_attempt is None:
+        latest_attempt = attempt_summaries[-1] if attempt_summaries else {}
+        return {
+            "status": ScenarioStatus.BLOCKED,
+            "summary": (
+                f"Socket {transport_label} short capture-visibility probe completed, "
+                "but none of the seeded runs surfaced an authoritative capture inside the first two turns per player."
+            ),
+            "roomId": latest_attempt.get("roomId"),
+            "gameId": latest_attempt.get("gameId"),
+            "players": [],
+            "commands": list(harness.command_rows),
+            "frames": list(harness.frame_rows),
+            "snapshots": {},
+            "logs": {
+                "agent": [
+                    f"Socket mode attempted the short capture-visibility probe on the {harness.transport} transport backend.",
+                    f"attemptedSeeds={list(seed_candidates)}",
+                    *harness.agent_log_lines,
+                ],
+                "room": harness.room_log_lines,
+                "engine": harness.engine_log_lines,
+            },
+            "blockingReasons": [
+                "No seeded run produced an authoritative capture during the four-turn probe window.",
+            ],
+            "transportBackend": harness.transport,
+            "captureVisibilityProbe": {
+                "scenarioId": "MP-017",
+                "transportBackend": harness.transport,
+                "attemptedSeeds": list(seed_candidates),
+                "selectedSeed": None,
+                "seedAttempts": attempt_summaries,
+            },
+            "paritySignature": {
+                "scenarioId": "MP-017",
+                "selectedSeed": None,
+                "qualifiedCaptureVisibility": False,
+                "attemptedSeeds": list(seed_candidates),
+            },
+        }
+
+    room_snapshot = selected_attempt["roomSnapshot"]
+    players = _collect_players(room_snapshot)
+    capture_visibility_probe = {
+        "scenarioId": "MP-017",
+        "transportBackend": harness.transport,
+        "attemptedSeeds": list(seed_candidates),
+        "selectedSeed": selected_attempt["seed"],
+        "seedAttempts": attempt_summaries,
+        "turnCounts": selected_attempt["turnCounts"],
+        "probeRows": selected_attempt["probeRows"],
+        "captureProbeSuccessCount": selected_attempt["captureProbeSuccessCount"],
+        "roomState": room_snapshot["room"]["roomState"],
+    }
+
+    return {
+        "status": ScenarioStatus.PASS,
+        "summary": (
+            f"Socket {transport_label} short multiplayer capture probe completed two turns per player "
+            f"without captured-zone lag in the authoritative baseline (seed={selected_attempt['seed']})."
+        ),
+        "roomId": selected_attempt["roomId"],
+        "gameId": selected_attempt["gameId"],
+        "players": players,
+        "commands": list(harness.command_rows),
+        "frames": list(harness.frame_rows),
+        "snapshots": {
+            "player_a_initial": _player_snapshot_record(selected_attempt["boot"]["host_state_snapshot"], "p1"),
+            "player_b_initial": _player_snapshot_record(selected_attempt["boot"]["guest_state_snapshot"], "p2"),
+            "latest_server": _snapshot_record(
+                payload={
+                    "selectedSeed": selected_attempt["seed"],
+                    "turnCounts": selected_attempt["turnCounts"],
+                    "captureProbeSuccessCount": selected_attempt["captureProbeSuccessCount"],
+                    "probeRows": selected_attempt["probeRows"],
+                    "roomState": room_snapshot["room"]["roomState"],
+                },
+                snapshot_id=f"{selected_attempt['roomId']}_socket_capture_visibility",
+                source="terminal",
+                scope="authority",
+                player_id=None,
+                state_version=room_snapshot["room"]["lastRoomSequence"],
+                event_id=None,
+            ),
+        },
+        "logs": {
+            "agent": [
+                f"Socket mode executed the short capture-visibility probe on the {harness.transport} transport backend.",
+                f"selectedSeed={selected_attempt['seed']} attemptedSeeds={list(seed_candidates)}",
+                f"turnCounts={selected_attempt['turnCounts']} captureProbeSuccessCount={selected_attempt['captureProbeSuccessCount']}",
+                *harness.agent_log_lines,
+            ],
+            "room": harness.room_log_lines,
+            "engine": harness.engine_log_lines,
+        },
+        "blockingReasons": [],
+        "transportBackend": harness.transport,
+        "captureVisibilityProbe": capture_visibility_probe,
+        "paritySignature": {
+            "scenarioId": "MP-017",
+            "selectedSeed": selected_attempt["seed"],
+            "turnCounts": selected_attempt["turnCounts"],
+            "captureProbeSuccessCount": selected_attempt["captureProbeSuccessCount"],
+            "roomState": room_snapshot["room"]["roomState"],
+        },
+    }
+
+
 def _run_socket_scenario_once(
     scenario: ScenarioDefinition,
     *,
@@ -2999,6 +3926,10 @@ def _run_socket_scenario_once(
             return _run_mp014_socket(harness)
         if scenario.scenario_id == "MP-008":
             return _run_mp008_socket(harness)
+        if scenario.scenario_id == "MP-016":
+            return _run_mp016_socket(harness)
+        if scenario.scenario_id == "MP-017":
+            return _run_mp017_socket(harness)
         return {
             "status": ScenarioStatus.BLOCKED,
             "summary": "Socket mode scaffold exists, but this scenario does not yet have a live transport implementation.",
@@ -3254,6 +4185,18 @@ def _compare_socket_results(
             },
             "tcp": tcp_result.get("staleHeartbeatCodeProbe"),
             "websocket": websocket_result.get("staleHeartbeatCodeProbe"),
+        }
+
+    if scenario.scenario_id == "MP-016":
+        result["alwaysGoProbe"] = {
+            "tcp": tcp_result.get("alwaysGoProbe"),
+            "websocket": websocket_result.get("alwaysGoProbe"),
+        }
+
+    if scenario.scenario_id == "MP-017":
+        result["captureVisibilityProbe"] = {
+            "tcp": tcp_result.get("captureVisibilityProbe"),
+            "websocket": websocket_result.get("captureVisibilityProbe"),
         }
 
     return result

@@ -399,8 +399,79 @@ def _mp014() -> ScenarioSkeleton:
     )
 
 
+def _mp015() -> ScenarioSkeleton:
+    return ScenarioSkeleton(
+        scenario_id="MP-015",
+        purpose="Local room UI and autoroute defer ready until the authoritative room reaches waitingForReady with two members.",
+        steps=[
+            command("c01", "Host lands in a solo room snapshot", "player_a", "bootstrapRoomSession", {"roomState": "waitingForPlayers", "memberCount": 1}),
+            command("c02", "Local ready attempt is guarded before transport send", "player_a", "setReady", {"dispatch": "localGuard", "guardReason": "waitingForPlayers"}),
+            expect("e01", "Guest joins before authoritative ready is allowed", "roomEvent", {"eventName": "memberJoined"}),
+            expect("e02", "Room reaches waitingForReady without disconnect churn", "roomSnapshot", {"roomState": "waitingForReady", "memberCount": 2}),
+            snapshot("s01", "Capture guarded waitingForReady snapshot", "terminal", "authority"),
+        ],
+        required_artifacts=[
+            "manifest.json",
+            "timeline/steps.ndjson",
+            "timeline/commands.ndjson",
+            "timeline/events.ndjson",
+            "snapshots/latest_server.json",
+        ],
+    )
+
+
+def _mp016() -> ScenarioSkeleton:
+    return ScenarioSkeleton(
+        scenario_id="MP-016",
+        purpose="A seeded multiplayer room runs from bootstrap to terminal close while every go-stop choice submits go.",
+        steps=[
+            command("c01", "Seed the authoritative board before live bootstrap", "system", "setCondition", {"rngSeed": 7}),
+            command("c02", "Bootstrap attached live room session", "system", "bootstrapRoomSession", {"seeded": True}),
+            command("c03", "Drive legal playCard turns from both players", "system", "playCard", {"policy": "viewerFirstLegalCard"}),
+            expect("e01", "choiceRequested appears when a live choice is needed", "gameEvent.engineEvent:choiceRequested", {}),
+            command("c04", "Resolve live go-stop by always submitting go", "system", "submitChoice", {"choiceKind": "goStop", "optionCode": "go"}),
+            expect("e02", "terminalSummary arrives after the seeded end-to-end run", "terminalSummary", {}),
+            command("c05", "Both clients leave the ended room", "system", "leaveRoom", {"participants": ["player_a", "player_b"]}),
+            expect("e03", "Room closes after the final leaveRoom", "roomEvent.roomClosed", {}),
+            artifact("a01", "Persist per-seed always-go probe", "always_go_probe.json"),
+            snapshot("s01", "Capture closed authority room snapshot", "terminal", "authority"),
+        ],
+        required_artifacts=[
+            "manifest.json",
+            "timeline/steps.ndjson",
+            "timeline/commands.ndjson",
+            "timeline/events.ndjson",
+            "snapshots/latest_server.json",
+            "always_go_probe.json",
+        ],
+    )
+
+
+def _mp017() -> ScenarioSkeleton:
+    return ScenarioSkeleton(
+        scenario_id="MP-017",
+        purpose="Two turns per player keep captured cards visible in the UI before the authoritative turn handoff completes.",
+        steps=[
+            command("c01", "Create and join a live invite room", "system", "bootstrapRoomSession", {"uiMode": True}),
+            command("c02", "Drive exactly two playCard turns from each player", "system", "playCard", {"turnLimitPerPlayer": 2}),
+            expect("e01", "Authoritative capture appears during the short probe", "gameEvent.engineEvent:statePatched", {"capturesVisible": True}),
+            expect("e02", "Rendered captured totals catch up before turnChanged completes", "gameEvent.engineEvent:turnChanged", {"capturedLag": False}),
+            artifact("a01", "Persist the short-turn captured-zone parity probe", "capture_visibility_probe.json"),
+            snapshot("s01", "Capture the latest authority snapshot after the short probe", "terminal", "authority"),
+        ],
+        required_artifacts=[
+            "manifest.json",
+            "timeline/steps.ndjson",
+            "timeline/commands.ndjson",
+            "timeline/events.ndjson",
+            "snapshots/latest_server.json",
+            "capture_visibility_probe.json",
+        ],
+    )
+
+
 def _build_skeletons() -> dict[str, ScenarioSkeleton]:
-    builders = [_mp001, _mp002, _mp003, _mp004, _mp005, _mp006, _mp007, _mp008, _mp013, _mp014]
+    builders = [_mp001, _mp002, _mp003, _mp004, _mp005, _mp006, _mp007, _mp008, _mp013, _mp014, _mp015, _mp016, _mp017]
     return {skeleton.scenario_id: skeleton for skeleton in (builder() for builder in builders)}
 
 

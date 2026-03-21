@@ -6,7 +6,7 @@ class PlayerHandSlotManager: ObservableObject {
     private let config: LayoutConfigV2
     private let orderedSlotIndices: [Int]
     
-    struct HandSlotState {
+    struct HandSlotState: Equatable {
         var card: Card?
         var isOccupied: Bool
     }
@@ -33,38 +33,33 @@ class PlayerHandSlotManager: ObservableObject {
     }
     
     func sync(with hand: [Card], compactToFront: Bool = true) {
-        // Sort hand based on user criteria: Month -> Type
-        let sortedHand = hand.sorted { lhs, rhs in
-            if lhs.month != rhs.month { return lhs.month < rhs.month }
-            return typePriority(lhs.type) < typePriority(rhs.type)
-        }
+        let sortedHand = hand.sorted(by: sortComparator)
+        var nextSlots = slots
         
         if !preserveEmptySlots {
             if compactToFront {
-                // Fill from slot 1 whenever compaction is desired.
                 for key in slotIndicesInOrder {
-                    if var state = slots[key] {
+                    if var state = nextSlots[key] {
                         state.card = nil
                         state.isOccupied = false
-                        slots[key] = state
+                        nextSlots[key] = state
                     }
                 }
                 
                 for (i, card) in sortedHand.enumerated() where i < slotIndicesInOrder.count {
                     let idx = slotIndicesInOrder[i]
-                    if var state = slots[idx] {
+                    if var state = nextSlots[idx] {
                         state.card = card
                         state.isOccupied = true
-                        slots[idx] = state
+                        nextSlots[idx] = state
                     }
                 }
+                assignSlotsIfNeeded(nextSlots)
                 return
             }
 
-            // Keep existing card-slot mapping stable and fill only deltas.
-            // Re-compacting every sync can shift source positions during movement animation.
             var existingCards: [String: Int] = [:] // CardID -> SlotIndex
-            for (idx, state) in slots {
+            for (idx, state) in nextSlots {
                 if let c = state.card {
                     existingCards[c.id] = idx
                 }
@@ -75,39 +70,38 @@ class PlayerHandSlotManager: ObservableObject {
             
             // 1) Remove cards that are no longer in hand
             for (id, idx) in existingCards where !incomingIds.contains(id) {
-                if var state = slots[idx] {
+                if var state = nextSlots[idx] {
                     state.card = nil
                     state.isOccupied = false
-                    slots[idx] = state
+                    nextSlots[idx] = state
                 }
             }
             
             // 2) Refresh existing cards in-place (selectedRole/type updates, etc.)
             for (id, idx) in existingCards {
-                if let updated = incomingById[id], var state = slots[idx] {
+                if let updated = incomingById[id], var state = nextSlots[idx] {
                     state.card = updated
                     state.isOccupied = true
-                    slots[idx] = state
+                    nextSlots[idx] = state
                 }
             }
             
             // 3) Place newly added cards into the first empty slots in sorted order
             for card in sortedHand where existingCards[card.id] == nil {
-                if let emptyIdx = findFirstEmptySlot(), var state = slots[emptyIdx] {
+                if let emptyIdx = findFirstEmptySlot(in: nextSlots), var state = nextSlots[emptyIdx] {
                     state.card = card
                     state.isOccupied = true
-                    slots[emptyIdx] = state
+                    nextSlots[emptyIdx] = state
                 } else {
                     print("Warning: Hand Full, could not add card \(card)")
                 }
             }
+            assignSlotsIfNeeded(nextSlots)
             return
         }
-        
-        // Snapshot current card locations
-        var existingCards: [String: Int] = [:] // CardID -> SlotIndex
-        
-        for (idx, state) in slots {
+
+        var existingCards: [String: Int] = [:]
+        for (idx, state) in nextSlots {
             if let c = state.card {
                 existingCards[c.id] = idx
             }
@@ -118,32 +112,42 @@ class PlayerHandSlotManager: ObservableObject {
         // 1. Remove Missing Cards
         for (id, idx) in existingCards {
             if !newCardIDs.contains(id) {
-                if var state = slots[idx] {
+                if var state = nextSlots[idx] {
                     state.card = nil
                     state.isOccupied = false
-                    slots[idx] = state
+                    nextSlots[idx] = state
                 }
             }
         }
         
         // 2. Add New Cards
-        for card in hand {
+        for card in sortedHand {
             if existingCards[card.id] == nil {
-                if let emptyIdx = findFirstEmptySlot() {
-                    var state = slots[emptyIdx]!
+                if let emptyIdx = findFirstEmptySlot(in: nextSlots) {
+                    var state = nextSlots[emptyIdx]!
                     state.card = card
                     state.isOccupied = true
-                    slots[emptyIdx] = state
+                    nextSlots[emptyIdx] = state
                 } else {
                     print("Warning: Hand Full, could not add card \(card)")
                 }
             }
         }
+
+        for (id, idx) in existingCards {
+            if let updated = sortedHand.first(where: { $0.id == id }), var state = nextSlots[idx] {
+                state.card = updated
+                state.isOccupied = true
+                nextSlots[idx] = state
+            }
+        }
+
+        assignSlotsIfNeeded(nextSlots)
     }
     
-    private func findFirstEmptySlot() -> Int? {
+    private func findFirstEmptySlot(in slotMap: [Int: HandSlotState]) -> Int? {
         for idx in slotIndicesInOrder {
-            if let state = slots[idx], !state.isOccupied {
+            if let state = slotMap[idx], !state.isOccupied {
                 return idx
             }
         }
@@ -155,35 +159,27 @@ class PlayerHandSlotManager: ObservableObject {
     }
     
     func sort() {
-        // Collect cards from all slots
         let cards = slots.values.compactMap { $0.card }
         
-        let sortedCards = cards.sorted { lhs, rhs in
-            if lhs.month != rhs.month { return lhs.month < rhs.month }
-            if lhs.type != rhs.type { return typePriority(lhs.type) < typePriority(rhs.type) }
-            return false 
-        }
+        let sortedCards = cards.sorted(by: sortComparator)
+        var nextSlots = slots
         
         if !preserveEmptySlots {
-            // Compaction: Re-assign to slots 1..N
-            // 1. Clear all
             for key in slotIndicesInOrder {
-                slots[key]?.card = nil
-                slots[key]?.isOccupied = false
+                nextSlots[key]?.card = nil
+                nextSlots[key]?.isOccupied = false
             }
             
-            // 2. Assign
             for (i, card) in sortedCards.enumerated() {
                 if i < slotIndicesInOrder.count {
                     let idx = slotIndicesInOrder[i]
-                    var state = slots[idx]!
+                    var state = nextSlots[idx]!
                     state.card = card
                     state.isOccupied = true
-                    slots[idx] = state
+                    nextSlots[idx] = state
                 }
             }
         } else {
-            // Preserve Empty: Re-assign only to originally occupied slots
             let occupiedSlots = slots.compactMap { (key, state) -> Int? in
                 return state.isOccupied ? key : nil
             }.sorted()
@@ -191,16 +187,30 @@ class PlayerHandSlotManager: ObservableObject {
             for (i, card) in sortedCards.enumerated() {
                 if i < occupiedSlots.count {
                     let slotIdx = occupiedSlots[i]
-                    if var state = slots[slotIdx] {
+                    if var state = nextSlots[slotIdx] {
                         state.card = card
                         state.isOccupied = true
-                        slots[slotIdx] = state
+                        nextSlots[slotIdx] = state
                     }
                 }
             }
         }
+
+        assignSlotsIfNeeded(nextSlots)
     }
     
+    private func assignSlotsIfNeeded(_ nextSlots: [Int: HandSlotState]) {
+        guard nextSlots != slots else { return }
+        slots = nextSlots
+    }
+
+    private func sortComparator(_ lhs: Card, _ rhs: Card) -> Bool {
+        if lhs.month != rhs.month { return lhs.month < rhs.month }
+        if lhs.type != rhs.type { return typePriority(lhs.type) < typePriority(rhs.type) }
+        if lhs.imageIndex != rhs.imageIndex { return lhs.imageIndex < rhs.imageIndex }
+        return lhs.id < rhs.id
+    }
+
     private func typePriority(_ type: CardType) -> Int {
         switch type {
         case .bright: return 0

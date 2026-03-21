@@ -34,6 +34,12 @@ class CLIEngine {
                 },
                 executeGameplayCommand: { [unowned self] request in
                     try self.executeRoomGameplayCommand(request)
+                },
+                startGameIfNeeded: { [unowned self] in
+                    if self.gameManager.gameState != .ready {
+                        self.gameManager.setupGame(seed: self.currentSeed)
+                    }
+                    self.gameManager.startGame()
                 }
             )
         )
@@ -629,6 +635,7 @@ final class RoomTransportWebSocketServer {
     private var sendingConnections: Set<ObjectIdentifier> = []
 
     init(engine: CLIEngine, port: UInt16) throws {
+        writeStderr("RoomTransportWebSocketServer initializing on port \(port)...\n")
         self.runtime = RoomTransportServerRuntime(engine: engine)
         guard let port = NWEndpoint.Port(rawValue: port) else {
             throw NSError(domain: "RoomTransportWebSocketServer", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid port"])
@@ -640,24 +647,35 @@ final class RoomTransportWebSocketServer {
         parameters.defaultProtocolStack.applicationProtocols.insert(webSocketOptions, at: 0)
         parameters.allowLocalEndpointReuse = true
         self.listener = try NWListener(using: parameters, on: port)
+        writeStderr("RoomTransportWebSocketServer listener created.\n")
     }
 
     func start() {
+        writeStderr("RoomTransportWebSocketServer starting queue and listener...\n")
         runtime.startAutomaticExpirySweep(on: queue)
         listener.stateUpdateHandler = { state in
+            writeStderr("RoomTransportWebSocketServer state changed to: \(state)\n")
             switch state {
             case .ready:
-                writeStderr("RoomTransportWebSocketServer ready\n")
+                writeStderr("RoomTransportWebSocketServer ready and listening.\n")
             case .failed(let error):
                 writeStderr("RoomTransportWebSocketServer failed: \(error)\n")
-            default:
-                break
+            case .waiting(let error):
+                writeStderr("RoomTransportWebSocketServer waiting: \(error)\n")
+            case .setup:
+                writeStderr("RoomTransportWebSocketServer in setup.\n")
+            case .cancelled:
+                writeStderr("RoomTransportWebSocketServer cancelled.\n")
+            @unknown default:
+                writeStderr("RoomTransportWebSocketServer unknown state.\n")
             }
         }
         listener.newConnectionHandler = { [weak self] connection in
+            writeStderr("RoomTransportWebSocketServer new connection received.\n")
             self?.handleNewConnection(connection)
         }
         listener.start(queue: queue)
+        writeStderr("RoomTransportWebSocketServer listener.start() called.\n")
     }
 
     private func handleNewConnection(_ connection: NWConnection) {
@@ -759,12 +777,17 @@ func main() {
     AnimationManager.shared.config.opponent_preplay_reveal_duration = 0
     AnimationManager.shared.config.opponent_action_delay = 0
     
+    writeStderr("Initializing CLIEngine...\n")
     let engine = CLIEngine()
+    writeStderr("CLIEngine initialized.\n")
     let args = CommandLine.arguments
     if let mode = configuredRoomTransportServerMode(from: args) {
         do {
+            writeStderr("Creating room transport server...\n")
             let server = try makeRoomTransportServer(mode: mode, engine: engine)
+            writeStderr("Starting room transport server...\n")
             server.start()
+            writeStderr("Entering main RunLoop...\n")
             RunLoop.main.run()
             return
         } catch {

@@ -2,7 +2,7 @@ version: 1
 animation:
   card_move_duration: 4e-1
   card_move_delay_per_item: 5e-2
-  background_music_enabled: true
+  background_music_enabled: false
   animation_style: spring
   spring_response: 4e-1
   spring_damping: 7.5e-1

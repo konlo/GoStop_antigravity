@@ -120,12 +120,45 @@ class GameManager: ObservableObject {
     static var shared: GameManager?
     
     @Published var gameState: GameState = .ready
-    @Published var deck = Deck()
     @Published var players: [Player] = []
+    @Published var deck = Deck()
+    
+    /// Hook for multiplayer coordinators to intercept local player actions.
+    var onLocalAction: ((MultiplayerAction) -> Void)?
+    
+    @Published var isMultiplayerResumable: Bool = false
+    @Published var multiplayerGraceDeadline: Date? = nil
+    
     @Published var currentTurnIndex: Int = 0
     @Published private(set) var currentRoundStarterIndex: Int? = nil
     @Published var tableCards: [Card] = []
     @Published var outOfPlayCards: [Card] = []
+    
+    @Published var playerChats: [String: MultiplayerChatPresence] = [:]
+    
+    @Published var currentScoreboard: MultiplayerScoreboard? = nil
+    @Published var matchHistory: [String: Int] = [:]
+    
+    @Published var isMatchEndedFlag: Bool = false
+    
+    func sendChat(emojiId: String) {
+        let action = MultiplayerAction.chat(emojiId: emojiId)
+        self.onLocalAction?(action)
+        
+        // Optimistically show locally if desired, or wait for server reflection.
+        // For Go-Stop, waiting for server reflection is safer for sync.
+    }
+    
+    func exitToLobby() {
+        // Reset multiplayer session state
+        self.matchHistory = [:]
+        self.playerChats = [:]
+        self.currentScoreboard = nil
+        self.isMatchEndedFlag = false
+        
+        // Reset general game state to trigger shell transition back to lobby/room
+        self.gameState = .ready
+    }
     
     // Unified Animation Tracking
     @Published var currentMovingCards: [Card] = []
@@ -181,6 +214,8 @@ class GameManager: ObservableObject {
     // Logical table after resolving play-phase capture (used for draw-phase rules).
     // Visual table can still keep pending play captures until draw is revealed.
     private var turnPlayPhaseResultingTable: [Card]? = nil
+    // Track whether play-phase capture already completed its table->captured animation.
+    private var turnPlayPhaseCaptureCommitted = false
     // Base logical table for draw-choice resolution when draw capture requires user selection.
     private var turnDrawPhaseBaseTable: [Card]? = nil
     
@@ -217,7 +252,14 @@ class GameManager: ObservableObject {
     // Manual UI uses internal computer automation. External agents should disable it.
     var internalComputerAutomationEnabled = false
     var externalControlMode = false
+    @Published var localPlayerId: String? = nil
     private var internalComputerActionScheduled = false
+
+    var isLocalTurn: Bool {
+        guard externalControlMode else { return true }
+        guard let localId = localPlayerId else { return true }
+        return currentPlayer?.id.uuidString == localId
+    }
 
     var isAutomationBusy: Bool {
         pendingAutomationDelays > 0 ||
@@ -469,11 +511,32 @@ class GameManager: ObservableObject {
         self.turnWasOpeningTurn = false
         self.completedTurnCount = 0
         self.turnPlayPhaseResultingTable = nil
+        self.turnPlayPhaseCaptureCommitted = false
         self.turnDrawPhaseBaseTable = nil
         self.internalComputerActionScheduled = false
         self.gameState = .ready
         self.dealCards()
         self.takeSnapshot()
+    }
+
+    func resetPresentationStateForExternalSnapshot() {
+        self.automationDelayGeneration += 1
+        self.pendingAutomationDelays = 0
+        self.currentMovingCards = []
+        self.penaltyMoveProgress = 0
+        self.sourceCueCardIds = []
+        self.targetCueCardIds = []
+        self.movingCardsScale = 1.0
+        self.movingCardsPiCount = nil
+        self.hiddenInSourceCardIds = []
+        self.hiddenInTargetCardIds = []
+        self.currentMoveSourceZone = nil
+        self.currentMoveTargetZone = nil
+        self.capturedMoveSourcePlayerId = nil
+        self.capturedMoveTargetPlayerId = nil
+        self.opponentPreplayRevealCardId = nil
+        self.movingCardsShowDebug = false
+        self.internalComputerActionScheduled = false
     }
 
     
@@ -696,6 +759,10 @@ class GameManager: ObservableObject {
     
     func respondToShake(month: Int, didShake: Bool) {
         guard gameState == .askingShake, let player = currentPlayer else { return }
+        if externalControlMode {
+            onLocalAction?(.respondToShake(month: month, didShake: didShake))
+            return
+        }
         
         if didShake {
             player.shakeCount += 1
@@ -729,6 +796,10 @@ class GameManager: ObservableObject {
         guard (gameState == .choosingChrysanthemumRole || (currentPlayer?.isComputer == true && gameState == .playing)),
               let player = currentPlayer,
               let card = pendingChrysanthemumCard else { return }
+        if externalControlMode {
+            onLocalAction?(.respondToChrysanthemumChoice(role: role.rawValue))
+            return
+        }
         
         gLog(gameText("log.event.chrysanthemum_role_chosen", ["player": player.name, "role": role.rawValue]))
         
@@ -917,6 +988,10 @@ class GameManager: ObservableObject {
 
     func respondToCapture(selectedCard: Card) {
         guard let player = currentPlayer else { return }
+        if externalControlMode {
+            onLocalAction?(.respondToCapture(cardId: selectedCard.id))
+            return
+        }
         let playedCard = pendingCapturePlayedCard
         let drawnCard = pendingCaptureDrawnCard
         
@@ -942,13 +1017,13 @@ class GameManager: ObservableObject {
             return
         }
 
-        // Choice while resolving the play-phase capture:
-        // keep cards visually on table and defer commit until draw is revealed.
+        // Choice while resolving the play-phase capture.
         if playedCard != nil {
             let captured = [trigger, selectedCard]
             let capturedIds = Set(captured.map { $0.id })
             turnPlayPhaseCaptured = captured
             turnPlayPhaseResultingTable = tableCards.filter { !capturedIds.contains($0.id) }
+            turnPlayPhaseCaptureCommitted = false
             turnDrawPhaseBaseTable = nil
             monthOwners.removeValue(forKey: selectedCard.month.rawValue)
 
@@ -958,15 +1033,7 @@ class GameManager: ObservableObject {
             gameState = .playing
 
             gLog(gameText("log.event.capture_locked", ["player": player.name, "count": captured.count]))
-
-            let matchPause = AnimationManager.shared.config.match_pause_duration
-            if matchPause > 0 {
-                runAfterAnimationDelay(matchPause) {
-                    self.proceedToDrawPhase(player: player, rules: rules)
-                }
-            } else {
-                proceedToDrawPhase(player: player, rules: rules)
-            }
+            continueAfterPlayPhaseCapture(player: player, rules: rules)
             return
         }
 
@@ -1132,7 +1199,7 @@ class GameManager: ObservableObject {
         finalTable: [Card],
         drawnCard: Card?
     ) {
-        let playCaptured = turnPlayPhaseCaptured
+        let playCaptured = turnPlayPhaseCaptureCommitted ? [] : turnPlayPhaseCaptured
         let drawCaptured = turnDrawPhaseCaptured
 
         currentMovingCards = []
@@ -1147,13 +1214,36 @@ class GameManager: ObservableObject {
             self.animateTableToCaptured(cards: drawCaptured, player: player) {
                 self.tableCards = finalTable
                 self.turnPlayPhaseResultingTable = nil
+                self.turnPlayPhaseCaptureCommitted = false
                 self.turnDrawPhaseBaseTable = nil
                 self.finalizeTurnState(player: player, rules: rules)
             }
         }
     }
 
+    private func continueAfterPlayPhaseCapture(player: Player, rules: RuleConfig) {
+        let animateCapture: () -> Void = {
+            self.animateTableToCaptured(cards: self.turnPlayPhaseCaptured, player: player) {
+                self.turnPlayPhaseCaptureCommitted = true
+                self.proceedToDrawPhase(player: player, rules: rules)
+            }
+        }
+
+        let matchPause = AnimationManager.shared.config.match_pause_duration
+        if matchPause > 0 {
+            runAfterAnimationDelay(matchPause) {
+                animateCapture()
+            }
+        } else {
+            animateCapture()
+        }
+    }
+
     func playTurn(card: Card) {
+        guard !externalControlMode || isLocalTurn else {
+            gLog(gameText("log.event.playturn_blocked_not_your_turn"))
+            return
+        }
         guard let rules = RuleLoader.shared.config else {
             gLog(gameText("log.event.playturn_blocked_rules_nil"))
             return
@@ -1180,6 +1270,14 @@ class GameManager: ObservableObject {
             gLog(gameText("log.event.playturn_blocked_no_player"))
             return
         }
+
+        if externalControlMode {
+            onLocalAction?(.playCard(cardId: card.id))
+            return
+        }
+
+        // Notify multiplayer coordinator of the local action
+        onLocalAction?(.playCard(cardId: card.id))
 
 
         self.uxEventLogs.removeAll() // Clear stale logs from previous turn
@@ -1215,6 +1313,7 @@ class GameManager: ObservableObject {
         turnTableWasNotEmpty = !tableCards.isEmpty
         turnWasOpeningTurn = completedTurnCount == 0
         turnPlayPhaseResultingTable = nil
+        turnPlayPhaseCaptureCommitted = false
         turnDrawPhaseBaseTable = nil
         
         // Phase 1: Hand Play
@@ -1259,6 +1358,7 @@ class GameManager: ObservableObject {
                                 let captured = captureResolution.captured
                                 let resultingTable = captureResolution.resultingTable
                                 self.turnPlayPhaseCaptured = captured
+                                self.turnPlayPhaseCaptureCommitted = false
                                 self.hiddenInTargetCardIds.remove(pCard.id)
                                 self.clearMoveContextAfterCue(expectedSource: "hand", expectedTarget: "table")
                                 
@@ -1268,19 +1368,9 @@ class GameManager: ObservableObject {
                                     self.monthOwners[pCard.month.rawValue] = player
                                     self.proceedToDrawPhase(player: player, rules: rules)
                                 } else {
-                                    // Unified flow: always defer capture commit until draw is revealed.
                                     self.turnPlayPhaseResultingTable = resultingTable
                                     self.monthOwners.removeValue(forKey: pCard.month.rawValue)
-
-                                    // Keep matched cards on table so impact is readable before draw reveal.
-                                    let matchPause = AnimationManager.shared.config.match_pause_duration
-                                    if matchPause > 0 {
-                                        self.runAfterAnimationDelay(matchPause) {
-                                            self.proceedToDrawPhase(player: player, rules: rules)
-                                        }
-                                    } else {
-                                        self.proceedToDrawPhase(player: player, rules: rules)
-                                    }
+                                    self.continueAfterPlayPhaseCapture(player: player, rules: rules)
                                 }
                             } else {
                                 // Choice needed
@@ -1663,6 +1753,10 @@ class GameManager: ObservableObject {
 
     func respondToGoStop(isGo: Bool) {
         guard gameState == .askingGoStop, let player = currentPlayer else { return }
+        if externalControlMode {
+            onLocalAction?(.respondToGoStop(isGo: isGo))
+            return
+        }
         guard let rules = RuleLoader.shared.config else {
             fallbackEndTurn(player: player)
             return

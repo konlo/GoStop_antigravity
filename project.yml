@@ -68,3 +68,23 @@ targets:
     settings:
       base:
         PRODUCT_NAME: GoStopCLI
+
+schemes:
+  GoStop_Host:
+    build:
+      targets:
+        GoStop: all
+    run:
+      config: Debug
+      environmentVariables:
+        SIMULATOR_BRIDGE_PORT: "8080"
+        GOSTOP_MP_AUTOROUTE: "1"
+  GoStop_Guest:
+    build:
+      targets:
+        GoStop: all
+    run:
+      config: Debug
+      environmentVariables:
+        SIMULATOR_BRIDGE_PORT: "8081"
+        GOSTOP_MP_AUTOROUTE: "1"

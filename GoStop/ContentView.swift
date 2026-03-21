@@ -1,13 +1,18 @@
 import SwiftUI
 
 struct ContentView: View {
+    @StateObject private var gameManager = GameManager()
     @State private var isShowingMultiplayerRoute = false
 #if DEBUG
     @State private var isShowingMultiplayerLab = false
 #endif
+    
+    private var shouldAutoPresentMultiplayerRoute: Bool {
+        ProcessInfo.processInfo.environment["GOSTOP_MP_AUTOROUTE"] == "1"
+    }
 
     var body: some View {
-        GameView()
+        GameView(gameManager: gameManager)
             .overlay(alignment: .topTrailing) {
                 VStack(alignment: .trailing, spacing: 10) {
                     Button {
@@ -53,7 +58,7 @@ struct ContentView: View {
                 .padding(.top, 10)
                 .padding(.trailing, 14)
             }
-            .sheet(isPresented: $isShowingMultiplayerRoute) {
+            .fullScreenCover(isPresented: $isShowingMultiplayerRoute) {
                 MultiplayerProductMultiplayerRouteView()
             }
 #if DEBUG
@@ -61,6 +66,11 @@ struct ContentView: View {
                 MultiplayerShellLabView()
             }
 #endif
+            .onAppear {
+                if shouldAutoPresentMultiplayerRoute {
+                    isShowingMultiplayerRoute = true
+                }
+            }
     }
 }
 

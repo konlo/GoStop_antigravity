@@ -282,7 +282,8 @@ struct GameView: View {
         }
     }
 
-    @StateObject var gameManager = GameManager()
+    @ObservedObject var gameManager: GameManager
+    let onProductRenderProbeChanged: ((MultiplayerProductRenderProbe) -> Void)?
     @Namespace private var cardAnimationNamespace
     @ObservedObject var config: ConfigManager = .shared
     @StateObject private var animationManager = AnimationManager.shared
@@ -310,6 +311,14 @@ struct GameView: View {
     @State private var starterSelectionState: StarterSelectionState? = nil
     @State private var starterSelectionGeneration: Int = 0
     @State private var activeCapturedPreview: CapturedPreviewState? = nil
+
+    init(
+        gameManager: GameManager = GameManager(),
+        onProductRenderProbeChanged: ((MultiplayerProductRenderProbe) -> Void)? = nil
+    ) {
+        self._gameManager = ObservedObject(wrappedValue: gameManager)
+        self.onProductRenderProbeChanged = onProductRenderProbeChanged
+    }
     
     var body: some View {
         GeometryReader { geometry in
@@ -325,10 +334,24 @@ struct GameView: View {
             mainGameContent(safeArea: safeArea, safeSize: safeSize)
         }
         .ignoresSafeArea()
+        .transaction { transaction in
+            if gameManager.externalControlMode {
+                transaction.animation = nil
+                transaction.disablesAnimations = true
+            }
+        }
         .onAppear { onAppearAction() }
         .onChange(of: config.layoutV2) { onChangeLayout($0) }
         .onChange(of: gameManager.players.first?.hand) { onChangeHand($0) }
+        .onChange(of: gameManager.players.map { $0.hand.map(\.id) }) { _ in
+            resyncSlotManagers()
+            syncProductRenderProbe()
+        }
         .onChange(of: gameManager.tableCards) { onChangeTable($0) }
+        .onChange(of: gameManager.tableCards.map(\.id)) { _ in
+            resyncSlotManagers()
+            syncProductRenderProbe()
+        }
         .onChange(of: gameManager.uxEventLogs.count) { _ in
             updateLatestRewindSnapshot()
         }
@@ -340,6 +363,7 @@ struct GameView: View {
             if !canShowCapturedPreview {
                 dismissCapturedPreview()
             }
+            syncProductRenderProbe()
         }
         .onChange(of: specialEventPopupCoordinator.activePopup?.id) { _ in
             syncSpecialEventOverlayProbe()
@@ -368,6 +392,7 @@ struct GameView: View {
             // CapturedGroupsAreaV2 will upsert fresh owner keys on next layout pass.
             capturedCardCenters.removeAll()
             dismissCapturedPreview(animated: false)
+            syncProductRenderProbe()
         }
         .onReceive(gameManager.objectWillChange) { _ in
             // Slot managers can miss nested array mutations in long animation chains.
@@ -379,6 +404,7 @@ struct GameView: View {
                 } else if self.activeCapturedPreview != nil {
                     self.syncCapturedPreviewProbe()
                 }
+                self.syncProductRenderProbe()
             }
         }
     }
@@ -595,19 +621,24 @@ struct GameView: View {
     }
 
     private func onAppearAction() {
-        gameManager.internalComputerAutomationEnabled = true
-        gameManager.externalControlMode = false
+        let isAuthoritativeMultiplayer = (gameManager.onLocalAction != nil)
+        gameManager.internalComputerAutomationEnabled = !isAuthoritativeMultiplayer
+        gameManager.externalControlMode = isAuthoritativeMultiplayer
         specialEventPopupCoordinator.markExistingLogsProcessed(gameManager.eventLogs)
         #if targetEnvironment(simulator)
-        if SimulatorBridge.shared == nil {
+        let multiplayerAutorouteEnabled = ProcessInfo.processInfo.environment["GOSTOP_MP_AUTOROUTE"] == "1"
+        let multiplayerRoleConfigured = ProcessInfo.processInfo.environment["GOSTOP_MP_AUTOROLE"] != nil
+        if SimulatorBridge.shared == nil && !multiplayerAutorouteEnabled && !multiplayerRoleConfigured {
             // Keep simulator UI behavior aligned with real device by default.
             // Enable fast animation only when explicitly requested.
             if ProcessInfo.processInfo.environment["GOSTOP_SIM_FAST_ANIMATION"] == "1" {
                 AnimationManager.shared.config.card_move_duration = 0
             }
-            SimulatorBridge.shared = SimulatorBridge(gameManager: gameManager)
+            let portStr = ProcessInfo.processInfo.environment["SIMULATOR_BRIDGE_PORT"] ?? "8080"
+            let port = UInt16(portStr) ?? 8080
+            SimulatorBridge.shared = SimulatorBridge(gameManager: gameManager, port: port)
             SimulatorBridge.shared?.start()
-            print("SimulatorBridge: Started on port 8080 (GameView)")
+            print("SimulatorBridge: Started on port \(port) (GameView)")
         }
         #endif
         if let configV2 = config.layoutV2 {
@@ -618,28 +649,37 @@ struct GameView: View {
         syncSpecialEventOverlayProbe()
         syncCapturedPreviewProbe()
         updateLatestRewindSnapshot()
+        syncProductRenderProbe()
     }
 
     private func onChangeLayout(_ newConfig: LayoutConfigV2?) {
-        AnimationManager.shared.withGameAnimation {
+        applyLayoutSync {
             if let cfg = newConfig {
-                 self.playerHandSlotManager = PlayerHandSlotManager(config: cfg)
-                 self.tableSlotManager = TableSlotManager(config: cfg)
-                 self.resyncSlotManagers()
+                self.playerHandSlotManager = PlayerHandSlotManager(config: cfg)
+                self.tableSlotManager = TableSlotManager(config: cfg)
+                self.resyncSlotManagers()
             }
         }
     }
 
     private func onChangeHand(_ newHand: [Card]?) {
-        AnimationManager.shared.withGameAnimation {
+        applyLayoutSync {
             guard let hand = newHand else { return }
             playerHandSlotManager?.sync(with: hand, compactToFront: !gameManager.isAutomationBusy)
         }
     }
 
     private func onChangeTable(_ newTableCards: [Card]) {
-        AnimationManager.shared.withGameAnimation {
+        applyLayoutSync {
             tableSlotManager?.sync(with: newTableCards)
+        }
+    }
+
+    private func applyLayoutSync(_ action: @escaping () -> Void) {
+        if gameManager.externalControlMode || AnimationManager.shared.suppressAnimations {
+            action()
+        } else {
+            AnimationManager.shared.withGameAnimation(action)
         }
     }
 
@@ -991,6 +1031,36 @@ struct GameView: View {
         }
         tableSlotManager?.sync(with: gameManager.tableCards)
     }
+
+    private func syncProductRenderProbe() {
+        guard let onProductRenderProbeChanged else { return }
+        let localPlayer = gameManager.players.first
+        let opponentPlayer = gameManager.players.dropFirst().first
+        let renderedHandCardIds: [String]
+        if let manager = playerHandSlotManager {
+            renderedHandCardIds = manager.slots
+                .sorted(by: { $0.key < $1.key })
+                .compactMap { $0.value.card?.id }
+        } else {
+            renderedHandCardIds = localPlayer?.hand.map(\.id) ?? []
+        }
+
+        let probe = MultiplayerProductRenderProbe(
+            route: "live",
+            phase: String(describing: gameManager.gameState),
+            stateVersion: nil,
+            localPlayerId: localPlayer?.id.uuidString ?? gameManager.localPlayerId,
+            currentPlayerId: gameManager.players.indices.contains(gameManager.currentTurnIndex)
+                ? gameManager.players[gameManager.currentTurnIndex].id.uuidString
+                : nil,
+            sourceLocalHandCardIds: localPlayer?.hand.map(\.id) ?? [],
+            renderedLocalHandCardIds: renderedHandCardIds,
+            tableCardIds: gameManager.tableCards.map(\.id),
+            localCapturedCardIds: localPlayer?.capturedCards.map(\.id) ?? [],
+            opponentCapturedCardIds: opponentPlayer?.capturedCards.map(\.id) ?? []
+        )
+        onProductRenderProbeChanged(probe)
+    }
     
     // MARK: - Subviews
 
@@ -1092,6 +1162,8 @@ struct GameView: View {
                 // so the user never sees overlapping modal surfaces.
                 Color.black.opacity(0.001)
                     .ignoresSafeArea()
+            } else if shouldShowRemoteChoiceWaitingOverlay {
+                remoteChoiceWaitingOverlay()
             } else if gameManager.gameState == .askingGoStop {
                 goStopOverlay()
             } else if gameManager.gameState == .askingShake {
@@ -1164,7 +1236,10 @@ struct GameView: View {
                     x: safeArea.leading + frame.midX,
                     y: safeArea.top + frame.midY + yOffset
                 )
-                .animation(.spring(response: 0.4, dampingFraction: 0.7), value: gameManager.currentTurnIndex)
+                .animation(
+                    gameManager.externalControlMode ? nil : .spring(response: 0.4, dampingFraction: 0.7),
+                    value: gameManager.currentTurnIndex
+                )
         }
     }
 
@@ -1180,13 +1255,28 @@ struct GameView: View {
         return true
     }
 
+    private var shouldShowRemoteChoiceWaitingOverlay: Bool {
+        guard gameManager.externalControlMode else { return false }
+        guard !gameManager.isLocalTurn else { return false }
+        switch gameManager.gameState {
+        case .askingGoStop, .askingShake, .choosingCapture, .choosingChrysanthemumRole:
+            return true
+        default:
+            return false
+        }
+    }
+
     private func showCapturedPreview(ownerPlayerId: String, groupType: String) {
         let nextState = CapturedPreviewState(ownerPlayerId: ownerPlayerId, groupType: groupType)
         guard canShowCapturedPreview else { return }
         guard resolvedCapturedPreviewModel(for: nextState) != nil else { return }
         if activeCapturedPreview == nextState { return }
-        withAnimation(.easeOut(duration: 0.16)) {
+        if gameManager.externalControlMode {
             activeCapturedPreview = nextState
+        } else {
+            withAnimation(.easeOut(duration: 0.16)) {
+                activeCapturedPreview = nextState
+            }
         }
     }
 
@@ -1201,8 +1291,12 @@ struct GameView: View {
             return
         }
         if animated {
-            withAnimation(.easeOut(duration: 0.12)) {
+            if gameManager.externalControlMode {
                 activeCapturedPreview = nil
+            } else {
+                withAnimation(.easeOut(duration: 0.12)) {
+                    activeCapturedPreview = nil
+                }
             }
         } else {
             activeCapturedPreview = nil
@@ -1536,6 +1630,52 @@ struct GameView: View {
                     .font(.footnote)
                     .foregroundStyle(.white.opacity(0.6))
             }
+        }
+    }
+
+    @ViewBuilder
+    func remoteChoiceWaitingOverlay() -> some View {
+        ZStack {
+            Color.black.opacity(0.55).ignoresSafeArea()
+            VStack(spacing: 16) {
+                Text(gameText("match.choice.actor_only_waiting"))
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.white)
+
+                Text(remoteChoiceWaitingDetail)
+                    .font(.body)
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.white.opacity(0.78))
+                    .padding(.horizontal, 24)
+            }
+            .padding(.horizontal, 28)
+            .padding(.vertical, 24)
+            .background(
+                RoundedRectangle(cornerRadius: 20)
+                    .fill(Color.black.opacity(0.58))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 20)
+                    .stroke(Color.white.opacity(0.18), lineWidth: 1)
+            )
+            .padding(.horizontal, 28)
+        }
+    }
+
+    private var remoteChoiceWaitingDetail: String {
+        switch gameManager.gameState {
+        case .choosingCapture:
+            return gameText("capture.title")
+        case .askingGoStop:
+            return gameText("go_stop.prompt")
+        case .askingShake:
+            return gameText("match.choice.shake.actor_only_waiting")
+        case .choosingChrysanthemumRole:
+            return gameText("chrysanthemum.role_affects_scoring")
+        default:
+            return gameText("match.choice.actor_only_waiting")
         }
     }
 

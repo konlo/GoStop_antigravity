@@ -35,7 +35,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--suite",
         choices=sorted(SCENARIO_SUITES),
-        help="Run a predefined suite (`smoke`, `socket-smoke`, `socket-parity`, `socket-duplicate`, `socket-review-fixups`, `review-fixups`, `final-validation`, `all`).",
+        help="Run a predefined suite (`smoke`, `socket-smoke`, `socket-end-to-end`, `socket-parity`, `socket-duplicate`, `socket-review-fixups`, `review-fixups`, `final-validation`, `all`).",
     )
     parser.add_argument(
         "--scenario",
