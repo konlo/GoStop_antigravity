@@ -208,7 +208,7 @@ struct OpponentAreaV2: View {
             if gameManager.players.count > 1 {
                 OpponentHandV2(
                     ctx: ctx,
-                    animationNamespace: gameManager.externalControlMode ? nil : animationNamespace,
+                    animationNamespace: AnimationManager.shared.suppressAnimations ? nil : animationNamespace,
                     gameManager: gameManager,
                     handConfig: handConfig,
                     hand: gameManager.players[1].hand
@@ -466,7 +466,7 @@ struct OpponentHandV2: View {
                 let isSourceCue = handActsAsSource && gameManager.sourceCueCardIds.contains(card.id)
                 let isTargetCue = handActsAsTarget && gameManager.targetCueCardIds.contains(card.id)
                 // Opponent Hand remains source
-                CardView(card: card, isFaceUp: isPreplayReveal, scale: handConfig.scale, animationNamespace: gameManager.externalControlMode ? nil : animationNamespace, isSource: true, isMoveSourceCue: isSourceCue, isMoveTargetCue: isTargetCue)
+                CardView(card: card, isFaceUp: isPreplayReveal, scale: handConfig.scale, animationNamespace: AnimationManager.shared.suppressAnimations ? nil : animationNamespace, isSource: true, isMoveSourceCue: isSourceCue, isMoveTargetCue: isTargetCue)
                     .scaleEffect(isPreplayReveal ? 1.08 : 1.0)
                     .shadow(color: isPreplayReveal ? .yellow.opacity(0.55) : .clear, radius: isPreplayReveal ? 8 : 0)
                     .offset(x: CGFloat(index) * spacing)
@@ -545,7 +545,7 @@ struct PlayerHandFixedSlotsView: View {
                                  let isSourceCue = handActsAsSource && gameManager.sourceCueCardIds.contains(card.id)
                                  let isTargetCue = handActsAsTarget && gameManager.targetCueCardIds.contains(card.id)
                                  // Hand card remains source
-                                 CardView(card: card, isFaceUp: true, scale: config.scale, animationNamespace: gameManager.externalControlMode ? nil : animationNamespace, isSource: true, showDebugInfo: ctx.config.debug.player?.sortedOrderOverlay == true, isMoveSourceCue: isSourceCue, isMoveTargetCue: isTargetCue)
+                                 CardView(card: card, isFaceUp: true, scale: config.scale, animationNamespace: AnimationManager.shared.suppressAnimations ? nil : animationNamespace, isSource: true, showDebugInfo: ctx.config.debug.player?.sortedOrderOverlay == true, isMoveSourceCue: isSourceCue, isMoveTargetCue: isTargetCue)
                                      .onTapGesture {
                                          gameManager.playTurn(card: card)
                                      }
@@ -601,7 +601,7 @@ struct PlayerHandGridV1: View {
                              let isHidden = movingCardIds.contains(card.id) || gameManager.hiddenInSourceCardIds.contains(card.id)
                              let isSourceCue = handActsAsSource && gameManager.sourceCueCardIds.contains(card.id)
                              let isTargetCue = handActsAsTarget && gameManager.targetCueCardIds.contains(card.id)
-                             CardView(card: card, isFaceUp: true, scale: scale, animationNamespace: gameManager.externalControlMode ? nil : animationNamespace, isSource: true, isMoveSourceCue: isSourceCue, isMoveTargetCue: isTargetCue)
+                             CardView(card: card, isFaceUp: true, scale: scale, animationNamespace: AnimationManager.shared.suppressAnimations ? nil : animationNamespace, isSource: true, isMoveSourceCue: isSourceCue, isMoveTargetCue: isTargetCue)
                                  .onTapGesture {
                                      gameManager.playTurn(card: card)
                                  }
@@ -668,7 +668,7 @@ struct CapturedAreaV2: View {
                      let targetContains = capturedActsAsTarget && gameManager.hiddenInTargetCardIds.contains(card.id)
                      let hideTargetCard = targetContains
                      let disableMatchedGeometryForRoute =
-                        gameManager.externalControlMode ||
+                        AnimationManager.shared.suppressAnimations ||
                         (gameManager.currentMoveSourceZone == "table" && gameManager.currentMoveTargetZone == "captured") ||
                         (gameManager.currentMoveSourceZone == "captured" && gameManager.currentMoveTargetZone == "captured")
                      // For table->captured overlay mode, keep target fully hidden to avoid reverse-looking trails.
@@ -761,7 +761,7 @@ struct CapturedGroupsAreaV2: View {
                                     )
                                 }
                                 .onChange(of: frame) { nextFrame in
-                                    guard !gameManager.externalControlMode else { return }
+                                    guard !AnimationManager.shared.suppressAnimations else { return }
                                     upsertCapturedGroupCenter(
                                         ownerPlayerId: ownerPlayerId,
                                         groupType: group.type,
@@ -880,7 +880,7 @@ struct CapturedGroupSlotView: View {
                     let targetContains = capturedActsAsTarget && gameManager.hiddenInTargetCardIds.contains(card.id)
                     let hideTargetCard = targetContains
                     let disableMatchedGeometryForRoute =
-                        gameManager.externalControlMode ||
+                        AnimationManager.shared.suppressAnimations ||
                         (gameManager.currentMoveSourceZone == "table" && gameManager.currentMoveTargetZone == "captured") ||
                         (gameManager.currentMoveSourceZone == "captured" && gameManager.currentMoveTargetZone == "captured")
                     // For table->captured overlay mode, keep target fully hidden to avoid reverse-looking trails.
@@ -981,7 +981,7 @@ struct TableAreaV2: View {
         let tableActsAsSource = gameManager.currentMoveSourceZone == "table"
         let tableActsAsTarget = gameManager.currentMoveTargetZone == "table"
         let disableMatchedGeometryForRoute =
-            gameManager.externalControlMode ||
+            AnimationManager.shared.suppressAnimations ||
             (gameManager.currentMoveSourceZone == "table" && gameManager.currentMoveTargetZone == "captured")
         let hideTableTarget = tableActsAsTarget && gameManager.currentMoveSourceZone == "deck"
         let tableToCapturedSourceCueScale: CGFloat = (gameManager.currentMoveSourceZone == "table" && gameManager.currentMoveTargetZone == "captured") ? 1.0 : 1.06
@@ -1040,7 +1040,7 @@ struct TableFixedSlotsView: View {
         let tableActsAsSource = gameManager.currentMoveSourceZone == "table"
         let tableActsAsTarget = gameManager.currentMoveTargetZone == "table"
         let disableMatchedGeometryForRoute =
-            gameManager.externalControlMode ||
+            AnimationManager.shared.suppressAnimations ||
             (gameManager.currentMoveSourceZone == "table" && gameManager.currentMoveTargetZone == "captured")
         let hideTableTarget = tableActsAsTarget && gameManager.currentMoveSourceZone == "deck"
         let tableToCapturedSourceCueScale: CGFloat = (gameManager.currentMoveSourceZone == "table" && gameManager.currentMoveTargetZone == "captured") ? 1.0 : 1.06
@@ -1235,7 +1235,7 @@ struct DeckAreaV2: View {
                     let isSourceCue = deckActsAsSource && gameManager.sourceCueCardIds.contains(topCard.id)
                     let isTargetCue = deckActsAsTarget && gameManager.targetCueCardIds.contains(topCard.id)
                     let deckToTableSourceCueScale: CGFloat = (gameManager.currentMoveSourceZone == "deck" && gameManager.currentMoveTargetZone == "table") ? 1.0 : 1.06
-                    CardView(card: topCard, isFaceUp: false, scale: config.scale, animationNamespace: gameManager.externalControlMode ? nil : animationNamespace, isMoveSourceCue: isSourceCue, isMoveTargetCue: isTargetCue, sourceCueScaleMultiplier: deckToTableSourceCueScale)
+                    CardView(card: topCard, isFaceUp: false, scale: config.scale, animationNamespace: AnimationManager.shared.suppressAnimations ? nil : animationNamespace, isMoveSourceCue: isSourceCue, isMoveTargetCue: isTargetCue, sourceCueScaleMultiplier: deckToTableSourceCueScale)
                         .offset(x: CGFloat(min(5, deckCount - 1)) * 0.5, y: CGFloat(min(5, deckCount - 1)) * 0.5)
                         .opacity((movingCardIds.contains(topCard.id) || gameManager.hiddenInSourceCardIds.contains(topCard.id)) ? 0 : 1)
                 }

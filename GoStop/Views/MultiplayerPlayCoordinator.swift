@@ -5,6 +5,8 @@ class MultiplayerPlayCoordinatorViewModel: ObservableObject {
     @Published var gameManager: GameManager
     
     private let stateMapper: MultiplayerStateMapper
+    private var hasBoundAuthoritativeSnapshot = false
+    private var lastAppliedStateVersion: Int?
     @Published var showEmojiPicker: Bool = false
     @Published var showScoreboardSheet: Bool = false
     
@@ -41,10 +43,32 @@ class MultiplayerPlayCoordinatorViewModel: ObservableObject {
             if let resolvedLocalPlayerId = resolvedLocalPlayerId(from: snapshot, mappedPlayers: mappedState.players) {
                 gameManager.localPlayerId = resolvedLocalPlayerId
             }
-            gameManager.applyMappedState(mappedState)
+            gameManager.applyMappedState(mappedState, mode: applicationMode(for: snapshot))
+            hasBoundAuthoritativeSnapshot = true
+            lastAppliedStateVersion = mappedState.stateVersion
         } catch {
             print("Failed to map multiplayer snapshot: \(error)")
         }
+    }
+
+    private func applicationMode(for snapshot: MultiplayerSnapshot) -> MultiplayerMappedStateApplicationMode {
+        guard hasBoundAuthoritativeSnapshot else {
+            return .resetAndReplace
+        }
+
+        switch snapshot.reason {
+        case .gameStarted, .resume, .resync, .gapDetected:
+            return .resetAndReplace
+        case .localPreview:
+            break
+        }
+
+        if let lastAppliedStateVersion,
+           snapshot.state.stateVersion < lastAppliedStateVersion {
+            return .resetAndReplace
+        }
+
+        return .animatedInPlace
     }
 
     private func resolvedLocalPlayerId(from snapshot: MultiplayerSnapshot, mappedPlayers: [Player]) -> String? {
@@ -93,9 +117,13 @@ struct MultiplayerAuthoritativeGameCoordinatorView: View {
         self.snapshot = snapshot
         self.onActionSent = onActionSent
         self.onProductRenderProbeChanged = onProductRenderProbeChanged
-        let viewModel = MultiplayerPlayCoordinatorViewModel(initialSnapshot: snapshot)
+        let viewModel = MultiplayerPlayCoordinatorViewModel()
         viewModel.onActionSent = onActionSent
         _viewModel = StateObject(wrappedValue: viewModel)
+    }
+
+    private var snapshotIdentity: String {
+        "\(snapshot.snapshotId):\(snapshot.state.stateVersion)"
     }
 
     var body: some View {
@@ -105,6 +133,11 @@ struct MultiplayerAuthoritativeGameCoordinatorView: View {
         )
             .onAppear {
                 viewModel.onActionSent = onActionSent
+                viewModel.applyAuthoritativeSnapshot(snapshot)
+            }
+            .onChange(of: snapshotIdentity) { _ in
+                viewModel.onActionSent = onActionSent
+                viewModel.applyAuthoritativeSnapshot(snapshot)
             }
     }
 }

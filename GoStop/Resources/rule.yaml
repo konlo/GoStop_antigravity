@@ -168,7 +168,7 @@ nagari:
   next_game_multiplier: 2
 
 endgame:
-  max_round_score: 50
+  max_round_score: 500
   score_check_timing: "post_multiplier" # pre_multiplier or post_multiplier
   max_go_count: 5
   instant_end_on_bak:

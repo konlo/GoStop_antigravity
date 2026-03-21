@@ -335,7 +335,7 @@ struct GameView: View {
         }
         .ignoresSafeArea()
         .transaction { transaction in
-            if gameManager.externalControlMode {
+            if AnimationManager.shared.suppressAnimations {
                 transaction.animation = nil
                 transaction.disablesAnimations = true
             }
@@ -676,7 +676,7 @@ struct GameView: View {
     }
 
     private func applyLayoutSync(_ action: @escaping () -> Void) {
-        if gameManager.externalControlMode || AnimationManager.shared.suppressAnimations {
+        if AnimationManager.shared.suppressAnimations {
             action()
         } else {
             AnimationManager.shared.withGameAnimation(action)
@@ -1237,7 +1237,7 @@ struct GameView: View {
                     y: safeArea.top + frame.midY + yOffset
                 )
                 .animation(
-                    gameManager.externalControlMode ? nil : .spring(response: 0.4, dampingFraction: 0.7),
+                    AnimationManager.shared.suppressAnimations ? nil : .spring(response: 0.4, dampingFraction: 0.7),
                     value: gameManager.currentTurnIndex
                 )
         }

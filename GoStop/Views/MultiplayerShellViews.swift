@@ -3768,7 +3768,7 @@ private struct MultiplayerProductLiveGameView: View {
                     store.updateProductRenderProbe(probe)
                 }
             )
-            .id("\(snapshot.snapshotId):\(snapshot.state.stateVersion)")
+            .id("\(snapshot.state.roomId ?? "room"):\(snapshot.state.gameId)")
 
             if let reconnectOverlay = store.reconnectOverlay {
                 MultiplayerReconnectOverlay(
@@ -4522,7 +4522,7 @@ struct MultiplayerShellShowcaseView: View {
                     store.updateProductRenderProbe(probe)
                 }
             )
-            .id("\(snapshot.snapshotId):\(snapshot.state.stateVersion)")
+            .id("\(snapshot.state.roomId ?? "room"):\(snapshot.state.gameId)")
         } else {
             MultiplayerLiveShellView(
                 state: store.liveState,

@@ -80,6 +80,22 @@
 
 ## Log Entries
 
+### [2026-03-21 22:54:00 KST] User Request: single과 multiplayer가 동일한 화투 동작 module을 사용하도록 구조 수정
+- **Skills Planned**: ["gostop-ui-playability", "project_logger"]
+- **Skills Used**: ["gostop-ui-playability", "project_logger"]
+- **Trigger Reason**: "multiplayer가 single과 다른 snapshot 전용 애니메이션 경로를 타지 않게 하고, 같은 `GameView`/카드 전이 모듈과 `GameManager` 턴 처리 경로를 유지한 채 authoritative 상태만 주입받도록 구조를 바꾸기 위함."
+- **Files Touched**: ["GoStop/Core/GameManager.swift", "GoStop/Core/MultiplayerGameManagerHelper.swift", "GoStop/Views/MultiplayerPlayCoordinator.swift", "GoStop/Views/GameView.swift", "GoStop/Views/GameAreaViews.swift", "GoStop/Views/MultiplayerShellViews.swift", "project_progress.md"]
+- **Validation**: "`xcodebuild -project GoStop.xcodeproj -scheme GoStop_Host -configuration Debug -sdk iphonesimulator CODE_SIGNING_ALLOWED=NO build`를 다시 실행해 `BUILD SUCCEEDED`를 확인했다. 빌드 중 기존 경고는 `MultiplayerSimulatorBridge.swift`의 unused local binding 4건뿐이며 이번 변경과 무관하다."
+- **Outcome**: "멀티 라이브 뷰가 더 이상 stateVersion마다 `GameView`를 재생성하지 않고, persistent coordinator가 snapshot을 인플레이스로 반영한다. 또한 `externalControlMode`를 애니메이션 차단 플래그로 쓰던 경로를 제거해 single과 같은 `GameView`/matched-geometry 카드 전이 모듈이 multiplayer에도 유지되도록 정리했다. 로컬 멀티플레이 입력은 이제 서버 액션을 relay하면서도 같은 `GameManager.playTurn`/선택 응답 경로를 그대로 타므로 single 쪽 턴 처리 변경이 multiplayer 로컬 플레이에도 같이 반영된다. 초기 bootstrap/resync만 무애니메이션 replace를 유지하고, 정상 live 업데이트는 animated in-place로 반영한다."
+
+### [2026-03-21 22:43:56 KST] User Request: single play과 multiplayer의 animation 동작 차이 원인 조사
+- **Skills Planned**: ["gostop-ui-playability", "project_logger"]
+- **Skills Used**: ["gostop-ui-playability", "project_logger"]
+- **Trigger Reason**: "single play와 multiplayer가 같은 `GameView`를 쓰는데도 카드 이동 애니메이션이 다르게 보이는 이유를, 실제 상태 갱신 경로와 SwiftUI 애니메이션 비활성화 지점을 기준으로 확인하기 위함."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`GameManager.playTurn`/`animateTableToCaptured`, `MultiplayerGameManagerHelper.applyMappedState`, `GameView`의 `externalControlMode` 처리, `MultiplayerShellViews`의 snapshot `.id(...)` 재생성 경로를 대조 확인."
+- **Outcome**: "원인 규명 완료. single play는 로컬 엔진이 단계별 `withAnimation`과 move overlay 상태를 직접 구동하지만, multiplayer는 authoritative snapshot을 받을 때마다 presentation 상태를 초기화하고 애니메이션을 suppress한 뒤 뷰도 stateVersion 기준으로 재생성해 연속 이동 애니메이션이 끊기는 구조임."
+
 ### [2026-03-21 10:17:54 KST] User Request: 멀티플레이어 테스트용 `multi_test_scenario.py` 관리 체계 추가 및 기존 시나리오 확장
 - **Skills Planned**: ["game-external-test-agent", "project_logger"]
 - **Skills Used**: []
@@ -3170,3 +3186,27 @@
 - **Files Touched**: ["project_progress.md"]
 - **Validation**: "`project_progress.md`에서 2026-03-21자 로그 전체를 검토했고, `git status --short`, `git diff --stat`, 주요 멀티플레이 관련 파일 diff를 함께 확인해 오늘 작업의 실제 수정 축이 multiplayer UI scenario 관리, simulator UI automation, render parity 검증, authoritative/product sync 수정에 집중되어 있음을 재확인했다."
 - **Outcome**: "오늘 작업 요약과 commit message 후보를 준비했다. 현재 상단 `Current Status`와 `Next Action Items`도 오늘 멀티플레이 UI 시나리오 hardening 결과 기준으로 갱신됐다."
+
+### [2026-03-21 22:34:22 KST] User Request: 처음부터 끝까지 모든 화투를 사용하는 multiplay test scenario 있는지 확인해서 수행
+- **Skills Planned**: ["gostop-test-reliability", "project_logger"]
+- **Skills Used**: ["gostop-test-reliability", "project_logger"]
+- **Trigger Reason**: "사용자가 멀티플레이 테스트 시나리오 중 정확히 '처음부터 끝까지 모든 화투를 사용하는' 시나리오가 있는지 확인하고 실제로 수행해 달라고 요청했다. 기존 `MP-016`이 full-match UI 시나리오인지, 그리고 그것이 deck exhaustion까지 보장하는지 구분해서 확인할 필요가 있었다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`tests/test_agent/multi_test_scenario.py`, `tests/test_agent/multiplayer/scenarios.py`, `multiplayer_test_scenarios.md`, `tests/test_agent/multiplayer_ui_auto_play.py`, `tests/test_agent/multiplayer/socket_transport.py`를 grep해 exact한 deck exhaustion/assertion 유무를 확인했다. 그 결과 기존 `MP-016`은 room bootstrap부터 `terminalSummary -> leaveRoom -> roomClosed`까지 가는 seeded full-match always-go 시나리오이지만, '모든 화투를 다 사용했다'는 assertion은 없음을 확인했다. 이어서 `PYTHONDONTWRITEBYTECODE=1 python3 tests/test_agent/multi_test_scenario.py --suite managed-end-to-end-always-go --mode ui --install-app --app-path /tmp/gostop_ios_build/Build/Products/Debug-iphonesimulator/GoStop.app --fast-animation --capture-final-screenshot`를 실행했고 `MP-016 PASS UI autoroute -> test_artifacts/multiplayer/managed/managed-end-to-end-always-go/ui`를 확인했다. 최신 `summary.md`에는 `Invite Code: 0025`, `Total Gameplay Actions: 14`, `Host Terminal Seen: True`, `Guest Terminal Seen: True`, `Host Leave Sent: True`, `Guest Leave Sent: True`가 기록됐고, `timeline.jsonl`에는 host/guest가 `live -> matchEnded -> leave_after_match_end -> entry`로 복귀한 흐름이 남았다."
+- **Outcome**: "저장소에는 현재 '모든 화투를 다 소진한다'를 명시적으로 검증하는 멀티플레이 시나리오는 없다. 대신 `MP-016`이 시작부터 매치 종료/퇴장까지 가는 full-match 시나리오로 존재하며, 최신 실제 두 simulator UI 실행도 PASS였다. 다만 이번 run도 총 gameplay action 14회에서 `matchEnded`로 끝났으므로, 이 시나리오는 full-match/end-to-end는 맞지만 deck exhaustion 자체를 계약으로 고정한 시나리오는 아니다."
+
+### [2026-03-21 22:36:00 KST] User Request: 라운드 최대 점수는 default 500 점으로 해줘
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "사용자가 라운드 최대 점수의 기본값을 500으로 올려 달라고 요청했다. 런타임 기본 설정, 앱 리소스 룰, 설정 화면 fallback, 테스트 기본 룰이 따로 흩어져 있어 동일 기본값으로 맞춰야 했다."
+- **Files Touched**: ["configuration.yaml", "GoStop/Resources/rule.yaml", "GoStop/Views/RuleSettingsView.swift", "tests/test_agent/rule.yaml", "tests/test_agent/ai_player.py", "project_progress.md"]
+- **Validation**: "`rg -n \"max_round_score: 500|\\?\\? 500|defaults to 500|< 500\" configuration.yaml GoStop/Resources/rule.yaml tests/test_agent/rule.yaml GoStop/Views/RuleSettingsView.swift tests/test_agent/ai_player.py`로 기본값 반영을 재확인했다. 이어서 `xcodebuild -project GoStop.xcodeproj -scheme GoStop_Host -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 16' -derivedDataPath /tmp/gostop_ios_build build CODE_SIGNING_ALLOWED=NO`를 실행했고 `BUILD SUCCEEDED`를 확인했다."
+- **Outcome**: "라운드 최대 점수 기본값을 500으로 변경했다. 이제 루트 `configuration.yaml`, 앱 번들 `GoStop/Resources/rule.yaml`, 설정 화면 fallback, 테스트용 `tests/test_agent/rule.yaml`, maxScore 검증 주석/임계값이 모두 500 기준으로 맞춰졌다. 이미 사용자 기기에 저장된 기존 설정 파일 값은 자동으로 바뀌지 않고, 새 기본값은 fresh/default 경로에 적용된다."
+
+### [2026-03-21 22:40:10 KST] User Request: multiplayer test scenario 동작 방법과 참고 파일을 다른 LLM용 md file로 정리
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "사용자가 멀티플레이 테스트 시나리오를 다른 LLM이 바로 수행할 수 있게 실행 방법, 참고 파일, suite 선택 기준, artifact 확인 위치를 한 md 파일로 정리해 달라고 요청했다."
+- **Files Touched**: ["multiplayer_test_scenario_runbook.md", "project_progress.md"]
+- **Validation**: "`tests/test_agent/multi_test_scenario.py`, `tests/test_agent/multiplayer_runner.py`, `tests/test_agent/multiplayer/scenarios.py`, `tests/test_agent/multiplayer_ui_auto_play.py`, `multiplayer_test_scenarios.md`를 다시 읽어 실제 지원 플래그, managed suite 이름, UI 지원 시나리오, artifact 구조, 주요 참고 파일을 교차 확인했다. 이후 생성한 `multiplayer_test_scenario_runbook.md`를 다시 열어 명령과 파일 경로가 현재 코드와 맞는지 검토했다."
+- **Outcome**: "루트에 `multiplayer_test_scenario_runbook.md`를 추가했다. 이 문서는 다른 LLM이 바로 따라 할 수 있도록 entrypoint, fixture/socket/ui 실행 명령, managed suite 의미, 참고해야 할 Python/Swift 파일, artifact 확인 위치, 새 시나리오 추가 절차, UI/socket 전제조건까지 한 파일에 정리한 실행 runbook이다."

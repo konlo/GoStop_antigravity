@@ -267,7 +267,7 @@ struct RuleSettingsView: View {
             settingStepper(label: gameText("rule_settings.label.min_score_2_players"), value: Binding(get: { configManager.ruleConfig?.go_stop.min_score_2_players ?? 7 }, set: { configManager.ruleConfig?.go_stop.min_score_2_players = $0 }))
             settingStepper(label: gameText("rule_settings.label.min_score_3_players"), value: Binding(get: { configManager.ruleConfig?.go_stop.min_score_3_players ?? 3 }, set: { configManager.ruleConfig?.go_stop.min_score_3_players = $0 }))
             settingStepper(label: gameText("rule_settings.label.max_go_count"), value: Binding(get: { configManager.ruleConfig?.endgame.max_go_count ?? 5 }, set: { configManager.ruleConfig?.endgame.max_go_count = $0 }))
-            settingStepper(label: gameText("rule_settings.label.max_round_score"), value: Binding(get: { configManager.ruleConfig?.endgame.max_round_score ?? 50 }, set: { configManager.ruleConfig?.endgame.max_round_score = $0 }))
+            settingStepper(label: gameText("rule_settings.label.max_round_score"), value: Binding(get: { configManager.ruleConfig?.endgame.max_round_score ?? 500 }, set: { configManager.ruleConfig?.endgame.max_round_score = $0 }))
         }
     }
     

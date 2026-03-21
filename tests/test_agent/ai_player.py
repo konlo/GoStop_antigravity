@@ -135,13 +135,13 @@ class AIPlayer(TestAgent):
             # Rule 2: Max Score Enforcement
             if end_reason == "maxScore":
                 # A maxScore game end MUST mean someone reached the threshold or an instant end condition fired.
-                # In testing, max_round_score is 50.
+                # In testing, max_round_score defaults to 500.
                 if penalty_result:
-                    # Check if finalScore >= 50 or if instant end conditions triggered
+                    # Check if finalScore >= 500 or if instant end conditions triggered
                     final_score = penalty_result.get("finalScore", 0)
                     has_instant_end = penalty_result.get("isGwangbak") or penalty_result.get("isPibak") or penalty_result.get("isMungbak")
                     go_count = player.get("goCount", 0)
-                    if final_score < 50 and go_count < 5 and not has_instant_end:
+                    if final_score < 500 and go_count < 5 and not has_instant_end:
                         # Log warning, not strict error, as rule.yaml config might change max_score
                         logger.warning(f"Player {p_idx} ended via maxScore but stats seem low (Score:{final_score}, Go:{go_count})")
 

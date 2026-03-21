@@ -143,7 +143,7 @@ class GameManager: ObservableObject {
     
     func sendChat(emojiId: String) {
         let action = MultiplayerAction.chat(emojiId: emojiId)
-        self.onLocalAction?(action)
+        self.relayLocalMultiplayerAction(action)
         
         // Optimistically show locally if desired, or wait for server reflection.
         // For Go-Stop, waiting for server reflection is safer for sync.
@@ -254,6 +254,7 @@ class GameManager: ObservableObject {
     var externalControlMode = false
     @Published var localPlayerId: String? = nil
     private var internalComputerActionScheduled = false
+    private var suppressExternalActionRelay = false
 
     var isLocalTurn: Bool {
         guard externalControlMode else { return true }
@@ -271,6 +272,18 @@ class GameManager: ObservableObject {
     var currentPlayer: Player? {
         guard players.indices.contains(currentTurnIndex) else { return nil }
         return players[currentTurnIndex]
+    }
+
+    private func relayLocalMultiplayerAction(_ action: MultiplayerAction) {
+        guard !suppressExternalActionRelay else { return }
+        onLocalAction?(action)
+    }
+
+    private func withSuppressedExternalActionRelay(_ action: () -> Void) {
+        let previous = suppressExternalActionRelay
+        suppressExternalActionRelay = true
+        defer { suppressExternalActionRelay = previous }
+        action()
     }
 
     private func gameEndReasonText(_ reason: GameEndReason) -> String {
@@ -760,8 +773,7 @@ class GameManager: ObservableObject {
     func respondToShake(month: Int, didShake: Bool) {
         guard gameState == .askingShake, let player = currentPlayer else { return }
         if externalControlMode {
-            onLocalAction?(.respondToShake(month: month, didShake: didShake))
-            return
+            relayLocalMultiplayerAction(.respondToShake(month: month, didShake: didShake))
         }
         
         if didShake {
@@ -782,7 +794,13 @@ class GameManager: ObservableObject {
             if let card = pendingShakeCard {
                 pendingShakeCard = nil
                 pendingShakeMonth = nil
-                playTurn(card: card)
+                if externalControlMode {
+                    withSuppressedExternalActionRelay {
+                        playTurn(card: card)
+                    }
+                } else {
+                    playTurn(card: card)
+                }
             } else {
                 maybeScheduleInternalComputerAction()
             }
@@ -797,8 +815,7 @@ class GameManager: ObservableObject {
               let player = currentPlayer,
               let card = pendingChrysanthemumCard else { return }
         if externalControlMode {
-            onLocalAction?(.respondToChrysanthemumChoice(role: role.rawValue))
-            return
+            relayLocalMultiplayerAction(.respondToChrysanthemumChoice(role: role.rawValue))
         }
         
         gLog(gameText("log.event.chrysanthemum_role_chosen", ["player": player.name, "role": role.rawValue]))
@@ -989,8 +1006,7 @@ class GameManager: ObservableObject {
     func respondToCapture(selectedCard: Card) {
         guard let player = currentPlayer else { return }
         if externalControlMode {
-            onLocalAction?(.respondToCapture(cardId: selectedCard.id))
-            return
+            relayLocalMultiplayerAction(.respondToCapture(cardId: selectedCard.id))
         }
         let playedCard = pendingCapturePlayedCard
         let drawnCard = pendingCaptureDrawnCard
@@ -1271,13 +1287,8 @@ class GameManager: ObservableObject {
             return
         }
 
-        if externalControlMode {
-            onLocalAction?(.playCard(cardId: card.id))
-            return
-        }
-
         // Notify multiplayer coordinator of the local action
-        onLocalAction?(.playCard(cardId: card.id))
+        relayLocalMultiplayerAction(.playCard(cardId: card.id))
 
 
         self.uxEventLogs.removeAll() // Clear stale logs from previous turn
@@ -1754,8 +1765,7 @@ class GameManager: ObservableObject {
     func respondToGoStop(isGo: Bool) {
         guard gameState == .askingGoStop, let player = currentPlayer else { return }
         if externalControlMode {
-            onLocalAction?(.respondToGoStop(isGo: isGo))
-            return
+            relayLocalMultiplayerAction(.respondToGoStop(isGo: isGo))
         }
         guard let rules = RuleLoader.shared.config else {
             fallbackEndTurn(player: player)
