@@ -211,7 +211,11 @@ final class DefaultMultiplayerStateMapper: MultiplayerStateMapper {
                 existingMatch = nil
             }
 
-            let player = Player(id: existingMatch?.id ?? UUID(), name: proj.name, money: proj.money)
+            let player = existingMatch ?? Player(
+                id: UUID(uuidString: proj.playerId) ?? UUID(),
+                name: proj.name,
+                money: proj.money
+            )
             usedPlayerIds.insert(player.id)
             
             player.score = proj.score

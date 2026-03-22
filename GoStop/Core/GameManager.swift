@@ -330,7 +330,7 @@ class GameManager: ObservableObject {
         setupGame()
     }
 
-    private func bindPlayerChangeForwarding() {
+    func refreshPlayerChangeForwarding() {
         playerChangeCancellables = players.map { player in
             player.objectWillChange
                 .sink { [weak self] _ in
@@ -464,7 +464,7 @@ class GameManager: ObservableObject {
         let computer = Player(name: gameText("players.default.computer"), money: 10000)
         computer.isComputer = true
         self.players = [player1, computer]
-        bindPlayerChangeForwarding()
+        refreshPlayerChangeForwarding()
         self.currentTurnIndex = 0
         self.currentRoundStarterIndex = nil
         self.outOfPlayCards = []

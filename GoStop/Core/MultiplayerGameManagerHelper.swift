@@ -47,6 +47,7 @@ extension GameManager: MultiplayerGameManagerHelper {
 
             // Sync players
             self.players = mappedState.players
+            self.refreshPlayerChangeForwarding()
 
             // Sync choices
             self.pendingCaptureOptions = mappedState.pendingCaptureOptions

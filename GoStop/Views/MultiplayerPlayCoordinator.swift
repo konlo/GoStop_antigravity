@@ -1,6 +1,7 @@
 import SwiftUI
 
 /// Coordinator that bridges authoritative Multiplayer network state into the local GameView rendering engine.
+@MainActor
 class MultiplayerPlayCoordinatorViewModel: ObservableObject {
     @Published var gameManager: GameManager
     
@@ -131,13 +132,14 @@ struct MultiplayerAuthoritativeGameCoordinatorView: View {
             gameManager: viewModel.gameManager,
             onProductRenderProbeChanged: onProductRenderProbeChanged
         )
+            .task(id: snapshotIdentity) {
+                await MainActor.run {
+                    viewModel.onActionSent = onActionSent
+                    viewModel.applyAuthoritativeSnapshot(snapshot)
+                }
+            }
             .onAppear {
                 viewModel.onActionSent = onActionSent
-                viewModel.applyAuthoritativeSnapshot(snapshot)
-            }
-            .onChange(of: snapshotIdentity) { _ in
-                viewModel.onActionSent = onActionSent
-                viewModel.applyAuthoritativeSnapshot(snapshot)
             }
     }
 }
@@ -145,8 +147,9 @@ struct MultiplayerAuthoritativeGameCoordinatorView: View {
 struct MultiplayerPlayCoordinatorView: View {
     @StateObject private var viewModel: MultiplayerPlayCoordinatorViewModel
     
-    init(viewModel: MultiplayerPlayCoordinatorViewModel = MultiplayerPlayCoordinatorViewModel()) {
-        _viewModel = StateObject(wrappedValue: viewModel)
+    @MainActor
+    init(viewModel: MultiplayerPlayCoordinatorViewModel? = nil) {
+        _viewModel = StateObject(wrappedValue: viewModel ?? MultiplayerPlayCoordinatorViewModel())
     }
     
     var body: some View {

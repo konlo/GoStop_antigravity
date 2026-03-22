@@ -80,6 +80,14 @@
 
 ## Log Entries
 
+### [2026-03-22 10:32:55 KST] User Request: single과 multiplayer animation 차이를 동영상으로 재확인
+- **Skills Planned**: ["gostop-ui-playability", "project_logger"]
+- **Skills Used**: ["gostop-ui-playability", "project_logger"]
+- **Trigger Reason**: "사용자 체감 기준으로 single과 multiplayer animation이 아직 다르다고 보고되어, 실제 simulator 재현과 화면 녹화로 차이를 다시 확인해야 하기 때문."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "iPhone 16 Plus에서 single deterministic 턴을 simulator bridge로 재현하며 `/tmp/gostop_anim_compare_20260322_103255/single.mp4`를 녹화했고, iPhone 16e host + iPhone 16 guest에서 `python3 tests/test_agent/multiplayer_ui_auto_play.py --scenario-id MP-017 ...`를 실행하며 `/tmp/gostop_anim_compare_20260322_103255/multi_host.mp4`를 녹화했다. 이어 `cv2`로 `/tmp/gostop_anim_compare_20260322_103255/single_detail.png`, `/tmp/gostop_anim_compare_20260322_103255/multi_host_detail.png`, `/tmp/gostop_anim_compare_20260322_103255/compare_detail.png`를 생성해 프레임 비교했고, 멀티 자동화 artifact `/tmp/gostop_anim_compare_20260322_103255/multi_ui/action_log.jsonl`과 `summary.md`도 함께 확인했다."
+- **Outcome**: "사용자 지적이 맞았다. single은 카드가 중앙 이동 프레임을 거쳐 hand/captured가 바로 갱신되지만, multiplayer host는 첫 `playCard` 후 authoritative state가 `stateVersion 2`, `choicePending`, `captured +1`로 진행됐는데도 render probe 기준 hand/captured가 이전 상태에 머물렀다. `MP-017`은 `actionIndex=1 actor=host actionType=playCard`에서 즉시 FAIL했고, 이는 멀티 렌더가 single과 동일한 시각 타이밍으로 따라오지 못하고 있음을 동영상/프레임 strip으로 재확인한 결과다."
+
 ### [2026-03-21 22:54:00 KST] User Request: single과 multiplayer가 동일한 화투 동작 module을 사용하도록 구조 수정
 - **Skills Planned**: ["gostop-ui-playability", "project_logger"]
 - **Skills Used**: ["gostop-ui-playability", "project_logger"]
@@ -3210,3 +3218,11 @@
 - **Files Touched**: ["multiplayer_test_scenario_runbook.md", "project_progress.md"]
 - **Validation**: "`tests/test_agent/multi_test_scenario.py`, `tests/test_agent/multiplayer_runner.py`, `tests/test_agent/multiplayer/scenarios.py`, `tests/test_agent/multiplayer_ui_auto_play.py`, `multiplayer_test_scenarios.md`를 다시 읽어 실제 지원 플래그, managed suite 이름, UI 지원 시나리오, artifact 구조, 주요 참고 파일을 교차 확인했다. 이후 생성한 `multiplayer_test_scenario_runbook.md`를 다시 열어 명령과 파일 경로가 현재 코드와 맞는지 검토했다."
 - **Outcome**: "루트에 `multiplayer_test_scenario_runbook.md`를 추가했다. 이 문서는 다른 LLM이 바로 따라 할 수 있도록 entrypoint, fixture/socket/ui 실행 명령, managed suite 의미, 참고해야 할 Python/Swift 파일, artifact 확인 위치, 새 시나리오 추가 절차, UI/socket 전제조건까지 한 파일에 정리한 실행 runbook이다."
+
+### [2026-03-22 17:11:58 KST] User Request: single과 multiplayer animation mismatch를 실제 product UI 기준으로 수정
+- **Skills Planned**: ["gostop-ui-playability", "project_logger"]
+- **Skills Used**: ["gostop-ui-playability", "project_logger"]
+- **Trigger Reason**: "사용자가 single과 multiplayer의 카드 이동이 여전히 다르다고 지적했고, 실제 product multiplayer live route가 single과 동일한 모듈/연속성으로 동작하도록 구조 차이를 제거해야 했다."
+- **Files Touched**: ["GoStop/Core/GameManager.swift", "GoStop/Core/MultiplayerGameManagerHelper.swift", "GoStop/Core/MultiplayerStateMapper.swift", "GoStop/Views/MultiplayerPlayCoordinator.swift", "GoStop/Views/MultiplayerShellViews.swift", "GoStopCLI/main.swift", "project_progress.md"]
+- **Validation**: "`xcodebuild -project GoStop.xcodeproj -scheme GoStop_Host -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 16' -derivedDataPath /tmp/gostop_anim_fix_build build CODE_SIGNING_ALLOWED=NO`와 `xcodebuild -project GoStop.xcodeproj -scheme GoStopCLI -configuration Debug -derivedDataPath /tmp/gostop_anim_fix_cli build CODE_SIGNING_ALLOWED=NO` 모두 `BUILD SUCCEEDED`를 확인했다. 이어서 새 CLI websocket authority(`/tmp/gostop_anim_fix_cli/Build/Products/Debug/GoStopCLI --room-transport-websocket-server`)로 교체 후 `PYTHONDONTWRITEBYTECODE=1 python3 tests/test_agent/multiplayer_ui_auto_play.py --scenario-id MP-017 --host-udid 988B3B75-DD16-49AE-B5D7-B046B19A357C --guest-udid 01DE5F5D-C372-4BE2-8CAB-3FF25E5AFBFD --host-port 8080 --guest-port 8081 --transport-url ws://127.0.0.1:9092 --install-app --app-path /tmp/gostop_anim_fix_build/Build/Products/Debug-iphonesimulator/GoStop.app --output-root /tmp/gostop_anim_fix_verify_20260322_173900/multi_ui`를 실행했고 `summary.md` 기준 `Success: PASS`, `Total Gameplay Actions: 5`, `Capture Probe Failure Count: 0`를 확인했다."
+- **Outcome**: "멀티플레이 live route가 single과 같은 렌더/애니메이션 연속성을 유지하도록 snapshot 적용과 view remount 경로를 정리했고, 새 room bootstrap이 이전 authoritative 경기 상태를 재사용하지 않도록 CLI authority 초기화도 고쳤다. 그 결과 MP-017 product UI 검증이 PASS로 돌아섰고, host/guest 모두 2턴 이상 진행하면서 rendered hand/captured 상태가 source state와 계속 일치했다."

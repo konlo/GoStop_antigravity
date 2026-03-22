@@ -36,9 +36,8 @@ class CLIEngine {
                     try self.executeRoomGameplayCommand(request)
                 },
                 startGameIfNeeded: { [unowned self] in
-                    if self.gameManager.gameState != .ready {
-                        self.gameManager.setupGame(seed: self.currentSeed)
-                    }
+                    // Fresh room bootstrap must not reuse prior authoritative match state.
+                    self.gameManager.setupGame(seed: self.currentSeed)
                     self.gameManager.startGame()
                 }
             )
