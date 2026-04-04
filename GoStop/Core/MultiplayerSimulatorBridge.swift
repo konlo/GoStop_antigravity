@@ -14,6 +14,9 @@ struct MultiplayerProductRenderProbe: Encodable, Equatable {
     let movingCardIds: [String]
     let hiddenSourceCardIds: [String]
     let hiddenTargetCardIds: [String]
+    let opponentPreplayRevealCardId: String?
+    let multiplayerReplayQueueDepth: Int
+    let multiplayerInFlightAcceptedActionId: String?
     let recentUXEventTypes: [String]
     let recentUXEventCardIds: [String]
     let recentUXEventSummaries: [String]

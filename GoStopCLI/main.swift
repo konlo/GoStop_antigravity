@@ -44,6 +44,90 @@ class CLIEngine {
         )
     }()
     var currentSeed: Int? = nil
+
+    private func acceptedActionCard(from card: Card) -> MultiplayerAcceptedActionCard {
+        MultiplayerAcceptedActionCard(
+            cardId: card.id,
+            month: card.month.rawValue,
+            kind: card.type.rawValue,
+            imageIndex: card.imageIndex,
+            selectedRole: card.selectedRole?.rawValue
+        )
+    }
+
+    private func revealedHandCards(
+        for player: Player,
+        primaryCardId: String,
+        includeAllMatchingMonth: Bool
+    ) -> [MultiplayerRevealedHandCard] {
+        guard let primaryCard = player.hand.first(where: { $0.id == primaryCardId }) else {
+            return []
+        }
+
+        return player.hand.enumerated().compactMap { index, card in
+            let shouldInclude: Bool
+            if includeAllMatchingMonth {
+                shouldInclude = card.month == primaryCard.month
+            } else {
+                shouldInclude = card.id == primaryCardId
+            }
+            guard shouldInclude else { return nil }
+            return MultiplayerRevealedHandCard(
+                card: acceptedActionCard(from: card),
+                handIndex: index,
+                isPrimary: card.id == primaryCardId
+            )
+        }
+    }
+
+    private func acceptedReplayForPlayCard(
+        actionId: String,
+        actorPlayerId: String,
+        request: RoomAuthorityGameplayExecutionRequest,
+        player: Player,
+        card: Card
+    ) -> MultiplayerAcceptedActionReplay {
+        let rules = RuleLoader.shared.config
+        let handMatches = player.hand.filter { $0.month == card.month }
+        let tableMatches = gameManager.tableCards.filter { $0.month == card.month }
+        let isBomb =
+            card.type != .dummy &&
+            rules?.special_moves.bomb.enabled == true &&
+            handMatches.count == 3 &&
+            tableMatches.count == 1
+
+        return MultiplayerAcceptedActionReplay(
+            actionId: actionId,
+            actorPlayerId: actorPlayerId,
+            commandName: .playCard,
+            choiceId: nil,
+            optionCode: request.commandPayload["source"] as? String,
+            primaryCardId: card.id,
+            revealedSourceCards: revealedHandCards(
+                for: player,
+                primaryCardId: card.id,
+                includeAllMatchingMonth: isBomb
+            )
+        )
+    }
+
+    private func acceptedReplayForChoice(
+        actionId: String,
+        actorPlayerId: String,
+        commandName: MultiplayerCommandName,
+        request: RoomAuthorityGameplayExecutionRequest,
+        primaryCardId: String? = nil
+    ) -> MultiplayerAcceptedActionReplay {
+        MultiplayerAcceptedActionReplay(
+            actionId: actionId,
+            actorPlayerId: actorPlayerId,
+            commandName: commandName,
+            choiceId: request.commandPayload["choiceId"] as? String,
+            optionCode: request.commandPayload["optionCode"] as? String,
+            primaryCardId: primaryCardId,
+            revealedSourceCards: []
+        )
+    }
     
     func handle(request: CommandRequest) -> [String: Any] {
         if let roomResponse = roomCLIAdapter.handle(request: request) {
@@ -231,6 +315,7 @@ class CLIEngine {
     func executeRoomGameplayCommand(
         _ request: RoomAuthorityGameplayExecutionRequest
     ) throws -> RoomAuthorityGameplayExecutionResult {
+        let actionId = request.actionId
         switch request.commandName {
         case .playCard:
             guard let cardId = request.commandPayload["cardId"] as? String else {
@@ -245,12 +330,20 @@ class CLIEngine {
             guard let card = currentPlayer.hand.first(where: { $0.id == cardId }) else {
                 throw roomGameplayRejection(.invalidCard, "multiplayer.reject.invalid_card")
             }
+            let replay = acceptedReplayForPlayCard(
+                actionId: actionId,
+                actorPlayerId: request.playerId,
+                request: request,
+                player: currentPlayer,
+                card: card
+            )
             gameManager.playTurn(card: card)
             return RoomAuthorityGameplayExecutionResult(
                 result: [
                     "cardId": cardId,
                     "source": request.commandPayload["source"] as? String ?? "hand",
-                ]
+                ],
+                replay: replay
             )
 
         case .selectCapture:
@@ -266,12 +359,20 @@ class CLIEngine {
             guard let tableCard = gameManager.tableCards.first(where: { $0.id == optionCode }) else {
                 throw roomGameplayRejection(.invalidChoice, "multiplayer.reject.invalid_choice")
             }
+            let replay = acceptedReplayForChoice(
+                actionId: actionId,
+                actorPlayerId: request.playerId,
+                commandName: .selectCapture,
+                request: request,
+                primaryCardId: optionCode
+            )
             gameManager.respondToCapture(selectedCard: tableCard)
             return RoomAuthorityGameplayExecutionResult(
                 result: [
                     "choiceId": request.commandPayload["choiceId"] as? String ?? "",
                     "optionCode": optionCode,
-                ]
+                ],
+                replay: replay
             )
 
         case .selectShake:
@@ -286,12 +387,19 @@ class CLIEngine {
                 throw roomGameplayRejection(.choiceOwnerMismatch, "multiplayer.reject.choice_owner_mismatch")
             }
             let didShake = optionCode == "shake_yes"
+            let replay = acceptedReplayForChoice(
+                actionId: actionId,
+                actorPlayerId: request.playerId,
+                commandName: .selectShake,
+                request: request
+            )
             gameManager.respondToShake(month: month, didShake: didShake)
             return RoomAuthorityGameplayExecutionResult(
                 result: [
                     "choiceId": request.commandPayload["choiceId"] as? String ?? "",
                     "optionCode": optionCode,
-                ]
+                ],
+                replay: replay
             )
 
         case .chooseGoStop:
@@ -312,11 +420,18 @@ class CLIEngine {
             default:
                 throw roomGameplayRejection(.invalidChoice, "multiplayer.reject.invalid_choice")
             }
+            let replay = acceptedReplayForChoice(
+                actionId: actionId,
+                actorPlayerId: request.playerId,
+                commandName: .chooseGoStop,
+                request: request
+            )
             return RoomAuthorityGameplayExecutionResult(
                 result: [
                     "choiceId": request.commandPayload["choiceId"] as? String ?? "",
                     "optionCode": optionCode,
-                ]
+                ],
+                replay: replay
             )
 
         case .chooseChrysanthemumRole:
@@ -337,11 +452,18 @@ class CLIEngine {
             default:
                 throw roomGameplayRejection(.invalidChoice, "multiplayer.reject.invalid_choice")
             }
+            let replay = acceptedReplayForChoice(
+                actionId: actionId,
+                actorPlayerId: request.playerId,
+                commandName: .chooseChrysanthemumRole,
+                request: request
+            )
             return RoomAuthorityGameplayExecutionResult(
                 result: [
                     "choiceId": request.commandPayload["choiceId"] as? String ?? "",
                     "optionCode": optionCode,
-                ]
+                ],
+                replay: replay
             )
 
         case .resume:
@@ -362,7 +484,8 @@ class CLIEngine {
             return RoomAuthorityGameplayExecutionResult(
                 result: [
                     "quitReason": quitReason.rawValue,
-                ]
+                ],
+                replay: nil
             )
         }
     }

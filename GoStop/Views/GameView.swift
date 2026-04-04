@@ -1041,6 +1041,9 @@ struct GameView: View {
         let movingCardIds = gameManager.currentMovingCards.map(\.id).joined(separator: ",")
         let hiddenSourceCardIds = Array(gameManager.hiddenInSourceCardIds).sorted().joined(separator: ",")
         let hiddenTargetCardIds = Array(gameManager.hiddenInTargetCardIds).sorted().joined(separator: ",")
+        let replayQueueDepth = String(gameManager.multiplayerReplayQueueDepth)
+        let inFlightAcceptedActionId = gameManager.multiplayerInFlightAcceptedActionId ?? ""
+        let opponentPreplayRevealCardId = gameManager.opponentPreplayRevealCardId ?? ""
         return uxEventCount
             + "|"
             + moveSource
@@ -1054,6 +1057,12 @@ struct GameView: View {
             + hiddenSourceCardIds
             + "|"
             + hiddenTargetCardIds
+            + "|"
+            + replayQueueDepth
+            + "|"
+            + inFlightAcceptedActionId
+            + "|"
+            + opponentPreplayRevealCardId
     }
 
     private func syncProductRenderProbe() {
@@ -1113,6 +1122,9 @@ struct GameView: View {
             movingCardIds: gameManager.currentMovingCards.map(\.id),
             hiddenSourceCardIds: Array(gameManager.hiddenInSourceCardIds).sorted(),
             hiddenTargetCardIds: Array(gameManager.hiddenInTargetCardIds).sorted(),
+            opponentPreplayRevealCardId: gameManager.opponentPreplayRevealCardId,
+            multiplayerReplayQueueDepth: gameManager.multiplayerReplayQueueDepth,
+            multiplayerInFlightAcceptedActionId: gameManager.multiplayerInFlightAcceptedActionId,
             recentUXEventTypes: recentUXEventTypes,
             recentUXEventCardIds: recentUXEventCardIds,
             recentUXEventSummaries: recentUXEventSummaries,

@@ -6,12 +6,22 @@ class MultiplayerPlayCoordinatorViewModel: ObservableObject {
     @Published var gameManager: GameManager
     
     private static let localActionDeferralLeadTime: TimeInterval = 0.75
+    private static let remoteAcceptedGraceWindow: TimeInterval = 0.6
     private let stateMapper: MultiplayerStateMapper
     private var hasBoundAuthoritativeSnapshot = false
     private var lastAppliedStateVersion: Int?
+    private var authoritativeStateVersion: Int?
     private var deferredAuthoritativeSnapshot: MultiplayerSnapshot?
     private var deferredSnapshotDrainTask: Task<Void, Never>?
     private var localActionDeferralDeadline: Date?
+    private var pendingAuthoritativeReplayQueue: [MultiplayerShellAcceptedActionEvent] = []
+    private var processedAcceptedActionIDs: Set<String> = []
+    private var recentLocalActionIDs: Set<String> = []
+    private var inFlightAcceptedActionId: String?
+    private var replayCompletionTask: Task<Void, Never>?
+    private var forceNextSnapshotReset = false
+    private var remoteAcceptedGraceStateVersion: Int?
+    private var remoteAcceptedGraceDeadline: Date?
     @Published var showEmojiPicker: Bool = false
     @Published var showScoreboardSheet: Bool = false
     
@@ -40,31 +50,64 @@ class MultiplayerPlayCoordinatorViewModel: ObservableObject {
     }
 
     func applyAuthoritativeSnapshot(_ snapshot: MultiplayerSnapshot) {
+        if let trackedStateVersion = authoritativeStateVersion ?? lastAppliedStateVersion,
+           snapshot.state.stateVersion < trackedStateVersion {
+            debugLog(
+                "coordinator.snapshot.drop_stale",
+                fields: [
+                    "targetStateVersion": String(snapshot.state.stateVersion),
+                    "trackedStateVersion": String(trackedStateVersion),
+                    "reason": snapshot.reason.rawValue
+                ]
+            )
+            return
+        }
         if shouldDeferAuthoritativeSnapshot(snapshot) {
             deferredAuthoritativeSnapshot = snapshot
+            debugLog(
+                "coordinator.snapshot.defer",
+                fields: [
+                    "targetStateVersion": String(snapshot.state.stateVersion),
+                    "reason": snapshot.reason.rawValue,
+                    "busy": boolString(gameManager.isAutomationBusy),
+                    "localDeferral": boolString(isWithinLocalActionDeferralWindow),
+                    "awaitingReplay": boolString(isAwaitingAuthoritativeReplayIdle),
+                    "graceActive": boolString(isWithinRemoteAcceptedGraceWindow(for: snapshot))
+                ]
+            )
             scheduleDeferredSnapshotDrain()
             return
         }
         clearDeferredAuthoritativeSnapshot()
         bindSnapshot(snapshot)
+        maybeStartNextAuthoritativeReplay()
     }
     
     func bindSnapshot(_ snapshot: MultiplayerSnapshot) {
         do {
+            clearRemoteAcceptedGrace(ifMatching: snapshot.state.stateVersion)
             seedLocalGameManagerIfNeeded(from: snapshot)
             let mappedState = try stateMapper.mapSnapshot(snapshot, currentPlayers: gameManager.players)
             if let resolvedLocalPlayerId = resolvedLocalPlayerId(from: snapshot, mappedPlayers: mappedState.players) {
                 gameManager.localPlayerId = resolvedLocalPlayerId
             }
-            gameManager.applyMappedState(mappedState, mode: applicationMode(for: snapshot))
+            let mode = applicationMode(for: snapshot)
+            if mode == .resetAndReplace {
+                forceNextSnapshotReset = false
+            }
+            gameManager.applyMappedState(mappedState, mode: mode)
             hasBoundAuthoritativeSnapshot = true
             lastAppliedStateVersion = mappedState.stateVersion
+            authoritativeStateVersion = mappedState.stateVersion
         } catch {
             print("Failed to map multiplayer snapshot: \(error)")
         }
     }
 
     private func applicationMode(for snapshot: MultiplayerSnapshot) -> MultiplayerMappedStateApplicationMode {
+        if forceNextSnapshotReset {
+            return .resetAndReplace
+        }
         guard hasBoundAuthoritativeSnapshot else {
             return .resetAndReplace
         }
@@ -88,9 +131,14 @@ class MultiplayerPlayCoordinatorViewModel: ObservableObject {
 
     private func shouldDeferAuthoritativeSnapshot(_ snapshot: MultiplayerSnapshot) -> Bool {
         guard applicationMode(for: snapshot) == .animatedInPlace else {
+            clearRemoteAcceptedGrace(ifMatching: snapshot.state.stateVersion)
             return false
         }
-        return gameManager.isAutomationBusy || isWithinLocalActionDeferralWindow
+        if isAwaitingAuthoritativeReplayIdle || gameManager.isAutomationBusy || isWithinLocalActionDeferralWindow {
+            return true
+        }
+
+        return shouldAwaitRemoteAcceptedAction(for: snapshot)
     }
 
     private func scheduleDeferredSnapshotDrain() {
@@ -100,13 +148,23 @@ class MultiplayerPlayCoordinatorViewModel: ObservableObject {
             defer { self.deferredSnapshotDrainTask = nil }
 
             while !Task.isCancelled {
-                guard let pendingSnapshot = self.deferredAuthoritativeSnapshot else {
+                if !self.gameManager.isAutomationBusy && !self.isWithinLocalActionDeferralWindow {
+                    self.maybeStartNextAuthoritativeReplay()
+                }
+
+                let pendingSnapshot = self.deferredAuthoritativeSnapshot
+                if pendingSnapshot == nil && !self.isAwaitingAuthoritativeReplayIdle {
                     return
                 }
 
-                if !self.gameManager.isAutomationBusy && !self.isWithinLocalActionDeferralWindow {
+                if let pendingSnapshot,
+                    !self.isAwaitingAuthoritativeReplayIdle &&
+                    !self.gameManager.isAutomationBusy &&
+                    !self.isWithinLocalActionDeferralWindow &&
+                    !self.isWithinRemoteAcceptedGraceWindow(for: pendingSnapshot) {
                     self.deferredAuthoritativeSnapshot = nil
                     self.bindSnapshot(pendingSnapshot)
+                    self.maybeStartNextAuthoritativeReplay()
                     continue
                 }
 
@@ -124,6 +182,57 @@ class MultiplayerPlayCoordinatorViewModel: ObservableObject {
     private var isWithinLocalActionDeferralWindow: Bool {
         guard let localActionDeferralDeadline else { return false }
         return localActionDeferralDeadline.timeIntervalSinceNow > 0
+    }
+
+    private var isAwaitingAuthoritativeReplayIdle: Bool {
+        inFlightAcceptedActionId != nil || !pendingAuthoritativeReplayQueue.isEmpty
+    }
+
+    private func shouldAwaitRemoteAcceptedAction(for snapshot: MultiplayerSnapshot) -> Bool {
+        guard !forceNextSnapshotReset else {
+            clearRemoteAcceptedGrace(ifMatching: snapshot.state.stateVersion)
+            return false
+        }
+
+        guard let currentStateVersion = authoritativeStateVersion ?? lastAppliedStateVersion else {
+            return false
+        }
+
+        let targetStateVersion = snapshot.state.stateVersion
+        guard targetStateVersion == currentStateVersion + 1 else {
+            clearRemoteAcceptedGrace(ifMatching: targetStateVersion)
+            return false
+        }
+
+        if remoteAcceptedGraceStateVersion != targetStateVersion {
+            remoteAcceptedGraceStateVersion = targetStateVersion
+            remoteAcceptedGraceDeadline = Date().addingTimeInterval(Self.remoteAcceptedGraceWindow)
+            return true
+        }
+
+        if let deadline = remoteAcceptedGraceDeadline, deadline.timeIntervalSinceNow > 0 {
+            return true
+        }
+
+        clearRemoteAcceptedGrace(ifMatching: targetStateVersion)
+        return false
+    }
+
+    private func isWithinRemoteAcceptedGraceWindow(for snapshot: MultiplayerSnapshot) -> Bool {
+        guard remoteAcceptedGraceStateVersion == snapshot.state.stateVersion,
+              let deadline = remoteAcceptedGraceDeadline else {
+            return false
+        }
+        return deadline.timeIntervalSinceNow > 0
+    }
+
+    private func clearRemoteAcceptedGrace(ifMatching stateVersion: Int? = nil) {
+        guard let trackedStateVersion = remoteAcceptedGraceStateVersion else { return }
+        if let stateVersion, trackedStateVersion != stateVersion {
+            return
+        }
+        remoteAcceptedGraceStateVersion = nil
+        remoteAcceptedGraceDeadline = nil
     }
 
     private func noteLocalActionDispatch() {
@@ -152,6 +261,226 @@ class MultiplayerPlayCoordinatorViewModel: ObservableObject {
         }
 
         return gameManager.localPlayerId ?? mappedPlayers.first?.id.uuidString
+    }
+
+    func noteRecentLocalActionIDs(_ actionIDs: [String]) {
+        recentLocalActionIDs.formUnion(actionIDs)
+    }
+
+    func ingestAcceptedActions(_ events: [MultiplayerShellAcceptedActionEvent]) {
+        for event in events {
+            guard processedAcceptedActionIDs.insert(event.payload.actionId).inserted else { continue }
+            handleAcceptedActionEvent(event)
+        }
+        maybeStartNextAuthoritativeReplay()
+    }
+
+    private func handleAcceptedActionEvent(_ event: MultiplayerShellAcceptedActionEvent) {
+        let accepted = event.payload
+        clearRemoteAcceptedGrace(ifMatching: accepted.postStateVersion)
+        let currentStateVersion = authoritativeStateVersion ?? lastAppliedStateVersion
+        let isRecentLocal = recentLocalActionIDs.contains(accepted.actionId)
+        debugLog(
+            "coordinator.accepted.received",
+            fields: [
+                "actionId": accepted.actionId,
+                "actorPlayerId": accepted.playerId,
+                "localPlayerId": gameManager.localPlayerId,
+                "commandName": accepted.commandName.rawValue,
+                "preStateVersion": String(accepted.preStateVersion),
+                "postStateVersion": String(accepted.postStateVersion),
+                "currentStateVersion": currentStateVersion.map(String.init),
+                "hasReplay": boolString(accepted.replay != nil),
+                "recentLocalMatch": boolString(isRecentLocal)
+            ]
+        )
+        if recentLocalActionIDs.contains(accepted.actionId) {
+            authoritativeStateVersion = accepted.postStateVersion
+            scheduleDeferredSnapshotDrain()
+            debugLog(
+                "coordinator.accepted.consume_local_ack",
+                fields: [
+                    "actionId": accepted.actionId,
+                    "postStateVersion": String(accepted.postStateVersion)
+                ]
+            )
+            return
+        }
+
+        pendingAuthoritativeReplayQueue.append(event)
+        syncReplayProbeState()
+        debugLog(
+            "coordinator.accepted.enqueue",
+            fields: [
+                "actionId": accepted.actionId,
+                "queueDepth": String(pendingAuthoritativeReplayQueue.count)
+            ]
+        )
+    }
+
+    private func maybeStartNextAuthoritativeReplay() {
+        guard inFlightAcceptedActionId == nil else { return }
+        guard !gameManager.isAutomationBusy, !isWithinLocalActionDeferralWindow else {
+            if let pendingReplay = pendingAuthoritativeReplayQueue.first?.payload {
+                debugLog(
+                    "coordinator.replay.blocked",
+                    fields: [
+                        "actionId": pendingReplay.actionId,
+                        "busy": boolString(gameManager.isAutomationBusy),
+                        "localDeferral": boolString(isWithinLocalActionDeferralWindow),
+                        "queueDepth": String(pendingAuthoritativeReplayQueue.count)
+                    ]
+                )
+            }
+            scheduleDeferredSnapshotDrain()
+            return
+        }
+        guard let nextEvent = pendingAuthoritativeReplayQueue.first else {
+            syncReplayProbeState()
+            return
+        }
+
+        let accepted = nextEvent.payload
+        guard let currentStateVersion = authoritativeStateVersion ?? lastAppliedStateVersion else {
+            debugLog(
+                "coordinator.replay.wait_state",
+                fields: [
+                    "actionId": accepted.actionId,
+                    "preStateVersion": String(accepted.preStateVersion)
+                ]
+            )
+            scheduleDeferredSnapshotDrain()
+            return
+        }
+
+        if accepted.preStateVersion != currentStateVersion {
+            pendingAuthoritativeReplayQueue.removeAll()
+            inFlightAcceptedActionId = nil
+            forceNextSnapshotReset = true
+            clearRemoteAcceptedGrace()
+            syncReplayProbeState()
+            debugLog(
+                "coordinator.replay.mismatch",
+                fields: [
+                    "actionId": accepted.actionId,
+                    "preStateVersion": String(accepted.preStateVersion),
+                    "currentStateVersion": String(currentStateVersion),
+                    "queueDepth": String(pendingAuthoritativeReplayQueue.count)
+                ]
+            )
+            scheduleDeferredSnapshotDrain()
+            return
+        }
+
+        pendingAuthoritativeReplayQueue.removeFirst()
+        authoritativeStateVersion = accepted.postStateVersion
+
+        guard let replay = accepted.replay else {
+            syncReplayProbeState()
+            debugLog(
+                "coordinator.replay.missing_payload",
+                fields: [
+                    "actionId": accepted.actionId,
+                    "commandName": accepted.commandName.rawValue
+                ]
+            )
+            scheduleDeferredSnapshotDrain()
+            maybeStartNextAuthoritativeReplay()
+            return
+        }
+
+        guard replay.actorPlayerId != gameManager.localPlayerId else {
+            syncReplayProbeState()
+            debugLog(
+                "coordinator.replay.skip_local_actor",
+                fields: [
+                    "actionId": accepted.actionId,
+                    "actorPlayerId": replay.actorPlayerId,
+                    "localPlayerId": gameManager.localPlayerId
+                ]
+            )
+            scheduleDeferredSnapshotDrain()
+            maybeStartNextAuthoritativeReplay()
+            return
+        }
+
+        inFlightAcceptedActionId = accepted.actionId
+        syncReplayProbeState()
+        debugLog(
+            "coordinator.replay.start",
+            fields: [
+                "actionId": accepted.actionId,
+                "actorPlayerId": replay.actorPlayerId,
+                "localPlayerId": gameManager.localPlayerId,
+                "preStateVersion": String(accepted.preStateVersion),
+                "postStateVersion": String(accepted.postStateVersion),
+                "queueDepth": String(pendingAuthoritativeReplayQueue.count)
+            ]
+        )
+        guard gameManager.replayAuthoritativeAcceptedAction(replay) else {
+            inFlightAcceptedActionId = nil
+            forceNextSnapshotReset = true
+            syncReplayProbeState()
+            debugLog(
+                "coordinator.replay.start_failed",
+                fields: [
+                    "actionId": accepted.actionId,
+                    "actorPlayerId": replay.actorPlayerId
+                ]
+            )
+            scheduleDeferredSnapshotDrain()
+            return
+        }
+
+        replayCompletionTask?.cancel()
+        replayCompletionTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.replayCompletionTask = nil }
+
+            while !Task.isCancelled && self.gameManager.isAutomationBusy {
+                try? await Task.sleep(nanoseconds: 25_000_000)
+            }
+            guard !Task.isCancelled else { return }
+
+            self.inFlightAcceptedActionId = nil
+            self.syncReplayProbeState()
+            self.debugLog(
+                "coordinator.replay.complete",
+                fields: [
+                    "actionId": accepted.actionId,
+                    "pendingSnapshotStateVersion": self.deferredAuthoritativeSnapshot.map {
+                        String($0.state.stateVersion)
+                    },
+                    "queueDepth": String(self.pendingAuthoritativeReplayQueue.count)
+                ]
+            )
+            if !self.gameManager.isAutomationBusy,
+               let pendingSnapshot = self.deferredAuthoritativeSnapshot {
+                self.deferredAuthoritativeSnapshot = nil
+                self.bindSnapshot(pendingSnapshot)
+            }
+            self.maybeStartNextAuthoritativeReplay()
+            self.scheduleDeferredSnapshotDrain()
+        }
+    }
+
+    private func syncReplayProbeState() {
+        gameManager.updateMultiplayerReplayStatus(
+            queueDepth: pendingAuthoritativeReplayQueue.count,
+            inFlightAcceptedActionId: inFlightAcceptedActionId
+        )
+    }
+
+    private func boolString(_ value: Bool) -> String {
+        value ? "true" : "false"
+    }
+
+    private func debugLog(_ event: String, fields: [String: String?] = [:]) {
+        var merged = fields
+        merged["localPlayerId"] = merged["localPlayerId"] ?? gameManager.localPlayerId
+        merged["authoritativeStateVersion"] = merged["authoritativeStateVersion"] ?? (authoritativeStateVersion.map(String.init))
+        merged["lastAppliedStateVersion"] = merged["lastAppliedStateVersion"] ?? (lastAppliedStateVersion.map(String.init))
+        MultiplayerShellDebugLog.append(event: event, fields: merged)
     }
     
     // Mocks receiving a network payload    
@@ -216,20 +545,27 @@ class MultiplayerPlayCoordinatorViewModel: ObservableObject {
 
 struct MultiplayerAuthoritativeGameCoordinatorView: View {
     let snapshot: MultiplayerSnapshot
+    let acceptedActions: [MultiplayerShellAcceptedActionEvent]
+    let recentLocalActionIDs: [String]
     let onActionSent: (MultiplayerAction) -> Void
     let onProductRenderProbeChanged: ((MultiplayerProductRenderProbe) -> Void)?
     let onAutomationActionDriverChanged: ((UUID, ((MultiplayerAction) -> Void)?) -> Void)?
 
     @StateObject private var viewModel: MultiplayerPlayCoordinatorViewModel
     @State private var automationActionDriverID = UUID()
+    @State private var lastSyncedSnapshotIdentity: String?
 
     init(
         snapshot: MultiplayerSnapshot,
+        acceptedActions: [MultiplayerShellAcceptedActionEvent] = [],
+        recentLocalActionIDs: [String] = [],
         onActionSent: @escaping (MultiplayerAction) -> Void,
         onProductRenderProbeChanged: ((MultiplayerProductRenderProbe) -> Void)? = nil,
         onAutomationActionDriverChanged: ((UUID, ((MultiplayerAction) -> Void)?) -> Void)? = nil
     ) {
         self.snapshot = snapshot
+        self.acceptedActions = acceptedActions
+        self.recentLocalActionIDs = recentLocalActionIDs
         self.onActionSent = onActionSent
         self.onProductRenderProbeChanged = onProductRenderProbeChanged
         self.onAutomationActionDriverChanged = onAutomationActionDriverChanged
@@ -242,21 +578,66 @@ struct MultiplayerAuthoritativeGameCoordinatorView: View {
         "\(snapshot.snapshotId):\(snapshot.state.stateVersion)"
     }
 
+    private var acceptedActionIdentity: String {
+        acceptedActions.last.map { "\($0.payload.actionId):\($0.payload.postStateVersion)" } ?? "accepted:none"
+    }
+
+    private var localActionIdentity: String {
+        recentLocalActionIDs.last ?? "local:none"
+    }
+
+    private var syncIdentity: String {
+        "\(snapshotIdentity)|\(acceptedActionIdentity)|\(localActionIdentity)"
+    }
+
+    @MainActor
+    private func syncCoordinatorInputs(
+        applySnapshot: Bool,
+        snapshot: MultiplayerSnapshot,
+        acceptedActions: [MultiplayerShellAcceptedActionEvent],
+        recentLocalActionIDs: [String],
+        onActionSent: @escaping (MultiplayerAction) -> Void
+    ) {
+        MultiplayerShellDebugLog.append(
+            event: "authoritativeView.syncInputs",
+            fields: [
+                "applySnapshot": applySnapshot ? "true" : "false",
+                "snapshotStateVersion": String(snapshot.state.stateVersion),
+                "acceptedCount": String(acceptedActions.count),
+                "acceptedLastActionId": acceptedActions.last?.payload.actionId,
+                "localActionCount": String(recentLocalActionIDs.count),
+                "localLastActionId": recentLocalActionIDs.last
+            ]
+        )
+        viewModel.onActionSent = onActionSent
+        viewModel.noteRecentLocalActionIDs(recentLocalActionIDs)
+        viewModel.ingestAcceptedActions(acceptedActions)
+        if applySnapshot {
+            viewModel.applyAuthoritativeSnapshot(snapshot)
+        }
+    }
+
     var body: some View {
         GameView(
             gameManager: viewModel.gameManager,
             onProductRenderProbeChanged: onProductRenderProbeChanged
         )
-            .task(id: snapshotIdentity) {
-                await MainActor.run {
-                    viewModel.onActionSent = onActionSent
-                    viewModel.applyAuthoritativeSnapshot(snapshot)
-                }
-            }
             .onAppear {
-                viewModel.onActionSent = onActionSent
                 onAutomationActionDriverChanged?(automationActionDriverID) { action in
                     viewModel.performAutomationAction(action)
+                }
+            }
+            .task(id: syncIdentity) {
+                await MainActor.run {
+                    let shouldApplySnapshot = lastSyncedSnapshotIdentity != snapshotIdentity
+                    syncCoordinatorInputs(
+                        applySnapshot: shouldApplySnapshot,
+                        snapshot: snapshot,
+                        acceptedActions: acceptedActions,
+                        recentLocalActionIDs: recentLocalActionIDs,
+                        onActionSent: onActionSent
+                    )
+                    lastSyncedSnapshotIdentity = snapshotIdentity
                 }
             }
             .onDisappear {

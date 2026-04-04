@@ -254,7 +254,34 @@ struct MultiplayerActionAcceptedPayload: Codable {
     let actionId: String
     let playerId: String
     let commandName: MultiplayerCommandName
+    let preStateVersion: Int
+    let postStateVersion: Int
+    let replay: MultiplayerAcceptedActionReplay?
     let result: [String: AnyCodable]?
+}
+
+struct MultiplayerAcceptedActionCard: Codable {
+    let cardId: String
+    let month: Int
+    let kind: String
+    let imageIndex: Int
+    let selectedRole: String?
+}
+
+struct MultiplayerRevealedHandCard: Codable {
+    let card: MultiplayerAcceptedActionCard
+    let handIndex: Int
+    let isPrimary: Bool
+}
+
+struct MultiplayerAcceptedActionReplay: Codable {
+    let actionId: String
+    let actorPlayerId: String
+    let commandName: MultiplayerCommandName
+    let choiceId: String?
+    let optionCode: String?
+    let primaryCardId: String?
+    let revealedSourceCards: [MultiplayerRevealedHandCard]
 }
 
 struct MultiplayerActionRejectedPayload: Codable {

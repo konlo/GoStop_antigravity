@@ -153,7 +153,7 @@ BACKLOG_TRACKS = {
 }
 
 TRACK_REGISTRY: dict[str, ScenarioTrack] = {**RUNNER_TRACKS, **BACKLOG_TRACKS}
-UI_SUPPORTED_SCENARIOS = {"MP-016", "MP-017", "MP-018"}
+UI_SUPPORTED_SCENARIOS = {"MP-016", "MP-017", "MP-018", "MP-019"}
 
 MANAGED_SUITES: dict[str, tuple[str, ...]] = {
     "managed-all-runnable": tuple(scenario.scenario_id for scenario in ALL_SCENARIOS),

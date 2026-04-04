@@ -176,6 +176,8 @@ class GameManager: ObservableObject {
     @Published var targetCueCardIds: Set<String> = []
     @Published var opponentPreplayRevealCardId: String? = nil
     @Published var movingCardsShowDebug: Bool = false
+    @Published var multiplayerReplayQueueDepth: Int = 0
+    @Published var multiplayerInFlightAcceptedActionId: String? = nil
     @Published private(set) var pendingAutomationDelays: Int = 0
     private var automationDelayGeneration: Int = 0
     
@@ -256,6 +258,8 @@ class GameManager: ObservableObject {
     @Published var localPlayerId: String? = nil
     private var internalComputerActionScheduled = false
     private var suppressExternalActionRelay = false
+    private var authoritativeReplayActorPlayerId: String? = nil
+    private var authoritativeReplayRevealActorPlayerId: String? = nil
 
     var isLocalTurn: Bool {
         guard externalControlMode else { return true }
@@ -290,6 +294,42 @@ class GameManager: ObservableObject {
         suppressExternalActionRelay = true
         defer { suppressExternalActionRelay = previous }
         action()
+    }
+
+    private var canExecuteAuthoritativeReplayTurn: Bool {
+        guard let replayActorPlayerId = authoritativeReplayActorPlayerId else { return false }
+        return currentPlayer?.id.uuidString == replayActorPlayerId
+    }
+
+    private func withAuthoritativeReplayContext(
+        actorPlayerId: String,
+        action: () -> Void
+    ) {
+        let previousActorPlayerId = authoritativeReplayActorPlayerId
+        let previousRevealActorPlayerId = authoritativeReplayRevealActorPlayerId
+        authoritativeReplayActorPlayerId = actorPlayerId
+        authoritativeReplayRevealActorPlayerId = actorPlayerId == localPlayerId ? nil : actorPlayerId
+        defer {
+            authoritativeReplayActorPlayerId = previousActorPlayerId
+            authoritativeReplayRevealActorPlayerId = previousRevealActorPlayerId
+        }
+        withSuppressedExternalActionRelay {
+            action()
+        }
+    }
+
+    private func shouldRevealOpponentPreplayCard(for player: Player) -> Bool {
+        player.isComputer || authoritativeReplayRevealActorPlayerId == player.id.uuidString
+    }
+
+    func updateMultiplayerReplayStatus(queueDepth: Int, inFlightAcceptedActionId: String?) {
+        let safeQueueDepth = max(0, queueDepth)
+        if multiplayerReplayQueueDepth != safeQueueDepth {
+            multiplayerReplayQueueDepth = safeQueueDepth
+        }
+        if multiplayerInFlightAcceptedActionId != inFlightAcceptedActionId {
+            multiplayerInFlightAcceptedActionId = inFlightAcceptedActionId
+        }
     }
 
     private func gameEndReasonText(_ reason: GameEndReason) -> String {
@@ -510,6 +550,8 @@ class GameManager: ObservableObject {
         self.capturedMoveTargetPlayerId = nil
         self.opponentPreplayRevealCardId = nil
         self.movingCardsShowDebug = false
+        self.multiplayerReplayQueueDepth = 0
+        self.multiplayerInFlightAcceptedActionId = nil
         self.pendingAutomationDelays = 0
         self.pendingShakeMonths = []
         self.pendingShakeCard = nil
@@ -556,6 +598,8 @@ class GameManager: ObservableObject {
         self.capturedMoveTargetPlayerId = nil
         self.opponentPreplayRevealCardId = nil
         self.movingCardsShowDebug = false
+        self.multiplayerReplayQueueDepth = 0
+        self.multiplayerInFlightAcceptedActionId = nil
         self.internalComputerActionScheduled = false
     }
 
@@ -778,10 +822,10 @@ class GameManager: ObservableObject {
     }
     
     func respondToShake(month: Int, didShake: Bool) {
-        guard gameState == .askingShake, let player = currentPlayer else { return }
         if externalControlMode {
             relayLocalMultiplayerAction(.respondToShake(month: month, didShake: didShake))
         }
+        guard gameState == .askingShake, let player = currentPlayer else { return }
         
         if didShake {
             player.shakeCount += 1
@@ -818,12 +862,12 @@ class GameManager: ObservableObject {
     }
     
     func respondToChrysanthemumChoice(role: CardRole) {
-        guard (gameState == .choosingChrysanthemumRole || (currentPlayer?.isComputer == true && gameState == .playing)),
-              let player = currentPlayer,
-              let card = pendingChrysanthemumCard else { return }
         if externalControlMode {
             relayLocalMultiplayerAction(.respondToChrysanthemumChoice(role: role.rawValue))
         }
+        guard (gameState == .choosingChrysanthemumRole || (currentPlayer?.isComputer == true && gameState == .playing)),
+              let player = currentPlayer,
+              let card = pendingChrysanthemumCard else { return }
         
         gLog(gameText("log.event.chrysanthemum_role_chosen", ["player": player.name, "role": role.rawValue]))
         
@@ -1263,7 +1307,7 @@ class GameManager: ObservableObject {
     }
 
     func playTurn(card: Card) {
-        guard !externalControlMode || isLocalTurn else {
+        guard !externalControlMode || isLocalTurn || canExecuteAuthoritativeReplayTurn else {
             gLog(gameText("log.event.playturn_blocked_not_your_turn"))
             return
         }
@@ -1433,10 +1477,31 @@ class GameManager: ObservableObject {
                     }
                     
                     // Briefly reveal the opponent's selected card before throw for readability.
-                    let revealDelay = player.isComputer ? AnimationManager.shared.config.opponent_preplay_reveal_duration : 0
-                    self.opponentPreplayRevealCardId = player.isComputer ? pCard.id : nil
+                    let shouldRevealOpponentCard = self.shouldRevealOpponentPreplayCard(for: player)
+                    let revealDelay = shouldRevealOpponentCard ? AnimationManager.shared.config.opponent_preplay_reveal_duration : 0
+                    self.opponentPreplayRevealCardId = shouldRevealOpponentCard ? pCard.id : nil
+                    if shouldRevealOpponentCard {
+                        self.addUXEvent(
+                            type: "revealStart",
+                            data: [
+                                "cardId": pCard.id,
+                                "source": "hand",
+                                "target": "table"
+                            ]
+                        )
+                    }
                     if revealDelay > 0 {
                         self.runAfterAnimationDelay(revealDelay) {
+                            if shouldRevealOpponentCard {
+                                self.addUXEvent(
+                                    type: "revealEnd",
+                                    data: [
+                                        "cardId": pCard.id,
+                                        "source": "hand",
+                                        "target": "table"
+                                    ]
+                                )
+                            }
                             self.opponentPreplayRevealCardId = nil
                             startHandToTableMove()
                         }
@@ -1561,10 +1626,31 @@ class GameManager: ObservableObject {
         }
 
         // Briefly reveal one of opponent's bomb cards before throw for readability.
-        let revealDelay = player.isComputer ? AnimationManager.shared.config.opponent_preplay_reveal_duration : 0
-        self.opponentPreplayRevealCardId = player.isComputer ? bombHandCards.first?.id : nil
+        let shouldRevealOpponentCard = shouldRevealOpponentPreplayCard(for: player)
+        let revealDelay = shouldRevealOpponentCard ? AnimationManager.shared.config.opponent_preplay_reveal_duration : 0
+        self.opponentPreplayRevealCardId = shouldRevealOpponentCard ? bombHandCards.first?.id : nil
+        if shouldRevealOpponentCard, let revealCardId = bombHandCards.first?.id {
+            self.addUXEvent(
+                type: "revealStart",
+                data: [
+                    "cardId": revealCardId,
+                    "source": "hand",
+                    "target": "table"
+                ]
+            )
+        }
         if revealDelay > 0 {
             self.runAfterAnimationDelay(revealDelay) {
+                if shouldRevealOpponentCard, let revealCardId = bombHandCards.first?.id {
+                    self.addUXEvent(
+                        type: "revealEnd",
+                        data: [
+                            "cardId": revealCardId,
+                            "source": "hand",
+                            "target": "table"
+                        ]
+                    )
+                }
                 self.opponentPreplayRevealCardId = nil
                 startBombHandToTableMove()
             }
@@ -1770,10 +1856,10 @@ class GameManager: ObservableObject {
     }
 
     func respondToGoStop(isGo: Bool) {
-        guard gameState == .askingGoStop, let player = currentPlayer else { return }
         if externalControlMode {
             relayLocalMultiplayerAction(.respondToGoStop(isGo: isGo))
         }
+        guard gameState == .askingGoStop, let player = currentPlayer else { return }
         guard let rules = RuleLoader.shared.config else {
             fallbackEndTurn(player: player)
             return
@@ -2056,6 +2142,202 @@ class GameManager: ObservableObject {
         }
         return nil
     }
+
+    private func replayCard(from payload: MultiplayerAcceptedActionCard) -> Card? {
+        guard let month = Month(rawValue: payload.month),
+              let type = CardType(rawValue: payload.kind) else {
+            return nil
+        }
+
+        var card = Card(
+            id: payload.cardId,
+            month: month,
+            type: type,
+            imageIndex: payload.imageIndex
+        )
+        if let selectedRole = payload.selectedRole {
+            card.selectedRole = CardRole(rawValue: selectedRole)
+        }
+        return card
+    }
+
+    private func materializeRevealedSourceCards(
+        _ revealedSourceCards: [MultiplayerRevealedHandCard],
+        for player: Player
+    ) {
+        for revealed in revealedSourceCards.sorted(by: { $0.handIndex < $1.handIndex }) {
+            guard let card = replayCard(from: revealed.card) else {
+                continue
+            }
+            while player.hand.count <= revealed.handIndex {
+                player.hand.append(Card(month: .none, type: .junk, imageIndex: 0))
+            }
+            player.hand[revealed.handIndex] = card
+        }
+    }
+
+    private func resolvedPrimaryReplayCard(
+        from replay: MultiplayerAcceptedActionReplay,
+        actor: Player
+    ) -> Card? {
+        if let primaryCardId = replay.primaryCardId,
+           let primary = actor.hand.first(where: { $0.id == primaryCardId }) {
+            return primary
+        }
+
+        let primaryReveal =
+            replay.revealedSourceCards.first(where: \.isPrimary) ??
+            replay.revealedSourceCards.first(where: { $0.card.cardId == replay.primaryCardId })
+
+        guard let primaryReveal,
+              let materializedCard = replayCard(from: primaryReveal.card) else {
+            return nil
+        }
+
+        while actor.hand.count <= primaryReveal.handIndex {
+            actor.hand.append(Card(month: .none, type: .junk, imageIndex: 0))
+        }
+        actor.hand[primaryReveal.handIndex] = materializedCard
+        return actor.hand[primaryReveal.handIndex]
+    }
+
+    func replayAuthoritativeAcceptedAction(_ replay: MultiplayerAcceptedActionReplay) -> Bool {
+        guard let actor = players.first(where: { $0.id.uuidString == replay.actorPlayerId }) else {
+            MultiplayerShellDebugLog.append(
+                event: "gm.replay.actor_missing",
+                fields: [
+                    "actionId": replay.actionId,
+                    "actorPlayerId": replay.actorPlayerId,
+                    "playerCount": String(players.count)
+                ]
+            )
+            gLog("[MultiplayerReplay] Missing actor for replay actionId=\(replay.actionId)")
+            return false
+        }
+
+        var didStart = false
+        withAuthoritativeReplayContext(actorPlayerId: replay.actorPlayerId) {
+            switch replay.commandName {
+            case .playCard:
+                MultiplayerShellDebugLog.append(
+                    event: "gm.replay.playcard.prepare",
+                    fields: [
+                        "actionId": replay.actionId,
+                        "actorPlayerId": replay.actorPlayerId,
+                        "actorHandCount": String(actor.hand.count),
+                        "primaryCardId": replay.primaryCardId,
+                        "revealedCount": String(replay.revealedSourceCards.count),
+                        "revealedSummary": replay.revealedSourceCards.map {
+                            "\($0.handIndex):\($0.card.cardId):\($0.isPrimary ? "primary" : "secondary")"
+                        }.joined(separator: ",")
+                    ]
+                )
+                materializeRevealedSourceCards(replay.revealedSourceCards, for: actor)
+                guard let card = resolvedPrimaryReplayCard(from: replay, actor: actor) else {
+                    MultiplayerShellDebugLog.append(
+                        event: "gm.replay.playcard.primary_missing",
+                        fields: [
+                            "actionId": replay.actionId,
+                            "actorPlayerId": replay.actorPlayerId,
+                            "primaryCardId": replay.primaryCardId,
+                            "actorHandCount": String(actor.hand.count),
+                            "handSummary": actor.hand.enumerated().map {
+                                "\($0.offset):\($0.element.id)"
+                            }.joined(separator: ",")
+                        ]
+                    )
+                    gLog("[MultiplayerReplay] Missing primary play card for actionId=\(replay.actionId)")
+                    return
+                }
+                MultiplayerShellDebugLog.append(
+                    event: "gm.replay.playcard.start",
+                    fields: [
+                        "actionId": replay.actionId,
+                        "actorPlayerId": replay.actorPlayerId,
+                        "resolvedCardId": card.id,
+                        "currentPlayerId": currentPlayer?.id.uuidString,
+                        "gameState": gameState.rawValue
+                    ]
+                )
+                playTurn(card: card)
+                didStart = true
+            case .selectCapture:
+                guard let optionCode = replay.optionCode,
+                      let selectedCard =
+                        pendingCaptureOptions.first(where: { $0.id == optionCode })
+                        ?? tableCards.first(where: { $0.id == optionCode }) else {
+                    gLog("[MultiplayerReplay] Missing capture option for actionId=\(replay.actionId)")
+                    return
+                }
+                respondToCapture(selectedCard: selectedCard)
+                didStart = true
+            case .selectShake:
+                guard let optionCode = replay.optionCode,
+                      let month = pendingShakeMonth else {
+                    gLog("[MultiplayerReplay] Missing shake state for actionId=\(replay.actionId)")
+                    return
+                }
+                respondToShake(month: month, didShake: optionCode == "shake_yes")
+                didStart = true
+            case .chooseGoStop:
+                guard let optionCode = replay.optionCode else {
+                    gLog("[MultiplayerReplay] Missing goStop option for actionId=\(replay.actionId)")
+                    return
+                }
+                MultiplayerShellDebugLog.append(
+                    event: "gm.replay.gostop.start",
+                    fields: [
+                        "actionId": replay.actionId,
+                        "actorPlayerId": replay.actorPlayerId,
+                        "currentPlayerId": currentPlayer?.id.uuidString,
+                        "gameState": gameState.rawValue,
+                        "optionCode": optionCode
+                    ]
+                )
+                guard gameState == .askingGoStop,
+                      currentPlayer?.id.uuidString == replay.actorPlayerId else {
+                    MultiplayerShellDebugLog.append(
+                        event: "gm.replay.gostop.invalid_state",
+                        fields: [
+                            "actionId": replay.actionId,
+                            "actorPlayerId": replay.actorPlayerId,
+                            "currentPlayerId": currentPlayer?.id.uuidString,
+                            "gameState": gameState.rawValue,
+                            "optionCode": optionCode
+                        ]
+                    )
+                    gLog(
+                        "[MultiplayerReplay] Invalid goStop replay state actionId=\(replay.actionId) " +
+                        "gameState=\(gameState.rawValue) currentPlayerId=\(currentPlayer?.id.uuidString ?? "nil")"
+                    )
+                    return
+                }
+                respondToGoStop(isGo: optionCode == "go")
+                MultiplayerShellDebugLog.append(
+                    event: "gm.replay.gostop.applied",
+                    fields: [
+                        "actionId": replay.actionId,
+                        "actorPlayerId": replay.actorPlayerId,
+                        "postGameState": gameState.rawValue,
+                        "postCurrentPlayerId": currentPlayer?.id.uuidString,
+                        "optionCode": optionCode
+                    ]
+                )
+                didStart = true
+            case .chooseChrysanthemumRole:
+                guard let optionCode = replay.optionCode,
+                      let role = CardRole(rawValue: optionCode) else {
+                    gLog("[MultiplayerReplay] Missing chrysanthemum role for actionId=\(replay.actionId)")
+                    return
+                }
+                respondToChrysanthemumChoice(role: role)
+                didStart = true
+            case .resume, .quit:
+                break
+            }
+        }
+        return didStart
+    }
     
     func maybeScheduleInternalComputerAction_ExternalWorkaround() {
         self.maybeScheduleInternalComputerAction()
@@ -2072,6 +2354,8 @@ class GameManager: ObservableObject {
         self.hiddenInTargetCardIds = []
         self.clearMoveContext()
         self.opponentPreplayRevealCardId = nil
+        self.multiplayerReplayQueueDepth = 0
+        self.multiplayerInFlightAcceptedActionId = nil
         self.internalComputerActionScheduled = false
         self.uxEventLogs.removeAll()
         gLog(gameText("log.event.emergency_busy_reset"))

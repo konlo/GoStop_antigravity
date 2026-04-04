@@ -22,7 +22,7 @@ func multiplayerNormalizedInviteCodeValue(_ rawValue: String?) -> String? {
     return String(repeating: "0", count: 4 - digits.count) + digits
 }
 
-private enum MultiplayerShellDebugLog {
+enum MultiplayerShellDebugLog {
     private static let queue = DispatchQueue(label: "com.antigravity.gostop.multiplayer-shell-debug-log")
     private static let fileName = "debug_log_multiplayer.ndjson"
 
@@ -173,6 +173,15 @@ struct MultiplayerLeaveAcknowledgementPayload {
     let roomClosed: MultiplayerRoomClosedPayload?
 }
 
+struct MultiplayerShellAcceptedActionEvent: Identifiable {
+    let eventId: String
+    let causedByActionId: String?
+    let serverTime: String?
+    let payload: MultiplayerActionAcceptedPayload
+
+    var id: String { payload.actionId }
+}
+
 struct MultiplayerShellAttachRequest {
     let roomId: String
     let sessionId: String
@@ -211,6 +220,7 @@ enum MultiplayerShellInboundEvent {
     case roomSnapshot(MultiplayerRoomSnapshotPayload)
     case roomEventRefresh(reason: String, roomSequence: Int?)
     case gameSnapshot(MultiplayerSnapshot, serverTime: String?)
+    case actionAccepted(MultiplayerShellAcceptedActionEvent)
     case statePatched(MultiplayerPatch, serverTime: String?)
     case turnChanged(MultiplayerTurnChangedPayload, serverTime: String?)
     case actionRejected(MultiplayerActionRejectedPayload)
@@ -414,28 +424,132 @@ final class MultiplayerNoopNetworkingAdapter: MultiplayerShellNetworkingAdapter 
     }
 }
 
+private enum MultiplayerShellTransportEndpointPersistence {
+    static let storageKey = "multiplayer.shell.transport.endpoint"
+
+    static func loadRawValue() -> String? {
+        UserDefaults.standard.string(forKey: storageKey)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    static func saveRawValue(_ rawValue: String?) {
+        let trimmed = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if trimmed.isEmpty {
+            UserDefaults.standard.removeObject(forKey: storageKey)
+        } else {
+            UserDefaults.standard.set(trimmed, forKey: storageKey)
+        }
+    }
+}
+
 struct MultiplayerShellTransportOptions {
-    let endpointURL: URL
+    private let endpointProvider: () -> URL
 
-    static let labDefault = MultiplayerShellTransportOptions(
-        endpointURL: defaultEndpointURL()
-    )
+    init(endpointProvider: @escaping () -> URL = { MultiplayerShellTransportOptions.currentEndpointURL() }) {
+        self.endpointProvider = endpointProvider
+    }
 
-    static let productDefault = MultiplayerShellTransportOptions(
-        endpointURL: defaultEndpointURL()
-    )
+    init(endpointURL: URL) {
+        self.endpointProvider = { endpointURL }
+    }
+
+    var endpointURL: URL {
+        endpointProvider()
+    }
+
+    static let labDefault = MultiplayerShellTransportOptions()
+
+    static let productDefault = MultiplayerShellTransportOptions()
+
+    static var environmentOverrideRawValue: String? {
+        ProcessInfo.processInfo.environment["GOSTOP_MP_TRANSPORT_URL"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    static var persistedOverrideRawValue: String? {
+        MultiplayerShellTransportEndpointPersistence.loadRawValue()
+    }
+
+    static var editableEndpointInputText: String {
+        persistedOverrideRawValue ?? defaultEndpointURL().absoluteString
+    }
+
+    static var currentEndpointDisplayText: String {
+        currentEndpointURL().absoluteString
+    }
+
+    static func saveEditableEndpointInput(_ rawValue: String?) -> Bool {
+        let trimmed = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if trimmed.isEmpty {
+            MultiplayerShellTransportEndpointPersistence.saveRawValue(nil)
+            return true
+        }
+        guard normalizedEndpointURL(from: trimmed) != nil else {
+            return false
+        }
+        MultiplayerShellTransportEndpointPersistence.saveRawValue(trimmed)
+        return true
+    }
+
+    static func currentEndpointURL() -> URL {
+        if let rawValue = environmentOverrideRawValue,
+           let url = normalizedEndpointURL(from: rawValue) {
+            return rewriteForSimulatorIfNeeded(url)
+        }
+        if let rawValue = persistedOverrideRawValue,
+           let url = normalizedEndpointURL(from: rawValue) {
+            return rewriteForSimulatorIfNeeded(url)
+        }
+        return defaultEndpointURL()
+    }
 
     static func defaultEndpointURL() -> URL {
-        if let rawValue = ProcessInfo.processInfo.environment["GOSTOP_MP_TRANSPORT_URL"],
-           let url = URL(string: rawValue) {
-#if targetEnvironment(simulator)
-            return simulatorReachableURL(from: url)
-#else
-            return url
-#endif
-        }
         let host = MultiplayerShellTransportHostResolver.defaultHost()
         return URL(string: "ws://\(host):9092")!
+    }
+
+    static func normalizedEndpointURL(from rawValue: String) -> URL? {
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        let candidate = trimmed.contains("://") ? trimmed : "ws://\(trimmed)"
+        guard var components = URLComponents(string: candidate),
+              let host = components.host,
+              !host.isEmpty else {
+            return nil
+        }
+        if components.scheme == nil {
+            components.scheme = "ws"
+        }
+        if components.port == nil {
+            components.port = defaultPort(for: components.scheme)
+        }
+        return components.url
+    }
+
+    static func isLoopbackHost(_ host: String?) -> Bool {
+        let normalized = host?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return normalized == "127.0.0.1" || normalized == "localhost"
+    }
+
+    static func requiresManualRemoteHostConfiguration(for url: URL) -> Bool {
+#if targetEnvironment(simulator)
+        return false
+#else
+        return isLoopbackHost(url.host)
+#endif
+    }
+
+    static func unresolvedRemoteHostErrorDetail(for url: URL) -> String {
+        "A physical iPhone cannot reach \(url.host ?? "127.0.0.1"). Set Transport Endpoint to your Mac LAN address, for example `ws://192.168.x.x:9092`."
+    }
+
+    private static func rewriteForSimulatorIfNeeded(_ url: URL) -> URL {
+#if targetEnvironment(simulator)
+        return simulatorReachableURL(from: url)
+#else
+        return url
+#endif
     }
 
     static func defaultPort(for scheme: String?) -> Int? {
@@ -1415,11 +1529,12 @@ final class MultiplayerWebSocketCommandNetworkingAdapter:
     MultiplayerShellResettableNetworkingAdapter,
     MultiplayerShellMailboxPollingNetworkingAdapter {
 
-    let label: String
+    var label: String {
+        "WS \(options.endpointLabel)"
+    }
 
     private let options: MultiplayerShellTransportOptions
     private let clientId: String
-    private let webSocketClient: MultiplayerCommandFrameWebSocketClient
     private var latestAttachRequest: MultiplayerShellAttachRequest?
     private let bufferedEvents = MultiplayerBufferedInboundEventQueue(
         label: "com.antigravity.gostop.multiplayer-shell.websocket-buffer"
@@ -1432,13 +1547,11 @@ final class MultiplayerWebSocketCommandNetworkingAdapter:
     ) {
         self.options = options
         self.clientId = clientId
-        self.webSocketClient = MultiplayerCommandFrameWebSocketClient(endpointURL: options.endpointURL)
-        self.label = "WS \(options.endpointLabel)"
         MultiplayerShellDebugLog.append(
             event: "transport.adapter.init",
             fields: [
                 "clientId": clientId,
-                "endpoint": options.endpointURL.absoluteString
+                "endpoint": MultiplayerShellTransportOptions.currentEndpointURL().absoluteString
             ]
         )
     }
@@ -1454,7 +1567,7 @@ final class MultiplayerWebSocketCommandNetworkingAdapter:
                 "deviceId": request.deviceId
             ]
         )
-        let payload = try await webSocketClient.sendCommand(
+        let payload = try await sendCommand(
             action: "room_create",
             data: [
                 "hostPlayerId": request.hostPlayerId,
@@ -1482,7 +1595,7 @@ final class MultiplayerWebSocketCommandNetworkingAdapter:
                 "deviceId": request.deviceId
             ]
         )
-        let payload = try await webSocketClient.sendCommand(
+        let payload = try await sendCommand(
             action: "room_join",
             data: [
                 "roomId": request.roomId,
@@ -1510,7 +1623,7 @@ final class MultiplayerWebSocketCommandNetworkingAdapter:
                 "connectionId": connectionId
             ]
         )
-        _ = try await webSocketClient.sendCommand(
+        _ = try await sendCommand(
             action: "room_transport_connect",
             data: [
                 "clientId": clientId,
@@ -1521,7 +1634,7 @@ final class MultiplayerWebSocketCommandNetworkingAdapter:
                 "resumeToken": request.resumeToken
             ]
         )
-        _ = try await webSocketClient.sendCommand(
+        _ = try await sendCommand(
             action: "room_transport_send",
             data: transportSendPayload(
                 action: "hello",
@@ -1536,7 +1649,7 @@ final class MultiplayerWebSocketCommandNetworkingAdapter:
     }
 
     func sendLeaveRoom(_ request: MultiplayerShellLeaveRoomRequest) async throws {
-        _ = try await webSocketClient.sendCommand(
+        _ = try await sendCommand(
             action: "room_transport_send",
             data: transportSendPayload(action: "leaveRoom")
         )
@@ -1553,7 +1666,7 @@ final class MultiplayerWebSocketCommandNetworkingAdapter:
                 "ready": request.ready ? "true" : "false"
             ]
         )
-        _ = try await webSocketClient.sendCommand(
+        _ = try await sendCommand(
             action: "room_transport_send",
             data: transportSendPayload(
                 action: "setReady",
@@ -1572,7 +1685,7 @@ final class MultiplayerWebSocketCommandNetworkingAdapter:
                 "lastSeen": cursor.payload.map { "\($0)" }
             ]
         )
-        _ = try await webSocketClient.sendCommand(
+        _ = try await sendCommand(
             action: "room_transport_send",
             data: transportSendPayload(action: "snapshot")
         )
@@ -1592,7 +1705,7 @@ final class MultiplayerWebSocketCommandNetworkingAdapter:
         if let gameId {
             extra["gameId"] = gameId
         }
-        _ = try await webSocketClient.sendCommand(
+        _ = try await sendCommand(
             action: "room_transport_send",
             data: transportSendPayload(
                 action: "recordGameStartedAndPrepareBootstrap",
@@ -1618,7 +1731,7 @@ final class MultiplayerWebSocketCommandNetworkingAdapter:
         if let forfeitingPlayerId {
             extra["forfeitingPlayerId"] = forfeitingPlayerId
         }
-        _ = try await webSocketClient.sendCommand(
+        _ = try await sendCommand(
             action: "room_transport_send",
             data: transportSendPayload(
                 action: "recordMatchEndedAndFetchTerminalSummary",
@@ -1637,7 +1750,7 @@ final class MultiplayerWebSocketCommandNetworkingAdapter:
                 "lastSeen": cursor.payload.map { "\($0)" }
             ]
         )
-        _ = try await webSocketClient.sendCommand(
+        _ = try await sendCommand(
             action: "room_transport_send",
             data: transportSendPayload(
                 action: "triggerGapRecovery",
@@ -1703,7 +1816,7 @@ final class MultiplayerWebSocketCommandNetworkingAdapter:
     }
 
     func resetTransportState() async {
-        await webSocketClient.invalidate()
+        cursor = MultiplayerShellTransportCursor()
         latestAttachRequest = nil
         bufferedEvents.removeAll()
     }
@@ -1720,7 +1833,7 @@ final class MultiplayerWebSocketCommandNetworkingAdapter:
                 "lastSeen": cursor.payload.map { "\($0)" }
             ]
         )
-        let response = try await webSocketClient.sendCommand(
+        let response = try await sendCommand(
             action: "room_transport_receive",
             data: ["clientId": clientId]
         )
@@ -1755,7 +1868,7 @@ final class MultiplayerWebSocketCommandNetworkingAdapter:
         if let traceId = context.traceId {
             extra["traceId"] = traceId
         }
-        _ = try await webSocketClient.sendCommand(
+        _ = try await sendCommand(
             action: "room_transport_send",
             data: transportSendPayload(
                 action: action,
@@ -1763,6 +1876,25 @@ final class MultiplayerWebSocketCommandNetworkingAdapter:
             )
         )
         try await pullMailbox()
+    }
+
+    private func sendCommand(action: String, data: [String: Any]) async throws -> [String: Any] {
+        let endpointURL = options.endpointURL
+        if MultiplayerShellTransportOptions.requiresManualRemoteHostConfiguration(for: endpointURL) {
+            MultiplayerShellDebugLog.append(
+                event: "transport.command.blocked.loopback",
+                fields: [
+                    "clientId": clientId,
+                    "action": action,
+                    "endpoint": endpointURL.absoluteString
+                ]
+            )
+            throw MultiplayerShellRuntimeError.invalidBoundaryState(
+                MultiplayerShellTransportOptions.unresolvedRemoteHostErrorDetail(for: endpointURL)
+            )
+        }
+        let webSocketClient = MultiplayerCommandFrameWebSocketClient(endpointURL: endpointURL)
+        return try await webSocketClient.sendCommand(action: action, data: data)
     }
 
     private func transportSendPayload(
@@ -2017,6 +2149,18 @@ private enum MultiplayerShellTransportEnvelopeMapper {
         case MultiplayerEventName.stateSnapshot.rawValue:
             let snapshotPayload = try requireDictionary("payload", in: engineEvent)
             return [.gameSnapshot(try decodeJSON(MultiplayerSnapshot.self, from: snapshotPayload), serverTime: serverTime)]
+        case MultiplayerEventName.actionAccepted.rawValue:
+            let acceptedPayload = try requireDictionary("payload", in: engineEvent)
+            return [
+                .actionAccepted(
+                    MultiplayerShellAcceptedActionEvent(
+                        eventId: try requireString("eventId", in: engineEvent),
+                        causedByActionId: optionalString("causedByActionId", in: engineEvent),
+                        serverTime: serverTime,
+                        payload: try decodeJSON(MultiplayerActionAcceptedPayload.self, from: acceptedPayload)
+                    )
+                )
+            ]
         case MultiplayerEventName.statePatched.rawValue:
             let patchPayload = try requireDictionary("payload", in: engineEvent)
             return [.statePatched(try decodeJSON(MultiplayerPatch.self, from: patchPayload), serverTime: serverTime)]
@@ -2304,6 +2448,8 @@ final class MultiplayerShellStore: ObservableObject {
     @Published var roomState: MultiplayerRoomShellState
     @Published var liveState: MultiplayerLiveShellState
     @Published private(set) var authoritativeLiveSnapshot: MultiplayerSnapshot?
+    @Published private(set) var authoritativeAcceptedActions: [MultiplayerShellAcceptedActionEvent]
+    @Published private(set) var recentLocalGameplayActionIDs: [String]
     @Published private(set) var productRenderProbe: MultiplayerProductRenderProbe?
     @Published var reconnectOverlay: MultiplayerReconnectOverlayState?
     @Published var resultState: MultiplayerResultShellState
@@ -2342,6 +2488,8 @@ final class MultiplayerShellStore: ObservableObject {
         self.roomState = baseline.room
         self.liveState = baseline.live
         self.authoritativeLiveSnapshot = nil
+        self.authoritativeAcceptedActions = []
+        self.recentLocalGameplayActionIDs = []
         self.productRenderProbe = nil
         self.reconnectOverlay = nil
         self.resultState = baseline.result
@@ -2409,6 +2557,10 @@ final class MultiplayerShellStore: ObservableObject {
 
     func updateEntryJoinIdentifier(_ joinIdentifier: String?) {
         source.updateEntryJoinIdentifier(joinIdentifier)
+        refreshSourceUI()
+    }
+
+    func refreshTransportPresentation() {
         refreshSourceUI()
     }
 
@@ -2540,6 +2692,8 @@ final class MultiplayerShellStore: ObservableObject {
         autoStartTaskRoomId = nil
         productGameplayActionDrivers = [:]
         productGameplayActionDriverOrder = []
+        authoritativeAcceptedActions = []
+        recentLocalGameplayActionIDs = []
         source.reset()
         refreshSourceUI()
     }
@@ -2608,6 +2762,8 @@ final class MultiplayerShellStore: ObservableObject {
         route = .entry
         entryState = state
         authoritativeLiveSnapshot = nil
+        authoritativeAcceptedActions = []
+        recentLocalGameplayActionIDs = []
         productRenderProbe = nil
         productGameplayActionDrivers = [:]
         productGameplayActionDriverOrder = []
@@ -2637,6 +2793,8 @@ final class MultiplayerShellStore: ObservableObject {
         route = .room
         roomState = state
         authoritativeLiveSnapshot = nil
+        authoritativeAcceptedActions = []
+        recentLocalGameplayActionIDs = []
         productRenderProbe = nil
         productGameplayActionDrivers = [:]
         productGameplayActionDriverOrder = []
@@ -2718,6 +2876,8 @@ final class MultiplayerShellStore: ObservableObject {
         route = .result
         resultState = state
         authoritativeLiveSnapshot = nil
+        authoritativeAcceptedActions = []
+        recentLocalGameplayActionIDs = []
         productRenderProbe = nil
         productGameplayActionDrivers = [:]
         productGameplayActionDriverOrder = []
@@ -2740,6 +2900,33 @@ final class MultiplayerShellStore: ObservableObject {
         guard route == .live else { return }
         guard productRenderProbe != probe else { return }
         productRenderProbe = probe
+    }
+
+    private func rememberLocalGameplayActionId(_ actionId: String) {
+        guard route == .live else { return }
+        guard !actionId.isEmpty else { return }
+        var updatedActionIDs = recentLocalGameplayActionIDs
+        if updatedActionIDs.last == actionId {
+            return
+        }
+        updatedActionIDs.append(actionId)
+        if updatedActionIDs.count > 24 {
+            updatedActionIDs.removeFirst(updatedActionIDs.count - 24)
+        }
+        recentLocalGameplayActionIDs = updatedActionIDs
+    }
+
+    private func appendAuthoritativeAcceptedAction(_ event: MultiplayerShellAcceptedActionEvent) {
+        guard route == .live else { return }
+        var updatedAcceptedActions = authoritativeAcceptedActions
+        if updatedAcceptedActions.contains(where: { $0.payload.actionId == event.payload.actionId }) {
+            return
+        }
+        updatedAcceptedActions.append(event)
+        if updatedAcceptedActions.count > 48 {
+            updatedAcceptedActions.removeFirst(updatedAcceptedActions.count - 48)
+        }
+        authoritativeAcceptedActions = updatedAcceptedActions
     }
 
     func updateProductGameplayActionDriver(
@@ -3384,6 +3571,21 @@ final class MultiplayerShellStore: ObservableObject {
                 overlay: nil,
                 authoritativeSnapshot: snapshot
             )
+        case .actionAccepted(let acceptedEvent):
+            debugLog(
+                "inbound.actionAccepted",
+                fields: [
+                    "eventId": acceptedEvent.eventId,
+                    "actionId": acceptedEvent.payload.actionId,
+                    "playerId": acceptedEvent.payload.playerId,
+                    "commandName": acceptedEvent.payload.commandName.rawValue,
+                    "preStateVersion": String(acceptedEvent.payload.preStateVersion),
+                    "postStateVersion": String(acceptedEvent.payload.postStateVersion),
+                    "causedByActionId": acceptedEvent.causedByActionId
+                ]
+            )
+            guard route == .live else { return }
+            appendAuthoritativeAcceptedAction(acceptedEvent)
         case let .statePatched(patch, serverTime):
             debugLog(
                 "inbound.statePatched",
@@ -4107,6 +4309,7 @@ final class MultiplayerShellStore: ObservableObject {
             throw MultiplayerShellRuntimeError.invalidBoundaryState("Gameplay transport commands require an authoritative live stateVersion.")
         }
         let actionId = "ios_\(actionName)_\(UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased())"
+        rememberLocalGameplayActionId(actionId)
         return MultiplayerShellGameplayCommandContext(
             roomId: liveState.roomId,
             gameId: liveState.gameId,

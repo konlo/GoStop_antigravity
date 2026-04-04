@@ -204,6 +204,10 @@ class MultiplayerUIScenarioRunner:
         self.completed_draw_capture_probes: list[dict] = []
         self.draw_capture_probe_failures: list[dict] = []
         self.draw_capture_probe_success_count = 0
+        self.active_remote_replay_probe: dict | None = None
+        self.completed_remote_replay_probes: list[dict] = []
+        self.remote_replay_probe_failures: list[dict] = []
+        self.remote_replay_probe_success_count = 0
 
     @property
     def scenario_slug(self) -> str:
@@ -211,6 +215,7 @@ class MultiplayerUIScenarioRunner:
             "MP-016": "always_go",
             "MP-017": "capture_visibility_short",
             "MP-018": "draw_capture_animation_watch",
+            "MP-019": "remote_replay_animation_watch",
         }
         return slugs[self.scenario_id]
 
@@ -220,6 +225,7 @@ class MultiplayerUIScenarioRunner:
             "MP-016": "Always-Go",
             "MP-017": "Capture Visibility Short",
             "MP-018": "Draw-Capture Animation Watch",
+            "MP-019": "Remote Replay Animation Watch",
         }
         return titles[self.scenario_id]
 
@@ -241,7 +247,7 @@ class MultiplayerUIScenarioRunner:
         return self.seed_candidates[index]
 
     def prepare_attempt_seed(self, attempt: int) -> None:
-        if self.scenario_id != "MP-018":
+        if self.scenario_id not in {"MP-018", "MP-019"}:
             self.selected_seed = None
             return
         seed = self.seed_for_attempt(attempt)
@@ -366,6 +372,8 @@ class MultiplayerUIScenarioRunner:
             return self.drive_short_capture_probe()
         if self.scenario_id == "MP-018":
             return self.drive_draw_capture_animation_probe()
+        if self.scenario_id == "MP-019":
+            return self.drive_remote_replay_animation_probe()
 
         deadline = time.time() + self.args.scenario_timeout
         while time.time() < deadline:
@@ -504,6 +512,47 @@ class MultiplayerUIScenarioRunner:
 
         raise RuntimeError("Timed out before the multiplayer draw-capture animation probe observed a qualifying turn.")
 
+    def drive_remote_replay_animation_probe(self) -> bool:
+        deadline = time.time() + self.args.scenario_timeout
+        while time.time() < deadline:
+            host_snapshot = self.host_conn.get_state()
+            guest_snapshot = self.guest_conn.get_state()
+            self.track_transition("host", host_snapshot)
+            self.track_transition("guest", guest_snapshot)
+
+            if host_snapshot.get("route") == "live" and guest_snapshot.get("route") == "live":
+                self.latest_authoritative_state = self.fetch_authoritative_live_state(host_snapshot, guest_snapshot)
+                if self.observe_remote_replay_probe(host_snapshot, guest_snapshot):
+                    self.finalize_remote_replay_probe("scenario_complete")
+                    time.sleep(max(0.0, self.args.success_hold_seconds))
+                    return True
+
+            self.observe_pending_screen_check(host_snapshot, guest_snapshot)
+            if self.pending_screen_check is not None:
+                time.sleep(self.pending_screen_poll_interval)
+                continue
+
+            if self.draw_capture_probe_exhausted():
+                raise GameplayNotExercisedError(
+                    "No multiplayer remote replay animation was observed within the configured turn budget. "
+                    f"seed={self.selected_seed} turnLimitPerSeat={self.args.per_seat_turn_limit}"
+                )
+
+            acted = False
+            for label, conn, snapshot, peer_snapshot in (
+                ("host", self.host_conn, host_snapshot, guest_snapshot),
+                ("guest", self.guest_conn, guest_snapshot, host_snapshot),
+            ):
+                if self.drive_draw_capture_snapshot(label, conn, snapshot, peer_snapshot=peer_snapshot):
+                    acted = True
+                    self.settle_after_action()
+                    break
+
+            if not acted:
+                time.sleep(self.args.poll_interval)
+
+        raise RuntimeError("Timed out before the multiplayer remote replay animation probe observed a qualifying turn.")
+
     def drive_snapshot(
         self,
         label: str,
@@ -556,6 +605,9 @@ class MultiplayerUIScenarioRunner:
                         },
                     )
                     return True
+                return False
+
+            if self.live_ui_is_busy(snapshot):
                 return False
 
             pending_choice = live.get("pendingChoice")
@@ -673,6 +725,9 @@ class MultiplayerUIScenarioRunner:
         if live.get("phase") == "matchEnded":
             raise GameplayNotExercisedError("The short multiplayer capture probe ended before completing two turns per player.")
 
+        if self.live_ui_is_busy(snapshot):
+            return False
+
         pending_choice = live.get("pendingChoice")
         if (
             isinstance(pending_choice, dict)
@@ -774,6 +829,9 @@ class MultiplayerUIScenarioRunner:
                 "The multiplayer draw-capture animation probe reached matchEnded before a qualifying draw capture was observed."
             )
 
+        if self.live_ui_is_busy(snapshot):
+            return False
+
         pending_choice = live.get("pendingChoice")
         if (
             isinstance(pending_choice, dict)
@@ -811,7 +869,16 @@ class MultiplayerUIScenarioRunner:
                 return False
             card = self.select_play_card(live)
             if card:
-                self.start_draw_capture_probe(label, snapshot)
+                if self.scenario_id == "MP-019" and peer_snapshot is not None and self.active_remote_replay_probe is not None:
+                    host_snapshot, guest_snapshot = (
+                        (snapshot, peer_snapshot) if label == "host" else (peer_snapshot, snapshot)
+                    )
+                    if self.observe_remote_replay_probe(host_snapshot, guest_snapshot):
+                        self.finalize_remote_replay_probe("next_turn_started")
+                if self.scenario_id == "MP-019":
+                    self.start_remote_replay_probe(label, snapshot, card)
+                else:
+                    self.start_draw_capture_probe(label, snapshot)
                 if peer_snapshot is not None:
                     self.register_screen_check(
                         label,
@@ -1171,6 +1238,9 @@ class MultiplayerUIScenarioRunner:
                 "recentUXEventTypes": render_probe.get("recentUXEventTypes") or [],
                 "recentUXEventCardIds": render_probe.get("recentUXEventCardIds") or [],
                 "recentUXEventSummaries": render_probe.get("recentUXEventSummaries") or [],
+                "opponentPreplayRevealCardId": render_probe.get("opponentPreplayRevealCardId"),
+                "multiplayerReplayQueueDepth": render_probe.get("multiplayerReplayQueueDepth"),
+                "multiplayerInFlightAcceptedActionId": render_probe.get("multiplayerInFlightAcceptedActionId"),
             }
         if route == "room":
             room = snapshot.get("room") or {}
@@ -1192,6 +1262,11 @@ class MultiplayerUIScenarioRunner:
                 "leavePolicy": result.get("leavePolicy"),
             }
         return {"route": route}
+
+    @staticmethod
+    def live_ui_is_busy(snapshot: dict) -> bool:
+        render_probe = snapshot.get("renderProbe") or {}
+        return bool(render_probe.get("isAutomationBusy"))
 
     @staticmethod
     def summarize_authoritative_state(authoritative: dict | None) -> dict | None:
@@ -1226,6 +1301,10 @@ class MultiplayerUIScenarioRunner:
                     self.observe_capture_probe(host_snapshot, guest_snapshot)
                 if self.scenario_id == "MP-018" and self.observe_draw_capture_probe(host_snapshot, guest_snapshot):
                     self.finalize_draw_capture_probe("settle_loop_complete")
+                    self.pending_screen_check = None
+                    return
+                if self.scenario_id == "MP-019" and self.observe_remote_replay_probe(host_snapshot, guest_snapshot):
+                    self.finalize_remote_replay_probe("settle_loop_complete")
                     self.pending_screen_check = None
                     return
 
@@ -1435,6 +1514,32 @@ class MultiplayerUIScenarioRunner:
             "screenshots": None,
         }
 
+    def start_remote_replay_probe(self, label: str, snapshot: dict, card: dict) -> None:
+        self.finalize_remote_replay_probe("next_turn_started")
+        live = snapshot.get("live") or {}
+        actor_player_id = live.get("localPlayerId")
+        if not isinstance(actor_player_id, str) or not actor_player_id:
+            raise RuntimeError("Live UI snapshot is missing localPlayerId before play_card.")
+        self.active_remote_replay_probe = {
+            "actorLabel": label,
+            "viewerLabel": "guest" if label == "host" else "host",
+            "actorPlayerId": actor_player_id,
+            "turnIndex": self.action_counts[label]["playCard"] + 1,
+            "seed": self.selected_seed,
+            "primaryCardId": card.get("cardId"),
+            "viewerRevealObserved": False,
+            "viewerHandToTableObserved": False,
+            "viewerHandInFlightObserved": False,
+            "viewerDeckToTableObserved": False,
+            "viewerDeckInFlightObserved": False,
+            "viewerTableToCapturedObserved": False,
+            "viewerCaptureInFlightObserved": False,
+            "drawnCardId": None,
+            "capturedCardIds": [],
+            "viewerStateVersion": None,
+            "screenshots": None,
+        }
+
     def finalize_draw_capture_probe(self, reason: str) -> None:
         probe = self.active_draw_capture_probe
         if probe is None:
@@ -1446,6 +1551,24 @@ class MultiplayerUIScenarioRunner:
             self.draw_capture_probe_success_count += 1
         self.completed_draw_capture_probes.append(finalized)
         self.active_draw_capture_probe = None
+
+    def finalize_remote_replay_probe(self, reason: str) -> None:
+        probe = self.active_remote_replay_probe
+        if probe is None:
+            return
+        finalized = {**probe, "finalizeReason": reason}
+        success = (
+            finalized.get("viewerRevealObserved")
+            and finalized.get("viewerHandToTableObserved")
+            and finalized.get("viewerDeckToTableObserved")
+            and finalized.get("viewerTableToCapturedObserved")
+        )
+        if success:
+            self.remote_replay_probe_success_count += 1
+        elif finalized.get("drawnCardId") or finalized.get("viewerHandToTableObserved"):
+            self.remote_replay_probe_failures.append(finalized)
+        self.completed_remote_replay_probes.append(finalized)
+        self.active_remote_replay_probe = None
 
     def draw_capture_probe_exhausted(self) -> bool:
         return all(
@@ -1517,6 +1640,103 @@ class MultiplayerUIScenarioRunner:
             f"seed={probe['seed']} actor={probe['actorLabel']} turnIndex={probe['turnIndex']}"
         )
 
+    def observe_remote_replay_probe(self, host_snapshot: dict, guest_snapshot: dict) -> bool:
+        probe = self.active_remote_replay_probe
+        if probe is None:
+            return False
+
+        viewer_snapshot = guest_snapshot if probe["viewerLabel"] == "guest" else host_snapshot
+        viewer_summary = self.snapshot_screen_summary(viewer_snapshot)
+        viewer_events = [
+            event
+            for summary in (viewer_summary.get("recentUXEventSummaries") or [])
+            if (event := self.parse_recent_event_summary(summary)) is not None
+        ]
+
+        primary_card_id = probe.get("primaryCardId")
+        if primary_card_id and viewer_summary.get("opponentPreplayRevealCardId") == primary_card_id:
+            probe["viewerRevealObserved"] = True
+        if primary_card_id and any(
+            event["type"] == "revealStart"
+            and primary_card_id in event["cardIds"]
+            for event in viewer_events
+        ):
+            probe["viewerRevealObserved"] = True
+
+        if primary_card_id:
+            if any(
+                event["type"] == "moveStart"
+                and event["source"] == "hand"
+                and event["target"] == "table"
+                and primary_card_id in event["cardIds"]
+                for event in viewer_events
+            ):
+                probe["viewerHandToTableObserved"] = True
+            if self.move_in_flight(viewer_summary, source="hand", target="table", card_id=primary_card_id):
+                probe["viewerHandInFlightObserved"] = True
+            if probe["viewerHandToTableObserved"] or probe["viewerHandInFlightObserved"]:
+                probe["viewerRevealObserved"] = True
+
+        for event in viewer_events:
+            if (
+                event["type"] == "moveStart"
+                and event["source"] == "deck"
+                and event["target"] == "table"
+                and len(event["cardIds"]) == 1
+            ):
+                probe["viewerDeckToTableObserved"] = True
+                probe["drawnCardId"] = probe.get("drawnCardId") or event["cardIds"][0]
+
+        drawn_card_id = probe.get("drawnCardId")
+        if drawn_card_id and self.move_in_flight(viewer_summary, source="deck", target="table", card_id=drawn_card_id):
+            probe["viewerDeckInFlightObserved"] = True
+
+        if drawn_card_id:
+            for event in viewer_events:
+                if (
+                    event["type"] == "moveStart"
+                    and event["source"] == "table"
+                    and event["target"] == "captured"
+                    and drawn_card_id in event["cardIds"]
+                ):
+                    probe["viewerTableToCapturedObserved"] = True
+                    probe["capturedCardIds"] = event["cardIds"]
+                    break
+            if self.draw_capture_in_flight(viewer_summary, drawn_card_id):
+                probe["viewerCaptureInFlightObserved"] = True
+
+        probe["viewerStateVersion"] = viewer_summary.get("stateVersion")
+        if (
+            probe["viewerRevealObserved"]
+            and probe["viewerHandToTableObserved"]
+            and probe["viewerDeckToTableObserved"]
+            and probe["viewerTableToCapturedObserved"]
+        ):
+            probe["screenshots"] = self.capture_action_pair(
+                self.action_sequence + 1,
+                "remote_replay_animation",
+            )
+            self.record_event(
+                "remote_replay.animation_observed",
+                {
+                    "actorLabel": probe["actorLabel"],
+                    "viewerLabel": probe["viewerLabel"],
+                    "turnIndex": probe["turnIndex"],
+                    "seed": probe["seed"],
+                    "primaryCardId": probe["primaryCardId"],
+                    "drawnCardId": probe["drawnCardId"],
+                    "capturedCardIds": probe["capturedCardIds"],
+                    "viewerRevealObserved": probe["viewerRevealObserved"],
+                    "viewerHandInFlightObserved": probe["viewerHandInFlightObserved"],
+                    "viewerDeckInFlightObserved": probe["viewerDeckInFlightObserved"],
+                    "viewerCaptureInFlightObserved": probe["viewerCaptureInFlightObserved"],
+                    "viewerStateVersion": probe["viewerStateVersion"],
+                },
+            )
+            return True
+
+        return False
+
     @staticmethod
     def parse_recent_event_summary(summary: str) -> dict | None:
         parts = summary.split("|", 3)
@@ -1564,6 +1784,18 @@ class MultiplayerUIScenarioRunner:
             summary.get("recentUXEventCardIds") or [],
         )
         return any(drawn_card_id in card_ids for card_ids in card_sets)
+
+    @staticmethod
+    def move_in_flight(summary: dict, *, source: str, target: str, card_id: str) -> bool:
+        if summary.get("currentMoveSourceZone") != source or summary.get("currentMoveTargetZone") != target:
+            return False
+        card_sets = (
+            summary.get("movingCardIds") or [],
+            summary.get("hiddenSourceCardIds") or [],
+            summary.get("hiddenTargetCardIds") or [],
+            summary.get("recentUXEventCardIds") or [],
+        )
+        return any(card_id in card_ids for card_ids in card_sets)
 
     def start_capture_probe(self, label: str, snapshot: dict) -> None:
         self.finalize_capture_probe("next_turn_started")
@@ -1782,6 +2014,8 @@ class MultiplayerUIScenarioRunner:
             "selectedSeed": self.selected_seed,
             "drawCaptureProbeSuccessCount": self.draw_capture_probe_success_count,
             "drawCaptureProbeFailures": self.draw_capture_probe_failures,
+            "remoteReplayProbeSuccessCount": self.remote_replay_probe_success_count,
+            "remoteReplayProbeFailures": self.remote_replay_probe_failures,
             "error": error_message,
         }
 
@@ -1819,6 +2053,9 @@ class MultiplayerUIScenarioRunner:
             "drawCaptureProbeSuccessCount": self.draw_capture_probe_success_count,
             "drawCaptureProbeFailures": self.draw_capture_probe_failures,
             "drawCaptureProbes": self.completed_draw_capture_probes,
+            "remoteReplayProbeSuccessCount": self.remote_replay_probe_success_count,
+            "remoteReplayProbeFailures": self.remote_replay_probe_failures,
+            "remoteReplayProbes": self.completed_remote_replay_probes,
             "actionLogPath": str(self.action_log_path),
             "screenChecksPath": str(self.screen_checks_path),
             "screenCheckSuccessCount": len(self.completed_screen_checks),
@@ -1867,6 +2104,14 @@ class MultiplayerUIScenarioRunner:
                     f"- Draw-Capture Probe Failure Count: {len(self.draw_capture_probe_failures)}",
                 ]
             )
+        if self.scenario_id == "MP-019":
+            lines.extend(
+                [
+                    f"- Selected Seed: {self.selected_seed}",
+                    f"- Remote Replay Probe Success Count: {self.remote_replay_probe_success_count}",
+                    f"- Remote Replay Probe Failure Count: {len(self.remote_replay_probe_failures)}",
+                ]
+            )
         if error_message:
             lines.extend(["", "## Error", f"- {error_message}"])
         self.summary_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -1906,7 +2151,7 @@ class MultiplayerUIScenarioRunner:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Drive a two-simulator multiplayer UI scenario end-to-end.")
-    parser.add_argument("--scenario-id", default="MP-016", choices=["MP-016", "MP-017", "MP-018"])
+    parser.add_argument("--scenario-id", default="MP-016", choices=["MP-016", "MP-017", "MP-018", "MP-019"])
     parser.add_argument("--host-udid", default=DEFAULT_HOST_UDID)
     parser.add_argument("--guest-udid", default=DEFAULT_GUEST_UDID)
     parser.add_argument("--bundle-id", default=DEFAULT_BUNDLE_ID)

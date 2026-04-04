@@ -144,6 +144,7 @@ private struct RoomTransportDisconnectResolution {
 }
 
 struct RoomAuthorityGameplayExecutionRequest {
+    var actionId: String
     var playerId: String
     var commandName: MultiplayerCommandName
     var commandPayload: [String: Any]
@@ -151,6 +152,7 @@ struct RoomAuthorityGameplayExecutionRequest {
 
 struct RoomAuthorityGameplayExecutionResult {
     var result: [String: Any]
+    var replay: MultiplayerAcceptedActionReplay?
 }
 
 struct RoomAuthorityGameplayRejection: Error {
@@ -1230,6 +1232,7 @@ final class RoomCoordinatorCLIAdapter {
             )
             let execution = try authorityRelay.executeGameplayCommand(
                 RoomAuthorityGameplayExecutionRequest(
+                    actionId: resolvedCommand.actionId,
                     playerId: resolvedCommand.authorityPlayerId,
                     commandName: resolvedCommand.commandName,
                     commandPayload: resolvedCommand.commandPayload
@@ -1262,6 +1265,9 @@ final class RoomCoordinatorCLIAdapter {
                             actionId: resolvedCommand.actionId,
                             playerId: resolvedCommand.authorityPlayerId,
                             commandName: resolvedCommand.commandName,
+                            preStateVersion: currentGameState.stateVersion,
+                            postStateVersion: nextGameState.stateVersion,
+                            replay: execution.replay,
                             result: execution.result.mapValues(AnyCodable.init)
                         )
                     )
@@ -1704,6 +1710,7 @@ final class RoomCoordinatorCLIAdapter {
 
         let execution = try authorityRelay.executeGameplayCommand(
             RoomAuthorityGameplayExecutionRequest(
+                actionId: resolvedCommand.actionId,
                 playerId: resolvedCommand.authorityPlayerId,
                 commandName: .quit,
                 commandPayload: resolvedCommand.commandPayload
@@ -1746,6 +1753,9 @@ final class RoomCoordinatorCLIAdapter {
                         actionId: resolvedCommand.actionId,
                         playerId: resolvedCommand.authorityPlayerId,
                         commandName: .quit,
+                        preStateVersion: currentGameState.stateVersion,
+                        postStateVersion: nextStateVersion,
+                        replay: execution.replay,
                         result: execution.result.mapValues(AnyCodable.init)
                     )
                 )

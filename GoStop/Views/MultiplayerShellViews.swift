@@ -3761,6 +3761,8 @@ private struct MultiplayerProductLiveGameView: View {
         ZStack {
             MultiplayerAuthoritativeGameCoordinatorView(
                 snapshot: snapshot,
+                acceptedActions: store.authoritativeAcceptedActions,
+                recentLocalActionIDs: store.recentLocalGameplayActionIDs,
                 onActionSent: { action in
                     store.handleGameplayActionFromGameView(action)
                 },
@@ -3866,6 +3868,8 @@ private struct MultiplayerProductHomeView: View {
                         }
                     }
 
+                    MultiplayerTransportEndpointEditorCard(store: store)
+
                     if store.route == .entry {
                         MultiplayerShellShowcaseView(
                             store: store,
@@ -3956,6 +3960,176 @@ private struct MultiplayerProductHomeView: View {
         case .result:
             return "The terminal summary is retained. Leave still waits for leaveAcknowledged or roomClosed."
         }
+    }
+}
+
+private struct MultiplayerTransportEndpointEditorCard: View {
+    @ObservedObject var store: MultiplayerShellStore
+    @State private var endpointInput = MultiplayerShellTransportOptions.editableEndpointInputText
+    @State private var feedbackMessage: String?
+    @State private var feedbackIsError = false
+
+    var body: some View {
+        MultiplayerPanelCard {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .top, spacing: 12) {
+                    MultiplayerGlyphBadge(
+                        systemName: "network",
+                        accentColor: editorAccentColor
+                    )
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Transport Endpoint")
+                            .font(.system(size: 20, weight: .black, design: .rounded))
+                            .foregroundStyle(.white)
+                        Text(editorDetailText)
+                            .font(.system(size: 14, weight: .medium, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.76))
+                    }
+
+                    Spacer(minLength: 0)
+                }
+
+                HStack(spacing: 12) {
+                    MultiplayerStatPill(label: "Active", value: MultiplayerShellTransportOptions.currentEndpointDisplayText)
+                    MultiplayerStatPill(label: "Source", value: endpointSourceLabel)
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Endpoint URL")
+                        .font(.system(size: 13, weight: .black, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.84))
+
+                    TextField("ws://192.168.x.x:9092", text: $endpointInput)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled(true)
+                        .keyboardType(.URL)
+                        .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .fill(Color.black.opacity(0.22))
+                        )
+                }
+
+                if let environmentOverride = MultiplayerShellTransportOptions.environmentOverrideRawValue,
+                   !environmentOverride.isEmpty {
+                    transportNotice(
+                        title: "Environment Override Active",
+                        detail: "`GOSTOP_MP_TRANSPORT_URL` is set to \(environmentOverride). Manual input is saved, but that override remains the active endpoint until you remove it."
+                    )
+                } else if MultiplayerShellTransportOptions.requiresManualRemoteHostConfiguration(
+                    for: MultiplayerShellTransportOptions.currentEndpointURL()
+                ) {
+                    transportNotice(
+                        title: "Physical Device Needs Mac LAN IP",
+                        detail: "A real iPhone cannot reach 127.0.0.1 on your Mac. Enter your Mac address, for example `ws://192.168.x.x:9092`, before creating or joining a room."
+                    )
+                }
+
+                if let feedbackMessage {
+                    Text(feedbackMessage)
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .foregroundStyle(feedbackIsError ? Color(red: 0.99, green: 0.62, blue: 0.28) : Color(red: 0.32, green: 0.82, blue: 0.52))
+                }
+
+                HStack(spacing: 12) {
+                    MultiplayerPrimaryButton(
+                        title: "Save Endpoint",
+                        subtitle: "Apply this websocket address for the next transport command.",
+                        isBusy: false,
+                        accentColor: editorAccentColor
+                    ) {
+                        saveEndpoint()
+                    }
+
+                    MultiplayerSecondaryButton(
+                        title: "Use Default",
+                        subtitle: "Clear the saved override and go back to the built-in default resolution.",
+                        accentColor: Color(red: 0.31, green: 0.74, blue: 0.97)
+                    ) {
+                        clearEndpointOverride()
+                    }
+                }
+            }
+        }
+        .onAppear {
+            syncInputWithCurrentConfiguration()
+        }
+    }
+
+    private var editorAccentColor: Color {
+        MultiplayerShellTransportOptions.requiresManualRemoteHostConfiguration(
+            for: MultiplayerShellTransportOptions.currentEndpointURL()
+        ) ? Color(red: 0.99, green: 0.62, blue: 0.28) : Color(red: 0.31, green: 0.74, blue: 0.97)
+    }
+
+    private var endpointSourceLabel: String {
+        if let environmentOverride = MultiplayerShellTransportOptions.environmentOverrideRawValue,
+           !environmentOverride.isEmpty {
+            return "Environment"
+        }
+        if let persistedOverride = MultiplayerShellTransportOptions.persistedOverrideRawValue,
+           !persistedOverride.isEmpty {
+            return "Saved"
+        }
+        return "Default"
+    }
+
+    private var editorDetailText: String {
+        if MultiplayerShellTransportOptions.requiresManualRemoteHostConfiguration(
+            for: MultiplayerShellTransportOptions.currentEndpointURL()
+        ) {
+            return "Simulator can rewrite loopback automatically, but a physical iPhone needs your Mac LAN address here."
+        }
+        return "This websocket endpoint is shared by create, join, resume, mailbox polling, and authoritative gameplay commands."
+    }
+
+    private func syncInputWithCurrentConfiguration() {
+        endpointInput = MultiplayerShellTransportOptions.editableEndpointInputText
+    }
+
+    private func saveEndpoint() {
+        guard MultiplayerShellTransportOptions.saveEditableEndpointInput(endpointInput) else {
+            feedbackIsError = true
+            feedbackMessage = "Endpoint must look like `ws://192.168.x.x:9092` or `192.168.x.x:9092`."
+            return
+        }
+        syncInputWithCurrentConfiguration()
+        store.refreshTransportPresentation()
+        feedbackIsError = false
+        feedbackMessage = "Saved. Active endpoint is now \(MultiplayerShellTransportOptions.currentEndpointDisplayText)."
+    }
+
+    private func clearEndpointOverride() {
+        _ = MultiplayerShellTransportOptions.saveEditableEndpointInput(nil)
+        syncInputWithCurrentConfiguration()
+        store.refreshTransportPresentation()
+        feedbackIsError = false
+        feedbackMessage = "Saved override cleared. Active endpoint is now \(MultiplayerShellTransportOptions.currentEndpointDisplayText)."
+    }
+
+    private func transportNotice(title: String, detail: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.system(size: 13, weight: .black, design: .rounded))
+                .foregroundStyle(Color(red: 0.99, green: 0.62, blue: 0.28))
+            Text(detail)
+                .font(.system(size: 13, weight: .medium, design: .rounded))
+                .foregroundStyle(.white.opacity(0.72))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.white.opacity(0.05))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        )
     }
 }
 
@@ -4235,6 +4409,8 @@ private struct MultiplayerProductSessionView: View {
                             }
                         }
                     }
+
+                    MultiplayerTransportEndpointEditorCard(store: store)
 
                     MultiplayerPanelCard {
                         VStack(alignment: .leading, spacing: 12) {
@@ -4517,6 +4693,8 @@ struct MultiplayerShellShowcaseView: View {
         if chrome == .product, let snapshot = store.authoritativeLiveSnapshot {
             MultiplayerAuthoritativeGameCoordinatorView(
                 snapshot: snapshot,
+                acceptedActions: store.authoritativeAcceptedActions,
+                recentLocalActionIDs: store.recentLocalGameplayActionIDs,
                 onActionSent: { action in
                     store.handleGameplayActionFromGameView(action)
                 },
