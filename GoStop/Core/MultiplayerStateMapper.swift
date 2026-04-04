@@ -22,6 +22,7 @@ enum MultiplayerStateMapperError: Error, LocalizedError {
 /// that GameManager needs in order to render the game state.
 struct MultiplayerMappedState {
     let stateVersion: Int
+    let rngSeed: Int?
     let phase: GameState
     let currentTurnIndex: Int
     
@@ -139,6 +140,7 @@ final class DefaultMultiplayerStateMapper: MultiplayerStateMapper {
         
         return MultiplayerMappedState(
             stateVersion: snapshot.state.stateVersion,
+            rngSeed: snapshot.state.rngSeed,
             phase: mappedPhase,
             currentTurnIndex: currentTurnIndex,
             players: players,

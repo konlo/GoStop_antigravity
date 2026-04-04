@@ -1,4 +1,7 @@
 import SwiftUI
+import Darwin
+import CryptoKit
+import Network
 
 private enum MultiplayerShellDateFormatting {
     static let full: ISO8601DateFormatter = {
@@ -425,9 +428,29 @@ struct MultiplayerShellTransportOptions {
     static func defaultEndpointURL() -> URL {
         if let rawValue = ProcessInfo.processInfo.environment["GOSTOP_MP_TRANSPORT_URL"],
            let url = URL(string: rawValue) {
+#if targetEnvironment(simulator)
+            return simulatorReachableURL(from: url)
+#else
             return url
+#endif
         }
-        return URL(string: "ws://127.0.0.1:9092")!
+        let host = MultiplayerShellTransportHostResolver.defaultHost()
+        return URL(string: "ws://\(host):9092")!
+    }
+
+    static func defaultPort(for scheme: String?) -> Int? {
+        switch scheme?.lowercased() {
+        case "ws":
+            return 9092
+        case "wss":
+            return 443
+        case "http":
+            return 80
+        case "https":
+            return 443
+        default:
+            return nil
+        }
     }
 
     var endpointLabel: String {
@@ -437,6 +460,91 @@ struct MultiplayerShellTransportOptions {
         }
         return host
     }
+
+#if targetEnvironment(simulator)
+    private static func simulatorReachableURL(from url: URL) -> URL {
+        guard let host = url.host,
+              simulatorRequiresHostRewrite(host: host),
+              let resolvedHost = MultiplayerShellTransportHostResolver.simulatorReachableHostIPv4(),
+              var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return url
+        }
+        components.host = resolvedHost
+        return components.url ?? url
+    }
+
+    private static func simulatorRequiresHostRewrite(host: String) -> Bool {
+        let normalizedHost = host.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return normalizedHost == "127.0.0.1" || normalizedHost == "localhost"
+    }
+#endif
+}
+
+private enum MultiplayerShellTransportHostResolver {
+    static func defaultHost() -> String {
+        if let rawValue = ProcessInfo.processInfo.environment["GOSTOP_MP_TRANSPORT_HOST"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !rawValue.isEmpty {
+            return rawValue
+        }
+#if targetEnvironment(simulator)
+        if let simulatorHost = simulatorReachableHostIPv4() {
+            return simulatorHost
+        }
+#endif
+        return "127.0.0.1"
+    }
+
+#if targetEnvironment(simulator)
+    static func simulatorReachableHostIPv4() -> String? {
+        var interfaceHead: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&interfaceHead) == 0, let firstInterface = interfaceHead else {
+            return nil
+        }
+        defer { freeifaddrs(interfaceHead) }
+
+        let preferredInterfaces = ["en0", "en1", "bridge100"]
+        var discoveredAddresses: [(name: String, address: String)] = []
+        var cursor: UnsafeMutablePointer<ifaddrs>? = firstInterface
+
+        while let interface = cursor?.pointee {
+            defer { cursor = interface.ifa_next }
+
+            let flags = Int32(interface.ifa_flags)
+            let isUp = (flags & IFF_UP) == IFF_UP
+            let isRunning = (flags & IFF_RUNNING) == IFF_RUNNING
+            let isLoopback = (flags & IFF_LOOPBACK) == IFF_LOOPBACK
+            guard isUp, isRunning, !isLoopback,
+                  let addressPointer = interface.ifa_addr,
+                  addressPointer.pointee.sa_family == UInt8(AF_INET),
+                  let interfaceName = String(validatingUTF8: interface.ifa_name) else {
+                continue
+            }
+
+            var hostBuffer = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+            let result = getnameinfo(
+                addressPointer,
+                socklen_t(addressPointer.pointee.sa_len),
+                &hostBuffer,
+                socklen_t(hostBuffer.count),
+                nil,
+                0,
+                NI_NUMERICHOST
+            )
+            guard result == 0 else { continue }
+
+            let address = String(cString: hostBuffer)
+            discoveredAddresses.append((name: interfaceName, address: address))
+        }
+
+        for interfaceName in preferredInterfaces {
+            if let address = discoveredAddresses.first(where: { $0.name == interfaceName })?.address {
+                return address
+            }
+        }
+        return discoveredAddresses.first?.address
+    }
+#endif
 }
 
 enum MultiplayerTransportMountMode: Equatable {
@@ -634,26 +742,607 @@ private struct MultiplayerShellTransportCommandError: LocalizedError {
     }
 }
 
+private enum MultiplayerManualWebSocketError: LocalizedError {
+    case invalidEndpoint(String)
+    case connectionClosed
+    case unexpectedResponse(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidEndpoint(let detail):
+            return detail
+        case .connectionClosed:
+            return "The multiplayer transport connection closed unexpectedly."
+        case .unexpectedResponse(let detail):
+            return detail
+        }
+    }
+}
+
+private final class MultiplayerManualWebSocketConnection {
+    private let connection: NWConnection
+    private let queue = DispatchQueue(label: "com.antigravity.gostop.multiplayer-shell.manual-websocket")
+    private var receiveBuffer = Data()
+
+    init(endpointURL: URL) throws {
+        guard let host = endpointURL.host,
+              let portValue = endpointURL.port ?? MultiplayerShellTransportOptions.defaultPort(for: endpointURL.scheme),
+              let port = NWEndpoint.Port(rawValue: UInt16(portValue)) else {
+            throw MultiplayerManualWebSocketError.invalidEndpoint(
+                "Invalid multiplayer transport endpoint: \(endpointURL.absoluteString)"
+            )
+        }
+        self.connection = NWConnection(host: NWEndpoint.Host(host), port: port, using: .tcp)
+    }
+
+    func start() async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            let resumeOnce = MultiplayerContinuationBox(continuation)
+            connection.stateUpdateHandler = { state in
+                switch state {
+                case .ready:
+                    resumeOnce.resume()
+                case .failed(let error):
+                    resumeOnce.resume(throwing: error)
+                case .cancelled:
+                    resumeOnce.resume(throwing: MultiplayerManualWebSocketError.connectionClosed)
+                default:
+                    break
+                }
+            }
+            connection.start(queue: queue)
+        }
+    }
+
+    func close() {
+        connection.cancel()
+    }
+
+    func performHandshake(for endpointURL: URL) async throws {
+        let requestPath: String = {
+            let path = endpointURL.path.isEmpty ? "/" : endpointURL.path
+            guard let query = endpointURL.query, !query.isEmpty else {
+                return path
+            }
+            return "\(path)?\(query)"
+        }()
+        let keyData = randomBytes(count: 16)
+        let key = Data(keyData).base64EncodedString()
+        let hostHeader: String = {
+            guard let host = endpointURL.host else { return endpointURL.absoluteString }
+            let port = endpointURL.port ?? MultiplayerShellTransportOptions.defaultPort(for: endpointURL.scheme)
+            if let port {
+                return "\(host):\(port)"
+            }
+            return host
+        }()
+        let request = Data(
+            """
+            GET \(requestPath) HTTP/1.1\r
+            Host: \(hostHeader)\r
+            Upgrade: websocket\r
+            Connection: Upgrade\r
+            Sec-WebSocket-Key: \(key)\r
+            Sec-WebSocket-Version: 13\r
+            \r
+            """.utf8
+        )
+        try await sendRaw(request)
+
+        let responseData = try await receiveUntilHeaderTerminator()
+        guard let headerText = String(data: responseData, encoding: .isoLatin1) else {
+            throw MultiplayerManualWebSocketError.unexpectedResponse("Websocket handshake returned non-text headers.")
+        }
+        let responseLines = headerText.components(separatedBy: "\r\n").filter { !$0.isEmpty }
+        guard let statusLine = responseLines.first, statusLine.contains("101") else {
+            throw MultiplayerManualWebSocketError.unexpectedResponse(
+                "Unexpected websocket handshake response: \(responseLines.first ?? "<missing status line>")"
+            )
+        }
+        var headers: [String: String] = [:]
+        for line in responseLines.dropFirst() {
+            guard let separator = line.firstIndex(of: ":") else { continue }
+            let name = line[..<separator].trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            let value = line[line.index(after: separator)...].trimmingCharacters(in: .whitespacesAndNewlines)
+            headers[name] = value
+        }
+
+        let expectedAccept = Data(Insecure.SHA1.hash(data: Data((key + WebSocketHandshake.magicGUID).utf8))).base64EncodedString()
+        guard headers["sec-websocket-accept"] == expectedAccept else {
+            throw MultiplayerManualWebSocketError.unexpectedResponse(
+                "Websocket handshake returned an invalid Sec-WebSocket-Accept."
+            )
+        }
+    }
+
+    func sendTextFrame(_ text: String) async throws {
+        try await sendFrame(opcode: 0x1, payload: Data(text.utf8))
+    }
+
+    func receiveTextFrame() async throws -> String {
+        while true {
+            let frame = try await receiveFrame()
+            switch frame.opcode {
+            case 0x1:
+                guard let text = String(data: frame.payload, encoding: .utf8) else {
+                    throw MultiplayerManualWebSocketError.unexpectedResponse(
+                        "Websocket transport returned invalid UTF-8."
+                    )
+                }
+                return text
+            case 0x8:
+                throw MultiplayerManualWebSocketError.connectionClosed
+            case 0x9:
+                try await sendFrame(opcode: 0xA, payload: frame.payload)
+            case 0xA:
+                continue
+            default:
+                continue
+            }
+        }
+    }
+
+    private func sendRaw(_ data: Data) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            connection.send(content: data, completion: .contentProcessed { error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume()
+                }
+            })
+        }
+    }
+
+    private func receiveUntilHeaderTerminator() async throws -> Data {
+        let delimiter = Data("\r\n\r\n".utf8)
+        while receiveBuffer.range(of: delimiter) == nil {
+            receiveBuffer.append(try await receiveChunk())
+        }
+        guard let range = receiveBuffer.range(of: delimiter) else {
+            throw MultiplayerManualWebSocketError.unexpectedResponse("Websocket handshake headers were truncated.")
+        }
+        let headerData = receiveBuffer.subdata(in: 0..<range.upperBound)
+        receiveBuffer.removeSubrange(0..<range.upperBound)
+        return headerData
+    }
+
+    private func receiveFrame() async throws -> (opcode: UInt8, payload: Data) {
+        try await ensureBufferedBytes(2)
+        let first = receiveBuffer.removeFirst()
+        let second = receiveBuffer.removeFirst()
+        let isFinal = (first & 0x80) != 0
+        guard isFinal else {
+            throw MultiplayerManualWebSocketError.unexpectedResponse("Fragmented websocket frames are unsupported.")
+        }
+
+        let opcode = first & 0x0F
+        let isMasked = (second & 0x80) != 0
+        var payloadLength = Int(second & 0x7F)
+        if payloadLength == 126 {
+            try await ensureBufferedBytes(2)
+            payloadLength = Int(receiveBuffer.removeFirst()) << 8
+            payloadLength |= Int(receiveBuffer.removeFirst())
+        } else if payloadLength == 127 {
+            try await ensureBufferedBytes(8)
+            payloadLength = 0
+            for _ in 0..<8 {
+                payloadLength = (payloadLength << 8) | Int(receiveBuffer.removeFirst())
+            }
+        }
+
+        var maskKey: [UInt8] = []
+        if isMasked {
+            try await ensureBufferedBytes(4)
+            maskKey = Array(receiveBuffer.prefix(4))
+            receiveBuffer.removeFirst(4)
+        }
+
+        try await ensureBufferedBytes(payloadLength)
+        var payload = Data(receiveBuffer.prefix(payloadLength))
+        receiveBuffer.removeFirst(payloadLength)
+        if isMasked {
+            let bytes = payload.enumerated().map { index, byte in
+                byte ^ maskKey[index % maskKey.count]
+            }
+            payload = Data(bytes)
+        }
+        return (opcode, payload)
+    }
+
+    private func sendFrame(opcode: UInt8, payload: Data) async throws {
+        var frame = Data()
+        frame.append(0x80 | opcode)
+        let payloadLength = payload.count
+        let maskKey = randomMaskKey()
+        if payloadLength < 126 {
+            frame.append(0x80 | UInt8(payloadLength))
+        } else if payloadLength <= UInt16.max {
+            frame.append(0x80 | 126)
+            frame.append(UInt8((payloadLength >> 8) & 0xFF))
+            frame.append(UInt8(payloadLength & 0xFF))
+        } else {
+            frame.append(0x80 | 127)
+            for shift in stride(from: 56, through: 0, by: -8) {
+                frame.append(UInt8((UInt64(payloadLength) >> UInt64(shift)) & 0xFF))
+            }
+        }
+        frame.append(contentsOf: maskKey)
+        let maskedPayload = payload.enumerated().map { index, byte in
+            byte ^ maskKey[index % maskKey.count]
+        }
+        frame.append(contentsOf: maskedPayload)
+        try await sendRaw(frame)
+    }
+
+    private func ensureBufferedBytes(_ count: Int) async throws {
+        while receiveBuffer.count < count {
+            receiveBuffer.append(try await receiveChunk())
+        }
+    }
+
+    private func receiveChunk() async throws -> Data {
+        try await withCheckedThrowingContinuation { continuation in
+            connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { content, _, isComplete, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+                if let content, !content.isEmpty {
+                    continuation.resume(returning: content)
+                    return
+                }
+                if isComplete {
+                    continuation.resume(throwing: MultiplayerManualWebSocketError.connectionClosed)
+                    return
+                }
+                continuation.resume(throwing: MultiplayerManualWebSocketError.unexpectedResponse("Received an empty websocket transport chunk."))
+            }
+        }
+    }
+
+    private func randomMaskKey() -> [UInt8] {
+        randomBytes(count: 4)
+    }
+
+    private func randomBytes(count: Int) -> [UInt8] {
+        (0..<count).map { _ in UInt8.random(in: UInt8.min...UInt8.max) }
+    }
+
+    private enum WebSocketHandshake {
+        static let magicGUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+    }
+}
+
+private final class MultiplayerContinuationBox<T> {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<T, Error>?
+
+    init(_ continuation: CheckedContinuation<T, Error>) {
+        self.continuation = continuation
+    }
+
+    func resume(returning value: T) {
+        lock.lock()
+        let continuation = self.continuation
+        self.continuation = nil
+        lock.unlock()
+        continuation?.resume(returning: value)
+    }
+
+    func resume() where T == Void {
+        resume(returning: ())
+    }
+
+    func resume(throwing error: Error) {
+        lock.lock()
+        let continuation = self.continuation
+        self.continuation = nil
+        lock.unlock()
+        continuation?.resume(throwing: error)
+    }
+}
+
+private enum MultiplayerBlockingManualWebSocketClient {
+    static func sendCommand(endpointURL: URL, payloadText: String) throws -> String {
+        let socketDescriptor = try openSocket(endpointURL: endpointURL)
+        defer { Darwin.close(socketDescriptor) }
+
+        try configureSocket(socketDescriptor)
+        let handshakeKey = Data(randomBytes(count: 16)).base64EncodedString()
+        let handshakeRequest = makeHandshakeRequest(endpointURL: endpointURL, key: handshakeKey)
+        try writeAll(handshakeRequest, to: socketDescriptor)
+
+        var receiveBuffer = Data()
+        let responseData = try receiveUntilHeaderTerminator(from: socketDescriptor, buffer: &receiveBuffer)
+        try validateHandshake(responseData, key: handshakeKey)
+
+        try writeAll(
+            makeMaskedFrame(opcode: 0x1, payload: Data(payloadText.utf8)),
+            to: socketDescriptor
+        )
+
+        while true {
+            let frame = try readFrame(from: socketDescriptor, buffer: &receiveBuffer)
+            switch frame.opcode {
+            case 0x1:
+                guard let text = String(data: frame.payload, encoding: .utf8) else {
+                    throw MultiplayerManualWebSocketError.unexpectedResponse(
+                        "Websocket transport returned invalid UTF-8."
+                    )
+                }
+                return text
+            case 0x8:
+                throw MultiplayerManualWebSocketError.connectionClosed
+            case 0x9:
+                try writeAll(
+                    makeMaskedFrame(opcode: 0xA, payload: frame.payload),
+                    to: socketDescriptor
+                )
+            case 0xA:
+                continue
+            default:
+                continue
+            }
+        }
+    }
+
+    private static func openSocket(endpointURL: URL) throws -> Int32 {
+        guard let host = endpointURL.host,
+              let port = endpointURL.port ?? MultiplayerShellTransportOptions.defaultPort(for: endpointURL.scheme) else {
+            throw MultiplayerManualWebSocketError.invalidEndpoint(
+                "Invalid multiplayer transport endpoint: \(endpointURL.absoluteString)"
+            )
+        }
+
+        var hints = addrinfo(
+            ai_flags: AI_ADDRCONFIG,
+            ai_family: AF_INET,
+            ai_socktype: SOCK_STREAM,
+            ai_protocol: IPPROTO_TCP,
+            ai_addrlen: 0,
+            ai_canonname: nil,
+            ai_addr: nil,
+            ai_next: nil
+        )
+        var resultPointer: UnsafeMutablePointer<addrinfo>?
+        let status = getaddrinfo(host, String(port), &hints, &resultPointer)
+        guard status == 0, let firstResult = resultPointer else {
+            throw MultiplayerManualWebSocketError.invalidEndpoint(
+                "Failed to resolve multiplayer transport host \(host):\(port)."
+            )
+        }
+        defer { freeaddrinfo(firstResult) }
+
+        var cursor: UnsafeMutablePointer<addrinfo>? = firstResult
+        while let info = cursor?.pointee {
+            let socketDescriptor = Darwin.socket(info.ai_family, info.ai_socktype, info.ai_protocol)
+            if socketDescriptor >= 0 {
+                let connectResult = Darwin.connect(socketDescriptor, info.ai_addr, info.ai_addrlen)
+                if connectResult == 0 {
+                    return socketDescriptor
+                }
+                Darwin.close(socketDescriptor)
+            }
+            cursor = info.ai_next
+        }
+
+        throw MultiplayerManualWebSocketError.invalidEndpoint(
+            "Could not connect to multiplayer transport \(host):\(port)."
+        )
+    }
+
+    private static func configureSocket(_ socketDescriptor: Int32) throws {
+        var timeout = timeval(tv_sec: 10, tv_usec: 0)
+        var noSigPipe: Int32 = 1
+        let timeoutLength = socklen_t(MemoryLayout<timeval>.size)
+        let intLength = socklen_t(MemoryLayout<Int32>.size)
+
+        guard setsockopt(socketDescriptor, SOL_SOCKET, SO_RCVTIMEO, &timeout, timeoutLength) == 0,
+              setsockopt(socketDescriptor, SOL_SOCKET, SO_SNDTIMEO, &timeout, timeoutLength) == 0,
+              setsockopt(socketDescriptor, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, intLength) == 0 else {
+            throw MultiplayerManualWebSocketError.unexpectedResponse(
+                "Failed to configure multiplayer transport socket."
+            )
+        }
+    }
+
+    private static func makeHandshakeRequest(endpointURL: URL, key: String) -> Data {
+        let requestPath: String = {
+            let path = endpointURL.path.isEmpty ? "/" : endpointURL.path
+            guard let query = endpointURL.query, !query.isEmpty else {
+                return path
+            }
+            return "\(path)?\(query)"
+        }()
+        let hostHeader: String = {
+            let host = endpointURL.host ?? endpointURL.absoluteString
+            if let port = endpointURL.port ?? MultiplayerShellTransportOptions.defaultPort(for: endpointURL.scheme) {
+                return "\(host):\(port)"
+            }
+            return host
+        }()
+        let request =
+            "GET \(requestPath) HTTP/1.1\r\n" +
+            "Host: \(hostHeader)\r\n" +
+            "Upgrade: websocket\r\n" +
+            "Connection: Upgrade\r\n" +
+            "Sec-WebSocket-Key: \(key)\r\n" +
+            "Sec-WebSocket-Version: 13\r\n" +
+            "\r\n"
+        return Data(request.utf8)
+    }
+
+    private static func validateHandshake(_ responseData: Data, key: String) throws {
+        guard let headerText = String(data: responseData, encoding: .isoLatin1) else {
+            throw MultiplayerManualWebSocketError.unexpectedResponse("Websocket handshake returned non-text headers.")
+        }
+        let responseLines = headerText.components(separatedBy: "\r\n").filter { !$0.isEmpty }
+        guard let statusLine = responseLines.first, statusLine.contains("101") else {
+            throw MultiplayerManualWebSocketError.unexpectedResponse(
+                "Unexpected websocket handshake response: \(responseLines.first ?? "<missing status line>")"
+            )
+        }
+        var headers: [String: String] = [:]
+        for line in responseLines.dropFirst() {
+            guard let separator = line.firstIndex(of: ":") else { continue }
+            let name = line[..<separator].trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            let value = line[line.index(after: separator)...].trimmingCharacters(in: .whitespacesAndNewlines)
+            headers[name] = value
+        }
+
+        let expectedAccept = Data(
+            Insecure.SHA1.hash(data: Data((key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").utf8))
+        ).base64EncodedString()
+        guard headers["sec-websocket-accept"] == expectedAccept else {
+            throw MultiplayerManualWebSocketError.unexpectedResponse(
+                "Websocket handshake returned an invalid Sec-WebSocket-Accept."
+            )
+        }
+    }
+
+    private static func receiveUntilHeaderTerminator(
+        from socketDescriptor: Int32,
+        buffer: inout Data
+    ) throws -> Data {
+        let delimiter = Data("\r\n\r\n".utf8)
+        while buffer.range(of: delimiter) == nil {
+            buffer.append(try receiveChunk(from: socketDescriptor))
+        }
+        guard let range = buffer.range(of: delimiter) else {
+            throw MultiplayerManualWebSocketError.unexpectedResponse("Websocket handshake headers were truncated.")
+        }
+        let headerData = buffer.subdata(in: 0..<range.upperBound)
+        buffer.removeSubrange(0..<range.upperBound)
+        return headerData
+    }
+
+    private static func readFrame(
+        from socketDescriptor: Int32,
+        buffer: inout Data
+    ) throws -> (opcode: UInt8, payload: Data) {
+        try ensureBufferedBytes(2, from: socketDescriptor, buffer: &buffer)
+        let first = buffer.removeFirst()
+        let second = buffer.removeFirst()
+        let isFinal = (first & 0x80) != 0
+        guard isFinal else {
+            throw MultiplayerManualWebSocketError.unexpectedResponse("Fragmented websocket frames are unsupported.")
+        }
+
+        let opcode = first & 0x0F
+        let isMasked = (second & 0x80) != 0
+        var payloadLength = Int(second & 0x7F)
+        if payloadLength == 126 {
+            try ensureBufferedBytes(2, from: socketDescriptor, buffer: &buffer)
+            payloadLength = Int(buffer.removeFirst()) << 8
+            payloadLength |= Int(buffer.removeFirst())
+        } else if payloadLength == 127 {
+            try ensureBufferedBytes(8, from: socketDescriptor, buffer: &buffer)
+            payloadLength = 0
+            for _ in 0..<8 {
+                payloadLength = (payloadLength << 8) | Int(buffer.removeFirst())
+            }
+        }
+
+        var maskKey: [UInt8] = []
+        if isMasked {
+            try ensureBufferedBytes(4, from: socketDescriptor, buffer: &buffer)
+            maskKey = Array(buffer.prefix(4))
+            buffer.removeFirst(4)
+        }
+
+        try ensureBufferedBytes(payloadLength, from: socketDescriptor, buffer: &buffer)
+        var payload = Data(buffer.prefix(payloadLength))
+        buffer.removeFirst(payloadLength)
+        if isMasked {
+            payload = Data(payload.enumerated().map { index, byte in
+                byte ^ maskKey[index % maskKey.count]
+            })
+        }
+        return (opcode, payload)
+    }
+
+    private static func ensureBufferedBytes(
+        _ count: Int,
+        from socketDescriptor: Int32,
+        buffer: inout Data
+    ) throws {
+        while buffer.count < count {
+            buffer.append(try receiveChunk(from: socketDescriptor))
+        }
+    }
+
+    private static func receiveChunk(from socketDescriptor: Int32) throws -> Data {
+        var chunk = [UInt8](repeating: 0, count: 65536)
+        let receivedCount = Darwin.recv(socketDescriptor, &chunk, chunk.count, 0)
+        if receivedCount > 0 {
+            return Data(chunk.prefix(receivedCount))
+        }
+        if receivedCount == 0 {
+            throw MultiplayerManualWebSocketError.connectionClosed
+        }
+        throw MultiplayerManualWebSocketError.unexpectedResponse(
+            "Socket receive failed with errno \(errno)."
+        )
+    }
+
+    private static func writeAll(_ data: Data, to socketDescriptor: Int32) throws {
+        try data.withUnsafeBytes { rawBuffer in
+            guard let baseAddress = rawBuffer.baseAddress else { return }
+            var bytesSent = 0
+            while bytesSent < data.count {
+                let pointer = baseAddress.advanced(by: bytesSent)
+                let remainingByteCount = data.count - bytesSent
+                let sentCount = Darwin.send(socketDescriptor, pointer, remainingByteCount, 0)
+                if sentCount <= 0 {
+                    throw MultiplayerManualWebSocketError.unexpectedResponse(
+                        "Socket send failed with errno \(errno)."
+                    )
+                }
+                bytesSent += sentCount
+            }
+        }
+    }
+
+    private static func makeMaskedFrame(opcode: UInt8, payload: Data) -> Data {
+        var frame = Data()
+        frame.append(0x80 | opcode)
+        let payloadLength = payload.count
+        let maskKey = randomBytes(count: 4)
+        if payloadLength < 126 {
+            frame.append(0x80 | UInt8(payloadLength))
+        } else if payloadLength <= UInt16.max {
+            frame.append(0x80 | 126)
+            frame.append(UInt8((payloadLength >> 8) & 0xFF))
+            frame.append(UInt8(payloadLength & 0xFF))
+        } else {
+            frame.append(0x80 | 127)
+            for shift in stride(from: 56, through: 0, by: -8) {
+                frame.append(UInt8((UInt64(payloadLength) >> UInt64(shift)) & 0xFF))
+            }
+        }
+        frame.append(contentsOf: maskKey)
+        frame.append(contentsOf: payload.enumerated().map { index, byte in
+            byte ^ maskKey[index % maskKey.count]
+        })
+        return frame
+    }
+
+    private static func randomBytes(count: Int) -> [UInt8] {
+        (0..<count).map { _ in UInt8.random(in: UInt8.min...UInt8.max) }
+    }
+}
+
 private actor MultiplayerCommandFrameWebSocketClient {
     private let endpointURL: URL
-    private let session: URLSession
-    private var socketTask: URLSessionWebSocketTask?
 
     init(endpointURL: URL) {
         self.endpointURL = endpointURL
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = 10
-        configuration.timeoutIntervalForResource = 10
-        self.session = URLSession(configuration: configuration)
     }
 
-    func invalidate() {
-        socketTask?.cancel(with: .goingAway, reason: nil)
-        socketTask = nil
-    }
+    func invalidate() {}
 
     func sendCommand(action: String, data: [String: Any]) async throws -> [String: Any] {
-        let socketTask = makeSocketTask()
         let payload: [String: Any] = [
             "action": action,
             "data": data
@@ -664,42 +1353,37 @@ private actor MultiplayerCommandFrameWebSocketClient {
         }
 
         do {
-            try await socketTask.send(.string(rawString))
-            return try await receiveCommandResponse(from: socketTask, action: action)
+            let endpointURL = self.endpointURL
+            let rawResponse = try await Task.detached(priority: .userInitiated) {
+                try MultiplayerBlockingManualWebSocketClient.sendCommand(
+                    endpointURL: endpointURL,
+                    payloadText: rawString
+                )
+            }.value
+            return try await receiveCommandResponse(rawResponse: rawResponse, action: action)
         } catch {
+            let nsError = error as NSError
+            MultiplayerShellDebugLog.append(
+                event: "transport.command.failed",
+                fields: [
+                    "action": action,
+                    "endpoint": endpointURL.absoluteString,
+                    "error": error.localizedDescription,
+                    "domain": nsError.domain,
+                    "code": String(nsError.code),
+                    "debug": String(describing: error)
+                ]
+            )
             invalidate()
             throw error
         }
     }
 
-    private func makeSocketTask() -> URLSessionWebSocketTask {
-        if let socketTask {
-            return socketTask
-        }
-        let socketTask = session.webSocketTask(with: endpointURL)
-        socketTask.resume()
-        self.socketTask = socketTask
-        return socketTask
-    }
-
     private func receiveCommandResponse(
-        from socketTask: URLSessionWebSocketTask,
+        rawResponse: String,
         action: String
     ) async throws -> [String: Any] {
-        let message = try await socketTask.receive()
-        let data: Data
-        switch message {
-        case .string(let string):
-            data = Data(string.utf8)
-        case .data(let rawData):
-            data = rawData
-        @unknown default:
-            throw MultiplayerShellRuntimeError.invalidBoundaryState(
-                "Unsupported websocket response while waiting for \(action)."
-            )
-        }
-
-        let jsonObject = try JSONSerialization.jsonObject(with: data)
+        let jsonObject = try JSONSerialization.jsonObject(with: Data(rawResponse.utf8))
         guard let response = jsonObject as? [String: Any] else {
             throw MultiplayerShellRuntimeError.invalidBoundaryState(
                 "Websocket response for \(action) must be an object."
@@ -720,6 +1404,7 @@ private actor MultiplayerCommandFrameWebSocketClient {
         }
         return data
     }
+
 }
 
 final class MultiplayerWebSocketCommandNetworkingAdapter:
@@ -1636,6 +2321,8 @@ final class MultiplayerShellStore: ObservableObject {
     private var liveStateGapRecoveryTask: Task<Void, Never>?
     private var autoStartTaskRoomId: String?
     private var simulatorBridge: MultiplayerSimulatorBridge?
+    private var productGameplayActionDrivers: [UUID: (MultiplayerAction) -> Void] = [:]
+    private var productGameplayActionDriverOrder: [UUID] = []
 
     init(
         baseline: MultiplayerShellPreviewShowcaseState = .mock,
@@ -1781,6 +2468,24 @@ final class MultiplayerShellStore: ObservableObject {
         }
     }
 
+    func performGameplayActionFromAutomation(_ action: MultiplayerAction) {
+        let activeSourceID = productGameplayActionDriverOrder.last
+        let activeDriver = activeSourceID.flatMap { productGameplayActionDrivers[$0] }
+        debugLog(
+            "live.automation_action",
+            fields: [
+                "action": String(describing: action),
+                "driver": activeDriver == nil ? "fallback" : "product",
+                "activeSourceId": activeSourceID?.uuidString
+            ]
+        )
+        if let activeDriver {
+            activeDriver(action)
+            return
+        }
+        handleGameplayActionFromGameView(action)
+    }
+
     func playCardFromLiveUI(_ cardId: String) {
         Task { @MainActor [weak self] in
             guard let self else { return }
@@ -1833,6 +2538,8 @@ final class MultiplayerShellStore: ObservableObject {
     func reset() {
         stopTransportMailboxPolling()
         autoStartTaskRoomId = nil
+        productGameplayActionDrivers = [:]
+        productGameplayActionDriverOrder = []
         source.reset()
         refreshSourceUI()
     }
@@ -1902,6 +2609,8 @@ final class MultiplayerShellStore: ObservableObject {
         entryState = state
         authoritativeLiveSnapshot = nil
         productRenderProbe = nil
+        productGameplayActionDrivers = [:]
+        productGameplayActionDriverOrder = []
         reconnectOverlay = nil
         autoStartTaskRoomId = nil
         liveStateGapRecoveryTask?.cancel()
@@ -1929,6 +2638,8 @@ final class MultiplayerShellStore: ObservableObject {
         roomState = state
         authoritativeLiveSnapshot = nil
         productRenderProbe = nil
+        productGameplayActionDrivers = [:]
+        productGameplayActionDriverOrder = []
         reconnectOverlay = overlay
         liveStateGapRecoveryTask?.cancel()
         liveStateGapRecoveryTask = nil
@@ -1982,7 +2693,9 @@ final class MultiplayerShellStore: ObservableObject {
         authoritativeSnapshot: MultiplayerSnapshot? = nil
     ) {
         route = .live
-        liveState = state
+        AnimationManager.shared.withGameAnimation {
+            self.liveState = state
+        }
         if let authoritativeSnapshot {
             authoritativeLiveSnapshot = authoritativeSnapshot
         }
@@ -2006,6 +2719,8 @@ final class MultiplayerShellStore: ObservableObject {
         resultState = state
         authoritativeLiveSnapshot = nil
         productRenderProbe = nil
+        productGameplayActionDrivers = [:]
+        productGameplayActionDriverOrder = []
         reconnectOverlay = nil
         autoStartTaskRoomId = nil
         liveStateGapRecoveryTask?.cancel()
@@ -2025,6 +2740,47 @@ final class MultiplayerShellStore: ObservableObject {
         guard route == .live else { return }
         guard productRenderProbe != probe else { return }
         productRenderProbe = probe
+    }
+
+    func updateProductGameplayActionDriver(
+        _ driver: ((MultiplayerAction) -> Void)?,
+        sourceID: UUID
+    ) {
+        if let driver {
+            productGameplayActionDrivers[sourceID] = driver
+            productGameplayActionDriverOrder.removeAll { $0 == sourceID }
+            productGameplayActionDriverOrder.append(sourceID)
+            debugLog(
+                "live.automation_driver",
+                fields: [
+                    "state": "registered",
+                    "sourceId": sourceID.uuidString,
+                    "activeSourceId": productGameplayActionDriverOrder.last?.uuidString
+                ]
+            )
+            return
+        }
+
+        guard productGameplayActionDrivers.removeValue(forKey: sourceID) != nil else {
+            debugLog(
+                "live.automation_driver",
+                fields: [
+                    "state": "stale_clear_ignored",
+                    "sourceId": sourceID.uuidString,
+                    "activeSourceId": productGameplayActionDriverOrder.last?.uuidString
+                ]
+            )
+            return
+        }
+        productGameplayActionDriverOrder.removeAll { $0 == sourceID }
+        debugLog(
+            "live.automation_driver",
+            fields: [
+                "state": "cleared",
+                "sourceId": sourceID.uuidString,
+                "activeSourceId": productGameplayActionDriverOrder.last?.uuidString
+            ]
+        )
     }
 
     fileprivate func updateOverlay(_ overlay: MultiplayerReconnectOverlayState?) {
@@ -2050,6 +2806,8 @@ final class MultiplayerShellStore: ObservableObject {
         roomState = baseline.room
         liveState = baseline.live
         authoritativeLiveSnapshot = nil
+        productGameplayActionDrivers = [:]
+        productGameplayActionDriverOrder = []
         reconnectOverlay = nil
         resultState = baseline.result
         refreshSourceUI()
@@ -3221,7 +3979,17 @@ final class MultiplayerShellStore: ObservableObject {
         stateObject["stateVersion"] = patch.targetStateVersion
         let patchedStateData = try JSONSerialization.data(withJSONObject: stateObject, options: [.sortedKeys])
         let decoder = JSONDecoder()
-        let patchedState = try decoder.decode(MultiplayerMatchSnapshot.self, from: patchedStateData)
+        let patchedState: MultiplayerMatchSnapshot
+        do {
+            patchedState = try decoder.decode(MultiplayerMatchSnapshot.self, from: patchedStateData)
+        } catch {
+            throw MultiplayerShellRuntimeError.invalidBoundaryState(
+                patchDecodingFailureDescription(
+                    error,
+                    topLevelKeys: stateObject.keys.sorted()
+                )
+            )
+        }
         return MultiplayerSnapshot(
             snapshotId: snapshot.snapshotId,
             reason: snapshot.reason,
@@ -3255,6 +4023,38 @@ final class MultiplayerShellStore: ObservableObject {
         return value
     }
 
+    private func patchDecodingFailureDescription(
+        _ error: Error,
+        topLevelKeys: [String]
+    ) -> String {
+        let keysSummary = topLevelKeys.joined(separator: ",")
+        switch error {
+        case let DecodingError.typeMismatch(_, context):
+            return "Patched snapshot decode type mismatch at \(patchDecodingPathDescription(context.codingPath)): \(context.debugDescription) | keys=\(keysSummary)"
+        case let DecodingError.valueNotFound(_, context):
+            return "Patched snapshot decode missing value at \(patchDecodingPathDescription(context.codingPath)): \(context.debugDescription) | keys=\(keysSummary)"
+        case let DecodingError.keyNotFound(key, context):
+            let codingPath = context.codingPath + [key]
+            return "Patched snapshot decode missing key at \(patchDecodingPathDescription(codingPath)): \(context.debugDescription) | keys=\(keysSummary)"
+        case let DecodingError.dataCorrupted(context):
+            return "Patched snapshot decode corrupted data at \(patchDecodingPathDescription(context.codingPath)): \(context.debugDescription) | keys=\(keysSummary)"
+        default:
+            return error.localizedDescription
+        }
+    }
+
+    private func patchDecodingPathDescription(_ codingPath: [CodingKey]) -> String {
+        guard !codingPath.isEmpty else { return "<root>" }
+        return codingPath
+            .map { key in
+                if let intValue = key.intValue {
+                    return "[\(intValue)]"
+                }
+                return key.stringValue
+            }
+            .joined(separator: ".")
+    }
+
     private func snapshotApplying(
         turnChanged: MultiplayerTurnChangedPayload,
         serverTime: String?,
@@ -3281,6 +4081,7 @@ final class MultiplayerShellStore: ObservableObject {
             players: snapshot.state.players,
             table: snapshot.state.table,
             deck: snapshot.state.deck,
+            rngSeed: snapshot.state.rngSeed,
             pendingChoice: snapshot.state.pendingChoice,
             scoreboard: snapshot.state.scoreboard,
             timers: updatedTimers,

@@ -2810,6 +2810,18 @@ final class RoomCoordinatorCLIAdapter {
     }
 
     private func transportReceive(_ payload: RoomTransportReceiveCLIRequest) -> [String: Any] {
+        if let client = transportClients[payload.clientId] {
+            _ = try? coordinator.recordHeartbeat(
+                RecordHeartbeatRequest(
+                    roomId: client.roomId,
+                    sessionId: client.sessionId,
+                    connectionId: client.connectionId,
+                    lastAckedRoomSequence: nil,
+                    lastAckedGameEventId: nil,
+                    lastSeenStateVersion: nil
+                )
+            )
+        }
         let envelopes = transportMailboxes[payload.clientId] ?? []
         transportMailboxes[payload.clientId] = []
         return [

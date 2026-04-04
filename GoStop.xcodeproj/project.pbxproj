@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 77;
+	objectVersion = 63;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -144,7 +144,7 @@
 		2857725433426BA8E4DE2D7C /* ConfigManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigManager.swift; sourceTree = "<group>"; };
 		2A5AED8D768BA4A2B6021C1C /* MultiplayerRound6Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultiplayerRound6Tests.swift; sourceTree = "<group>"; };
 		2C9DC8F2B463C152AB92172B /* Deck.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Deck.swift; sourceTree = "<group>"; };
-		307B0A27C609202DD546A40A /* GoStopCLI */ = {isa = PBXFileReference; includeInIndex = 0; path = GoStopCLI; sourceTree = BUILT_PRODUCTS_DIR; };
+		307B0A27C609202DD546A40A /* GoStopCLI */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = text; path = GoStopCLI; sourceTree = BUILT_PRODUCTS_DIR; };
 		3085BB433FB735CFD683B342 /* LayoutConfigV2.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutConfigV2.swift; sourceTree = "<group>"; };
 		33D612FDCBC8C5EB5D3BEF35 /* hwatu_blanket_puck.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = hwatu_blanket_puck.wav; sourceTree = "<group>"; };
 		35D63233D0F1747B09602733 /* MultiplayerSimulatorBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultiplayerSimulatorBridge.swift; sourceTree = "<group>"; };
@@ -199,7 +199,7 @@
 		E6121B38C070C592434D33A1 /* DebugLayoutOverlayV2.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugLayoutOverlayV2.swift; sourceTree = "<group>"; };
 		E6AC5D876322971A0E429F0D /* RoomCoordinatorModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomCoordinatorModels.swift; sourceTree = "<group>"; };
 		E7EED27030CEA4A9249D7834 /* MultiplayerRound2Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultiplayerRound2Tests.swift; sourceTree = "<group>"; };
-		E802832BAB9D5CCCB8D64414 /* GoStop.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = GoStop.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		E802832BAB9D5CCCB8D64414 /* GoStop.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GoStop.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		FDF9B6B8094E7BBA663D7D0E /* Pixel_Paradise_Groove.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = Pixel_Paradise_Groove.mp3; sourceTree = "<group>"; };
 		FFABCFBA7D5C0D514D4743B5 /* ttadak.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = ttadak.wav; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -463,7 +463,6 @@
 			packageReferences = (
 				8067FC4FB28066011D3F927B /* XCRemoteSwiftPackageReference "Yams" */,
 			);
-			preferredProjectObjectVersion = 77;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -678,6 +677,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = CX4GUZT9FS;
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = GoStop/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = GoStop;
@@ -697,6 +697,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = CX4GUZT9FS;
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = GoStop/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = GoStop;

@@ -41,6 +41,11 @@ class CoverageRecord:
     classification_reason: str
 
 
+@dataclass(frozen=True)
+class UIScenarioSelection:
+    scenario_id: str
+
+
 RUNNER_TRACKS = {
     scenario.scenario_id: ScenarioTrack(
         track_id=scenario.scenario_id,
@@ -148,7 +153,7 @@ BACKLOG_TRACKS = {
 }
 
 TRACK_REGISTRY: dict[str, ScenarioTrack] = {**RUNNER_TRACKS, **BACKLOG_TRACKS}
-UI_SUPPORTED_SCENARIOS = {"MP-016", "MP-017"}
+UI_SUPPORTED_SCENARIOS = {"MP-016", "MP-017", "MP-018"}
 
 MANAGED_SUITES: dict[str, tuple[str, ...]] = {
     "managed-all-runnable": tuple(scenario.scenario_id for scenario in ALL_SCENARIOS),
@@ -410,6 +415,9 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--poll-interval", type=float, default=0.7, help="Bridge polling interval for ui mode.")
     parser.add_argument("--action-delay", type=float, default=1.1, help="Delay between automated UI actions in ui mode.")
     parser.add_argument("--max-attempts", type=int, default=5, help="Retry budget for ui mode.")
+    parser.add_argument("--seed-candidates", default="1,2,3,4,5", help="Comma-separated RNG seeds for ui mode retries.")
+    parser.add_argument("--per-seat-turn-limit", type=int, default=6, help="Per-seat playCard limit for draw-capture ui mode.")
+    parser.add_argument("--success-hold-seconds", type=float, default=1.2, help="Seconds to keep the successful ui state visible before exiting.")
     parser.add_argument("--capture-final-screenshot", action="store_true", help="Capture final host/guest screenshots in ui mode.")
     parser.add_argument(
         "--fail-on-unmapped",
@@ -458,6 +466,12 @@ def _run_ui_scenarios(args: argparse.Namespace, scenarios, suite_name: str | Non
         str(args.action_delay),
         "--max-attempts",
         str(args.max_attempts),
+        "--seed-candidates",
+        args.seed_candidates,
+        "--per-seat-turn-limit",
+        str(args.per_seat_turn_limit),
+        "--success-hold-seconds",
+        str(args.success_hold_seconds),
     ]
     if args.app_path:
         command.extend(["--app-path", args.app_path])
@@ -498,6 +512,15 @@ def resolve_runner_scenarios(args: argparse.Namespace):
             return list(SCENARIO_SUITES[args.suite]), args.suite, True
         raise SystemExit(f"Unknown suite: {args.suite}")
     if args.scenario_ids:
+        if args.mode == "ui":
+            missing = [scenario_id for scenario_id in args.scenario_ids if scenario_id not in SCENARIO_REGISTRY and scenario_id not in UI_SUPPORTED_SCENARIOS]
+            if missing:
+                raise SystemExit(f"Unknown scenario IDs: {', '.join(missing)}")
+            selections = [
+                SCENARIO_REGISTRY[scenario_id] if scenario_id in SCENARIO_REGISTRY else UIScenarioSelection(scenario_id)
+                for scenario_id in args.scenario_ids
+            ]
+            return selections, None, False
         missing = [scenario_id for scenario_id in args.scenario_ids if scenario_id not in SCENARIO_REGISTRY]
         if missing:
             raise SystemExit(f"Unknown scenario IDs: {', '.join(missing)}")

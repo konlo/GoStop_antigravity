@@ -122,6 +122,7 @@ class GameManager: ObservableObject {
     @Published var gameState: GameState = .ready
     @Published var players: [Player] = []
     @Published var deck = Deck()
+    private(set) var currentSetupSeed: Int? = nil
     
     /// Hook for multiplayer coordinators to intercept local player actions.
     var onLocalAction: ((MultiplayerAction) -> Void)?
@@ -266,7 +267,12 @@ class GameManager: ObservableObject {
         pendingAutomationDelays > 0 ||
         !currentMovingCards.isEmpty ||
         !hiddenInSourceCardIds.isEmpty ||
-        !hiddenInTargetCardIds.isEmpty
+        !hiddenInTargetCardIds.isEmpty ||
+        !sourceCueCardIds.isEmpty ||
+        !targetCueCardIds.isEmpty ||
+        currentMoveSourceZone != nil ||
+        currentMoveTargetZone != nil ||
+        opponentPreplayRevealCardId != nil
     }
     
     var currentPlayer: Player? {
@@ -459,6 +465,7 @@ class GameManager: ObservableObject {
     
     func setupGame(seed: Int? = nil) {
         automationDelayGeneration += 1
+        currentSetupSeed = seed
         externalControlMode = false
         let player1 = Player(name: gameText("players.default.player_one"), money: 10000)
         let computer = Player(name: gameText("players.default.computer"), money: 10000)
@@ -2774,6 +2781,7 @@ extension GameManager {
             },
             table: multiplayerTableSnapshot(),
             deck: MultiplayerDeckSnapshot(remainingCount: deck.cards.count),
+            rngSeed: currentSetupSeed,
             pendingChoice: pendingChoice,
             scoreboard: multiplayerScoreboard(),
             timers: MultiplayerTimers(
@@ -3454,12 +3462,25 @@ struct AnyCodable: Codable {
     
     func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
-        if let intValue = value as? Int {
+        if let numberValue = value as? NSNumber {
+            if CFGetTypeID(numberValue) == CFBooleanGetTypeID() {
+                try container.encode(numberValue.boolValue)
+            } else {
+                let doubleValue = numberValue.doubleValue
+                if doubleValue.rounded(.towardZero) == doubleValue,
+                   doubleValue >= Double(Int.min),
+                   doubleValue <= Double(Int.max) {
+                    try container.encode(numberValue.intValue)
+                } else {
+                    try container.encode(doubleValue)
+                }
+            }
+        } else if let boolValue = value as? Bool {
+            try container.encode(boolValue)
+        } else if let intValue = value as? Int {
             try container.encode(intValue)
         } else if let stringValue = value as? String {
             try container.encode(stringValue)
-        } else if let boolValue = value as? Bool {
-            try container.encode(boolValue)
         } else if let doubleValue = value as? Double {
             try container.encode(doubleValue)
         } else if let codableValue = value as? Encodable {

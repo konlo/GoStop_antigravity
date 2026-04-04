@@ -442,17 +442,22 @@ private final class RoomTransportServerRuntime {
         }
     }
 
-    func handleConnectionClosed(_ connection: NWConnection) {
+    func handleConnectionClosed(
+        _ connection: NWConnection,
+        disconnectTransportClient: Bool = true
+    ) {
         let connectionKey = ObjectIdentifier(connection)
         let clientIDs = Array(clientIDsByConnection[connectionKey] ?? []).sorted()
-        for clientID in clientIDs {
-            if activeConnectionKeyByClientID[clientID] == connectionKey {
-                _ = engine.handlePassiveTransportTeardown(
-                    clientId: clientID,
-                    expectedConnectionId: activeLogicalConnectionIDByClientID[clientID]
-                )
-                activeConnectionKeyByClientID.removeValue(forKey: clientID)
-                activeLogicalConnectionIDByClientID.removeValue(forKey: clientID)
+        if disconnectTransportClient {
+            for clientID in clientIDs {
+                if activeConnectionKeyByClientID[clientID] == connectionKey {
+                    _ = engine.handlePassiveTransportTeardown(
+                        clientId: clientID,
+                        expectedConnectionId: activeLogicalConnectionIDByClientID[clientID]
+                    )
+                    activeConnectionKeyByClientID.removeValue(forKey: clientID)
+                    activeLogicalConnectionIDByClientID.removeValue(forKey: clientID)
+                }
             }
         }
         clientIDsByConnection.removeValue(forKey: connectionKey)
@@ -645,7 +650,15 @@ final class RoomTransportWebSocketServer {
         webSocketOptions.autoReplyPing = true
         parameters.defaultProtocolStack.applicationProtocols.insert(webSocketOptions, at: 0)
         parameters.allowLocalEndpointReuse = true
-        self.listener = try NWListener(using: parameters, on: port)
+        guard let listenAddress = IPv4Address("0.0.0.0") else {
+            throw NSError(
+                domain: "RoomTransportWebSocketServer",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "Invalid IPv4 listen address"]
+            )
+        }
+        parameters.requiredLocalEndpoint = .hostPort(host: .ipv4(listenAddress), port: port)
+        self.listener = try NWListener(using: parameters)
         writeStderr("RoomTransportWebSocketServer listener created.\n")
     }
 
@@ -744,7 +757,7 @@ final class RoomTransportWebSocketServer {
 
     private func cleanup(connection: NWConnection) {
         let key = ObjectIdentifier(connection)
-        runtime.handleConnectionClosed(connection)
+        runtime.handleConnectionClosed(connection, disconnectTransportClient: false)
         pendingPayloadsByConnection.removeValue(forKey: key)
         sendingConnections.remove(key)
         connection.cancel()

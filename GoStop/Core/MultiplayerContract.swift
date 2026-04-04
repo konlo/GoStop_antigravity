@@ -519,6 +519,7 @@ struct MultiplayerMatchSnapshot: Codable {
     let players: [MultiplayerPlayerProjection]
     let table: MultiplayerTableSnapshot
     let deck: MultiplayerDeckSnapshot
+    let rngSeed: Int?
     let pendingChoice: MultiplayerChoice?
     let scoreboard: MultiplayerScoreboard
     let timers: MultiplayerTimers
@@ -543,6 +544,7 @@ struct MultiplayerMatchSnapshot: Codable {
         players: [MultiplayerPlayerProjection],
         table: MultiplayerTableSnapshot,
         deck: MultiplayerDeckSnapshot,
+        rngSeed: Int? = nil,
         pendingChoice: MultiplayerChoice?,
         scoreboard: MultiplayerScoreboard,
         timers: MultiplayerTimers,
@@ -566,6 +568,7 @@ struct MultiplayerMatchSnapshot: Codable {
         self.players = players
         self.table = table
         self.deck = deck
+        self.rngSeed = rngSeed
         self.pendingChoice = pendingChoice
         self.scoreboard = scoreboard
         self.timers = timers

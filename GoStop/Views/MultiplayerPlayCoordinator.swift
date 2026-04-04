@@ -5,9 +5,13 @@ import SwiftUI
 class MultiplayerPlayCoordinatorViewModel: ObservableObject {
     @Published var gameManager: GameManager
     
+    private static let localActionDeferralLeadTime: TimeInterval = 0.75
     private let stateMapper: MultiplayerStateMapper
     private var hasBoundAuthoritativeSnapshot = false
     private var lastAppliedStateVersion: Int?
+    private var deferredAuthoritativeSnapshot: MultiplayerSnapshot?
+    private var deferredSnapshotDrainTask: Task<Void, Never>?
+    private var localActionDeferralDeadline: Date?
     @Published var showEmojiPicker: Bool = false
     @Published var showScoreboardSheet: Bool = false
     
@@ -26,6 +30,7 @@ class MultiplayerPlayCoordinatorViewModel: ObservableObject {
         
         // Hook for local actions
         gameManager.onLocalAction = { [weak self] action in
+            self?.noteLocalActionDispatch()
             self?.sendAction(action)
         }
 
@@ -35,11 +40,18 @@ class MultiplayerPlayCoordinatorViewModel: ObservableObject {
     }
 
     func applyAuthoritativeSnapshot(_ snapshot: MultiplayerSnapshot) {
+        if shouldDeferAuthoritativeSnapshot(snapshot) {
+            deferredAuthoritativeSnapshot = snapshot
+            scheduleDeferredSnapshotDrain()
+            return
+        }
+        clearDeferredAuthoritativeSnapshot()
         bindSnapshot(snapshot)
     }
     
     func bindSnapshot(_ snapshot: MultiplayerSnapshot) {
         do {
+            seedLocalGameManagerIfNeeded(from: snapshot)
             let mappedState = try stateMapper.mapSnapshot(snapshot, currentPlayers: gameManager.players)
             if let resolvedLocalPlayerId = resolvedLocalPlayerId(from: snapshot, mappedPlayers: mappedState.players) {
                 gameManager.localPlayerId = resolvedLocalPlayerId
@@ -58,8 +70,10 @@ class MultiplayerPlayCoordinatorViewModel: ObservableObject {
         }
 
         switch snapshot.reason {
-        case .gameStarted, .resume, .resync, .gapDetected:
+        case .resume, .resync, .gapDetected:
             return .resetAndReplace
+        case .gameStarted:
+            break
         case .localPreview:
             break
         }
@@ -70,6 +84,59 @@ class MultiplayerPlayCoordinatorViewModel: ObservableObject {
         }
 
         return .animatedInPlace
+    }
+
+    private func shouldDeferAuthoritativeSnapshot(_ snapshot: MultiplayerSnapshot) -> Bool {
+        guard applicationMode(for: snapshot) == .animatedInPlace else {
+            return false
+        }
+        return gameManager.isAutomationBusy || isWithinLocalActionDeferralWindow
+    }
+
+    private func scheduleDeferredSnapshotDrain() {
+        guard deferredSnapshotDrainTask == nil else { return }
+        deferredSnapshotDrainTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.deferredSnapshotDrainTask = nil }
+
+            while !Task.isCancelled {
+                guard let pendingSnapshot = self.deferredAuthoritativeSnapshot else {
+                    return
+                }
+
+                if !self.gameManager.isAutomationBusy && !self.isWithinLocalActionDeferralWindow {
+                    self.deferredAuthoritativeSnapshot = nil
+                    self.bindSnapshot(pendingSnapshot)
+                    continue
+                }
+
+                try? await Task.sleep(nanoseconds: 25_000_000)
+            }
+        }
+    }
+
+    private func clearDeferredAuthoritativeSnapshot() {
+        deferredAuthoritativeSnapshot = nil
+        deferredSnapshotDrainTask?.cancel()
+        deferredSnapshotDrainTask = nil
+    }
+
+    private var isWithinLocalActionDeferralWindow: Bool {
+        guard let localActionDeferralDeadline else { return false }
+        return localActionDeferralDeadline.timeIntervalSinceNow > 0
+    }
+
+    private func noteLocalActionDispatch() {
+        localActionDeferralDeadline = Date().addingTimeInterval(Self.localActionDeferralLeadTime)
+    }
+
+    private func seedLocalGameManagerIfNeeded(from snapshot: MultiplayerSnapshot) {
+        guard !hasBoundAuthoritativeSnapshot,
+              let rngSeed = snapshot.state.rngSeed else {
+            return
+        }
+        guard gameManager.currentSetupSeed != rngSeed else { return }
+        gameManager.setupGame(seed: rngSeed)
     }
 
     private func resolvedLocalPlayerId(from snapshot: MultiplayerSnapshot, mappedPlayers: [Player]) -> String? {
@@ -97,6 +164,50 @@ class MultiplayerPlayCoordinatorViewModel: ObservableObject {
         onActionSent?(action)
         // In a real implementation, this would encode to JSON and send via NWConnection or WebSocket.
     }
+
+    func performAutomationAction(_ action: MultiplayerAction) {
+        switch action {
+        case .playCard(let cardId):
+            let localPlayer =
+                gameManager.players.first(where: { $0.id.uuidString == gameManager.localPlayerId })
+                ?? gameManager.players.first
+            let localCard = localPlayer?.hand.first(where: { $0.id == cardId })
+            let anyPlayerCard = gameManager.players.lazy
+                .flatMap(\.hand)
+                .first(where: { $0.id == cardId })
+            guard let card = localCard ?? anyPlayerCard else {
+                gLog("[MultiplayerAutomation] playCard fallback: missing cardId=\(cardId)")
+                sendAction(action)
+                return
+            }
+            gLog("[MultiplayerAutomation] playCard local driver: cardId=\(card.id)")
+            gameManager.playTurn(card: card)
+        case .respondToCapture(let cardId):
+            guard let selectedCard = gameManager.pendingCaptureOptions.first(where: { $0.id == cardId }) else {
+                gLog("[MultiplayerAutomation] capture fallback: missing cardId=\(cardId)")
+                sendAction(action)
+                return
+            }
+            gLog("[MultiplayerAutomation] capture local driver: cardId=\(selectedCard.id)")
+            gameManager.respondToCapture(selectedCard: selectedCard)
+        case .respondToGoStop(let isGo):
+            gLog("[MultiplayerAutomation] goStop local driver: isGo=\(isGo)")
+            gameManager.respondToGoStop(isGo: isGo)
+        case .respondToShake(let month, let didShake):
+            gLog("[MultiplayerAutomation] shake local driver: month=\(month) didShake=\(didShake)")
+            gameManager.respondToShake(month: month, didShake: didShake)
+        case .respondToChrysanthemumChoice(let role):
+            guard let resolvedRole = CardRole(rawValue: role) else {
+                gLog("[MultiplayerAutomation] chrys fallback: role=\(role)")
+                sendAction(action)
+                return
+            }
+            gLog("[MultiplayerAutomation] chrys local driver: role=\(resolvedRole.rawValue)")
+            gameManager.respondToChrysanthemumChoice(role: resolvedRole)
+        case .chat(let emojiId):
+            gameManager.sendChat(emojiId: emojiId)
+        }
+    }
     
     func mockReceiveSnapshot(_ snapshot: MultiplayerSnapshot) {
         bindSnapshot(snapshot)
@@ -107,17 +218,21 @@ struct MultiplayerAuthoritativeGameCoordinatorView: View {
     let snapshot: MultiplayerSnapshot
     let onActionSent: (MultiplayerAction) -> Void
     let onProductRenderProbeChanged: ((MultiplayerProductRenderProbe) -> Void)?
+    let onAutomationActionDriverChanged: ((UUID, ((MultiplayerAction) -> Void)?) -> Void)?
 
     @StateObject private var viewModel: MultiplayerPlayCoordinatorViewModel
+    @State private var automationActionDriverID = UUID()
 
     init(
         snapshot: MultiplayerSnapshot,
         onActionSent: @escaping (MultiplayerAction) -> Void,
-        onProductRenderProbeChanged: ((MultiplayerProductRenderProbe) -> Void)? = nil
+        onProductRenderProbeChanged: ((MultiplayerProductRenderProbe) -> Void)? = nil,
+        onAutomationActionDriverChanged: ((UUID, ((MultiplayerAction) -> Void)?) -> Void)? = nil
     ) {
         self.snapshot = snapshot
         self.onActionSent = onActionSent
         self.onProductRenderProbeChanged = onProductRenderProbeChanged
+        self.onAutomationActionDriverChanged = onAutomationActionDriverChanged
         let viewModel = MultiplayerPlayCoordinatorViewModel()
         viewModel.onActionSent = onActionSent
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -140,6 +255,12 @@ struct MultiplayerAuthoritativeGameCoordinatorView: View {
             }
             .onAppear {
                 viewModel.onActionSent = onActionSent
+                onAutomationActionDriverChanged?(automationActionDriverID) { action in
+                    viewModel.performAutomationAction(action)
+                }
+            }
+            .onDisappear {
+                onAutomationActionDriverChanged?(automationActionDriverID, nil)
             }
     }
 }

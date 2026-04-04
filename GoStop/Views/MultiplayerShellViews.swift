@@ -3766,6 +3766,9 @@ private struct MultiplayerProductLiveGameView: View {
                 },
                 onProductRenderProbeChanged: { probe in
                     store.updateProductRenderProbe(probe)
+                },
+                onAutomationActionDriverChanged: { sourceID, driver in
+                    store.updateProductGameplayActionDriver(driver, sourceID: sourceID)
                 }
             )
 
@@ -4519,6 +4522,9 @@ struct MultiplayerShellShowcaseView: View {
                 },
                 onProductRenderProbeChanged: { probe in
                     store.updateProductRenderProbe(probe)
+                },
+                onAutomationActionDriverChanged: { sourceID, driver in
+                    store.updateProductGameplayActionDriver(driver, sourceID: sourceID)
                 }
             )
         } else {

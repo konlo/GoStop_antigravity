@@ -116,8 +116,17 @@ class AuthoritativeTransportClient:
     def close(self) -> None:
         self.client.close()
 
+    def send(self, action: str, data: dict | None = None) -> dict:
+        response = self.client.send(action, data)
+        if response.get("status") == "error":
+            raise RuntimeError(f"{action} failed: {response}")
+        return response
+
+    def set_rng_seed(self, seed: int) -> dict:
+        return self.send("set_condition", {"rng_seed": seed})
+
     def fetch_projection(self, room_id: str, room_player_id: str) -> dict:
-        response = self.client.send(
+        response = self.send(
             "room_projection_preview",
             {
                 "roomId": room_id,
@@ -143,6 +152,8 @@ class MultiplayerUIScenarioRunner:
     def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
         self.scenario_id = args.scenario_id
+        self.seed_candidates = self.parse_seed_candidates(args.seed_candidates)
+        self.selected_seed: int | None = None
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         default_root = Path("test_artifacts") / "multiplayer_ui" / self.scenario_slug / timestamp
         self.output_root = Path(args.output_root) if args.output_root else default_root
@@ -189,14 +200,55 @@ class MultiplayerUIScenarioRunner:
         self.pending_screen_check: dict | None = None
         self.completed_screen_checks: list[dict] = []
         self.screen_check_failures: list[dict] = []
+        self.active_draw_capture_probe: dict | None = None
+        self.completed_draw_capture_probes: list[dict] = []
+        self.draw_capture_probe_failures: list[dict] = []
+        self.draw_capture_probe_success_count = 0
 
     @property
     def scenario_slug(self) -> str:
-        return "always_go" if self.scenario_id == "MP-016" else "capture_visibility_short"
+        slugs = {
+            "MP-016": "always_go",
+            "MP-017": "capture_visibility_short",
+            "MP-018": "draw_capture_animation_watch",
+        }
+        return slugs[self.scenario_id]
 
     @property
     def scenario_title(self) -> str:
-        return "Always-Go" if self.scenario_id == "MP-016" else "Capture Visibility Short"
+        titles = {
+            "MP-016": "Always-Go",
+            "MP-017": "Capture Visibility Short",
+            "MP-018": "Draw-Capture Animation Watch",
+        }
+        return titles[self.scenario_id]
+
+    @staticmethod
+    def parse_seed_candidates(raw_value: str) -> list[int]:
+        candidates: list[int] = []
+        for token in raw_value.split(","):
+            stripped = token.strip()
+            if not stripped:
+                continue
+            try:
+                candidates.append(int(stripped))
+            except ValueError as exc:
+                raise RuntimeError(f"Invalid seed candidate: {stripped}") from exc
+        return candidates or [1, 2, 3, 4, 5]
+
+    def seed_for_attempt(self, attempt: int) -> int:
+        index = (attempt - 1) % len(self.seed_candidates)
+        return self.seed_candidates[index]
+
+    def prepare_attempt_seed(self, attempt: int) -> None:
+        if self.scenario_id != "MP-018":
+            self.selected_seed = None
+            return
+        seed = self.seed_for_attempt(attempt)
+        authority = self.ensure_authority_conn()
+        authority.set_rng_seed(seed)
+        self.selected_seed = seed
+        self.record_event("attempt.seed_selected", {"attempt": attempt, "seed": seed})
 
     def run(self) -> int:
         try:
@@ -208,6 +260,7 @@ class MultiplayerUIScenarioRunner:
                 invite_code = None
                 self.current_attempt = attempt
                 self.reset_attempt_state()
+                self.prepare_attempt_seed(attempt)
                 self.record_event("attempt.begin", {"attempt": attempt})
                 try:
                     self.launch_host()
@@ -311,6 +364,8 @@ class MultiplayerUIScenarioRunner:
     def drive_match(self) -> bool:
         if self.scenario_id == "MP-017":
             return self.drive_short_capture_probe()
+        if self.scenario_id == "MP-018":
+            return self.drive_draw_capture_animation_probe()
 
         deadline = time.time() + self.args.scenario_timeout
         while time.time() < deadline:
@@ -318,6 +373,14 @@ class MultiplayerUIScenarioRunner:
             guest_snapshot = self.guest_conn.get_state()
             self.track_transition("host", host_snapshot)
             self.track_transition("guest", guest_snapshot)
+
+            if host_snapshot.get("route") == "live" and guest_snapshot.get("route") == "live":
+                self.latest_authoritative_state = self.fetch_authoritative_live_state(host_snapshot, guest_snapshot)
+
+            self.observe_pending_screen_check(host_snapshot, guest_snapshot)
+            if self.pending_screen_check is not None:
+                time.sleep(self.pending_screen_poll_interval)
+                continue
 
             if (
                 not self.live_capture_saved
@@ -334,7 +397,7 @@ class MultiplayerUIScenarioRunner:
             ):
                 if self.drive_snapshot(label, conn, snapshot, peer_snapshot=peer_snapshot):
                     acted = True
-                    time.sleep(self.args.action_delay)
+                    self.settle_after_action()
                     break
 
             if (
@@ -369,10 +432,11 @@ class MultiplayerUIScenarioRunner:
             if host_snapshot.get("route") == "live" and guest_snapshot.get("route") == "live":
                 self.latest_authoritative_state = self.fetch_authoritative_live_state(host_snapshot, guest_snapshot)
                 self.observe_capture_probe(host_snapshot, guest_snapshot)
-                self.observe_pending_screen_check(host_snapshot, guest_snapshot)
-                if self.pending_screen_check is not None:
-                    time.sleep(self.args.poll_interval)
-                    continue
+
+            self.observe_pending_screen_check(host_snapshot, guest_snapshot)
+            if self.pending_screen_check is not None:
+                time.sleep(self.pending_screen_poll_interval)
+                continue
 
             if self.short_capture_probe_complete(host_snapshot, guest_snapshot):
                 self.finalize_capture_probe("scenario_complete")
@@ -391,13 +455,54 @@ class MultiplayerUIScenarioRunner:
                     break
                 if self.drive_snapshot(label, conn, snapshot, peer_snapshot=peer_snapshot):
                     acted = True
-                    time.sleep(self.args.action_delay)
+                    self.settle_after_action()
                     break
 
             if not acted:
                 time.sleep(self.args.poll_interval)
 
         raise RuntimeError("Timed out before the short multiplayer capture probe completed two turns per player.")
+
+    def drive_draw_capture_animation_probe(self) -> bool:
+        deadline = time.time() + self.args.scenario_timeout
+        while time.time() < deadline:
+            host_snapshot = self.host_conn.get_state()
+            guest_snapshot = self.guest_conn.get_state()
+            self.track_transition("host", host_snapshot)
+            self.track_transition("guest", guest_snapshot)
+
+            if host_snapshot.get("route") == "live" and guest_snapshot.get("route") == "live":
+                self.latest_authoritative_state = self.fetch_authoritative_live_state(host_snapshot, guest_snapshot)
+                if self.observe_draw_capture_probe(host_snapshot, guest_snapshot):
+                    self.finalize_draw_capture_probe("scenario_complete")
+                    time.sleep(max(0.0, self.args.success_hold_seconds))
+                    return True
+
+            self.observe_pending_screen_check(host_snapshot, guest_snapshot)
+            if self.pending_screen_check is not None:
+                time.sleep(self.pending_screen_poll_interval)
+                continue
+
+            if self.draw_capture_probe_exhausted():
+                raise GameplayNotExercisedError(
+                    "No multiplayer draw-capture animation was observed within the configured turn budget. "
+                    f"seed={self.selected_seed} turnLimitPerSeat={self.args.per_seat_turn_limit}"
+                )
+
+            acted = False
+            for label, conn, snapshot, peer_snapshot in (
+                ("host", self.host_conn, host_snapshot, guest_snapshot),
+                ("guest", self.guest_conn, guest_snapshot, host_snapshot),
+            ):
+                if self.drive_draw_capture_snapshot(label, conn, snapshot, peer_snapshot=peer_snapshot):
+                    acted = True
+                    self.settle_after_action()
+                    break
+
+            if not acted:
+                time.sleep(self.args.poll_interval)
+
+        raise RuntimeError("Timed out before the multiplayer draw-capture animation probe observed a qualifying turn.")
 
     def drive_snapshot(
         self,
@@ -460,6 +565,18 @@ class MultiplayerUIScenarioRunner:
             ):
                 option_code = self.pick_choice_option(pending_choice)
                 if option_code:
+                    if peer_snapshot is not None:
+                        self.register_screen_check(
+                            label,
+                            "choiceSubmit",
+                            {
+                                "choiceId": pending_choice.get("choiceId"),
+                                "choiceKind": pending_choice.get("choiceKind"),
+                                "optionCode": option_code,
+                            },
+                            actor_snapshot=snapshot,
+                            peer_snapshot=peer_snapshot,
+                        )
                     self.submit_choice(conn, pending_choice, option_code)
                     self.action_counts[label]["choice"] += 1
                     self.record_event(
@@ -476,6 +593,19 @@ class MultiplayerUIScenarioRunner:
             if live.get("currentPlayerId") == local_player_id and live.get("phase") == "inTurn":
                 card = self.select_play_card(live)
                 if card:
+                    if peer_snapshot is not None:
+                        self.register_screen_check(
+                            label,
+                            "playCard",
+                            {
+                                "cardId": card.get("cardId"),
+                                "month": str(card.get("month")),
+                                "kind": card.get("kind"),
+                                "turnCount": self.action_counts[label]["playCard"] + 1,
+                            },
+                            actor_snapshot=snapshot,
+                            peer_snapshot=peer_snapshot,
+                        )
                     conn.play_card(card["cardId"])
                     self.action_counts[label]["playCard"] += 1
                     self.record_event(
@@ -609,6 +739,108 @@ class MultiplayerUIScenarioRunner:
                 return True
         return False
 
+    def drive_draw_capture_snapshot(
+        self,
+        label: str,
+        conn: BridgeConnection,
+        snapshot: dict,
+        *,
+        peer_snapshot: dict | None,
+    ) -> bool:
+        route = snapshot.get("route")
+        if route == "room":
+            room = snapshot.get("room") or {}
+            local_member = next((member for member in room.get("members", []) if member.get("isLocalPlayer")), None)
+            can_ready = (
+                room.get("roomState") == "waitingForReady"
+                and len(room.get("members", [])) == 2
+                and isinstance(local_member, dict)
+                and local_member.get("presence") == "connected"
+                and not local_member.get("ready")
+            )
+            if can_ready:
+                conn.click_ready()
+                self.record_event("room.ready.click", {"player": label, "roomId": room.get("roomId")})
+                return True
+            return False
+
+        if route != "live":
+            return False
+
+        live = snapshot.get("live") or {}
+        local_player_id = live.get("localPlayerId")
+        if live.get("phase") == "matchEnded":
+            raise GameplayNotExercisedError(
+                "The multiplayer draw-capture animation probe reached matchEnded before a qualifying draw capture was observed."
+            )
+
+        pending_choice = live.get("pendingChoice")
+        if (
+            isinstance(pending_choice, dict)
+            and pending_choice.get("actorPlayerId") == local_player_id
+        ):
+            option_code = self.pick_choice_option(pending_choice)
+            if option_code:
+                if peer_snapshot is not None:
+                    self.register_screen_check(
+                        label,
+                        "choiceSubmit",
+                        {
+                            "choiceId": pending_choice.get("choiceId"),
+                            "choiceKind": pending_choice.get("choiceKind"),
+                            "optionCode": option_code,
+                        },
+                        actor_snapshot=snapshot,
+                        peer_snapshot=peer_snapshot,
+                    )
+                self.submit_choice(conn, pending_choice, option_code)
+                self.action_counts[label]["choice"] += 1
+                self.record_event(
+                    "choice.submit",
+                    {
+                        "player": label,
+                        "choiceId": pending_choice.get("choiceId"),
+                        "choiceKind": pending_choice.get("choiceKind"),
+                        "optionCode": option_code,
+                    },
+                )
+                return True
+
+        if live.get("currentPlayerId") == local_player_id and live.get("phase") == "inTurn":
+            if self.action_counts[label]["playCard"] >= self.args.per_seat_turn_limit:
+                return False
+            card = self.select_play_card(live)
+            if card:
+                self.start_draw_capture_probe(label, snapshot)
+                if peer_snapshot is not None:
+                    self.register_screen_check(
+                        label,
+                        "playCard",
+                        {
+                            "cardId": card.get("cardId"),
+                            "month": str(card.get("month")),
+                            "kind": card.get("kind"),
+                            "turnCount": self.action_counts[label]["playCard"] + 1,
+                        },
+                        actor_snapshot=snapshot,
+                        peer_snapshot=peer_snapshot,
+                    )
+                conn.play_card(card["cardId"])
+                self.action_counts[label]["playCard"] += 1
+                self.record_event(
+                    "play_card",
+                    {
+                        "player": label,
+                        "cardId": card.get("cardId"),
+                        "month": str(card.get("month")),
+                        "kind": card.get("kind"),
+                        "turnCount": self.action_counts[label]["playCard"],
+                        "seed": self.selected_seed,
+                    },
+                )
+                return True
+        return False
+
     def register_screen_check(
         self,
         label: str,
@@ -635,6 +867,9 @@ class MultiplayerUIScenarioRunner:
                 "authoritative": self.summarize_authoritative_state(self.latest_authoritative_state),
             },
         }
+        if action_type == "playCard":
+            self.pending_screen_check["animationObserved"] = False
+            self.pending_screen_check["animationObservation"] = None
         self.record_event(
             "action.logged",
             {
@@ -655,6 +890,7 @@ class MultiplayerUIScenarioRunner:
             if check["actorLabel"] == "host"
             else (guest_snapshot, host_snapshot)
         )
+        self.observe_play_card_animation(check, actor_snapshot, peer_snapshot)
         checks = self.evaluate_screen_check(check, actor_snapshot, peer_snapshot)
         if not all(item["ok"] for item in checks):
             if time.time() <= check["deadlineMonotonic"]:
@@ -672,6 +908,7 @@ class MultiplayerUIScenarioRunner:
                     "authoritative": self.summarize_authoritative_state(self.latest_authoritative_state),
                 },
                 "checks": checks,
+                "animationObservation": check.get("animationObservation"),
             }
             self.screen_check_failures.append(failure)
             self.append_action_log({**failure, "status": "fail"})
@@ -704,6 +941,7 @@ class MultiplayerUIScenarioRunner:
                 "authoritative": self.summarize_authoritative_state(self.latest_authoritative_state),
             },
             "checks": checks,
+            "animationObservation": check.get("animationObservation"),
             "screenshots": screenshots,
             "completedAt": datetime.now().isoformat(timespec="seconds"),
         }
@@ -732,13 +970,25 @@ class MultiplayerUIScenarioRunner:
             rendered_hand_ids = actor_summary.get("renderedLocalHandCardIds")
             source_hand_ids = actor_summary.get("sourceLocalHandCardIds")
             render_probe_available = isinstance(rendered_hand_ids, list) and isinstance(source_hand_ids, list)
+            terminal_transition = (
+                actor_summary.get("route") in {"result", "entry"}
+                and peer_summary.get("route") in {"result", "entry"}
+            )
+            deferred_play_choice = (
+                actor_summary.get("pendingChoiceId") != before_actor.get("pendingChoiceId")
+                and actor_summary.get("pendingChoiceKind") == "shake"
+                and payload.get("cardId") in actor_card_ids
+            )
             checks = [
                 {
                     "name": "routes_live",
-                    "ok": actor_summary.get("route") == "live" and peer_summary.get("route") == "live",
+                    "ok": terminal_transition or (
+                        actor_summary.get("route") == "live" and peer_summary.get("route") == "live"
+                    ),
                     "details": {
                         "actorRoute": actor_summary.get("route"),
                         "peerRoute": peer_summary.get("route"),
+                        "terminalTransition": terminal_transition,
                     },
                 },
                 {
@@ -751,44 +1001,59 @@ class MultiplayerUIScenarioRunner:
                 },
                 {
                     "name": "played_card_removed_from_actor_hand",
-                    "ok": payload.get("cardId") not in actor_card_ids,
+                    "ok": payload.get("cardId") not in actor_card_ids or deferred_play_choice or terminal_transition,
                     "details": {
                         "cardId": payload.get("cardId"),
                         "actorHandCount": actor_summary.get("localHandCount"),
+                        "deferredPlayChoice": deferred_play_choice,
+                        "pendingChoiceKind": actor_summary.get("pendingChoiceKind"),
+                        "terminalTransition": terminal_transition,
                     },
                 },
                 {
                     "name": "render_probe_available",
-                    "ok": render_probe_available,
+                    "ok": render_probe_available or terminal_transition,
                     "details": {
                         "actorRenderProbePresent": render_probe_available,
+                        "terminalTransition": terminal_transition,
                     },
                 },
                 {
                     "name": "played_card_removed_from_rendered_hand",
-                    "ok": render_probe_available and payload.get("cardId") not in rendered_hand_ids,
+                    "ok": terminal_transition or (
+                        render_probe_available and (
+                        payload.get("cardId") not in rendered_hand_ids or deferred_play_choice
+                        )
+                    ),
                     "details": {
                         "cardId": payload.get("cardId"),
                         "renderedHandCount": actor_summary.get("renderedLocalHandCount"),
+                        "deferredPlayChoice": deferred_play_choice,
+                        "pendingChoiceKind": actor_summary.get("pendingChoiceKind"),
+                        "terminalTransition": terminal_transition,
                     },
                 },
                 {
                     "name": "rendered_hand_matches_source_hand",
-                    "ok": render_probe_available and sorted(rendered_hand_ids) == sorted(source_hand_ids),
+                    "ok": terminal_transition or (
+                        render_probe_available and sorted(rendered_hand_ids) == sorted(source_hand_ids)
+                    ),
                     "details": {
                         "renderedHandCount": actor_summary.get("renderedLocalHandCount"),
                         "sourceHandCount": actor_summary.get("sourceLocalHandCount"),
+                        "terminalTransition": terminal_transition,
                     },
                 },
                 {
                     "name": "rendered_captured_matches_source_captured",
-                    "ok": (
+                    "ok": terminal_transition or (
                         actor_summary.get("renderedLocalCapturedTotal") is not None
                         and actor_summary.get("renderedLocalCapturedTotal") == actor_summary.get("localCapturedTotal")
                     ),
                     "details": {
                         "renderedLocalCapturedTotal": actor_summary.get("renderedLocalCapturedTotal"),
                         "sourceLocalCapturedTotal": actor_summary.get("localCapturedTotal"),
+                        "terminalTransition": terminal_transition,
                     },
                 },
                 {
@@ -805,6 +1070,16 @@ class MultiplayerUIScenarioRunner:
                         "afterCurrentPlayerId": actor_summary.get("currentPlayerId"),
                         "beforePendingChoiceId": before_actor.get("pendingChoiceId"),
                         "afterPendingChoiceId": actor_summary.get("pendingChoiceId"),
+                    },
+                },
+                {
+                    "name": "shared_animation_observed",
+                    "ok": bool(check.get("animationObserved")) or deferred_play_choice or terminal_transition,
+                    "details": check.get("animationObservation")
+                    or {
+                        "deferredPlayChoice": deferred_play_choice,
+                        "pendingChoiceKind": actor_summary.get("pendingChoiceKind"),
+                        "terminalTransition": terminal_transition,
                     },
                 },
             ]
@@ -887,6 +1162,15 @@ class MultiplayerUIScenarioRunner:
                 "sourceLocalHandCardIds": render_probe.get("sourceLocalHandCardIds"),
                 "renderedLocalCapturedTotal": len(render_probe.get("localCapturedCardIds") or []),
                 "renderedOpponentCapturedTotal": len(render_probe.get("opponentCapturedCardIds") or []),
+                "isAutomationBusy": bool(render_probe.get("isAutomationBusy")),
+                "currentMoveSourceZone": render_probe.get("currentMoveSourceZone"),
+                "currentMoveTargetZone": render_probe.get("currentMoveTargetZone"),
+                "movingCardIds": render_probe.get("movingCardIds") or [],
+                "hiddenSourceCardIds": render_probe.get("hiddenSourceCardIds") or [],
+                "hiddenTargetCardIds": render_probe.get("hiddenTargetCardIds") or [],
+                "recentUXEventTypes": render_probe.get("recentUXEventTypes") or [],
+                "recentUXEventCardIds": render_probe.get("recentUXEventCardIds") or [],
+                "recentUXEventSummaries": render_probe.get("recentUXEventSummaries") or [],
             }
         if route == "room":
             room = snapshot.get("room") or {}
@@ -919,6 +1203,101 @@ class MultiplayerUIScenarioRunner:
             "currentPlayerId": authoritative.get("currentPlayerId"),
             "capturedTotals": authoritative.get("capturedTotals"),
         }
+
+    @property
+    def pending_screen_poll_interval(self) -> float:
+        return min(self.args.poll_interval, 0.12)
+
+    def settle_after_action(self) -> None:
+        if self.pending_screen_check is None:
+            time.sleep(self.args.action_delay)
+            return
+
+        settle_deadline = time.time() + max(self.args.action_delay, 1.2)
+        while self.pending_screen_check is not None and time.time() < settle_deadline:
+            host_snapshot = self.host_conn.get_state()
+            guest_snapshot = self.guest_conn.get_state()
+            self.track_transition("host", host_snapshot)
+            self.track_transition("guest", guest_snapshot)
+
+            if host_snapshot.get("route") == "live" and guest_snapshot.get("route") == "live":
+                self.latest_authoritative_state = self.fetch_authoritative_live_state(host_snapshot, guest_snapshot)
+                if self.scenario_id == "MP-017":
+                    self.observe_capture_probe(host_snapshot, guest_snapshot)
+                if self.scenario_id == "MP-018" and self.observe_draw_capture_probe(host_snapshot, guest_snapshot):
+                    self.finalize_draw_capture_probe("settle_loop_complete")
+                    self.pending_screen_check = None
+                    return
+
+            self.observe_pending_screen_check(host_snapshot, guest_snapshot)
+            if self.pending_screen_check is None:
+                return
+            time.sleep(self.pending_screen_poll_interval)
+
+    def observe_play_card_animation(self, check: dict, actor_snapshot: dict, peer_snapshot: dict) -> None:
+        if check.get("actionType") != "playCard" or check.get("animationObserved"):
+            return
+
+        actor_summary = self.snapshot_screen_summary(actor_snapshot)
+        peer_summary = self.snapshot_screen_summary(peer_snapshot)
+        card_id = check["payload"].get("cardId")
+
+        actor_hidden_source_ids = set(actor_summary.get("hiddenSourceCardIds") or [])
+        actor_hidden_target_ids = set(actor_summary.get("hiddenTargetCardIds") or [])
+        actor_moving_ids = set(actor_summary.get("movingCardIds") or [])
+        peer_hidden_source_ids = set(peer_summary.get("hiddenSourceCardIds") or [])
+        peer_hidden_target_ids = set(peer_summary.get("hiddenTargetCardIds") or [])
+        peer_moving_ids = set(peer_summary.get("movingCardIds") or [])
+        actor_recent_event_card_ids = set(actor_summary.get("recentUXEventCardIds") or [])
+        peer_recent_event_card_ids = set(peer_summary.get("recentUXEventCardIds") or [])
+
+        actor_card_observed = (
+            card_id in actor_hidden_source_ids
+            or card_id in actor_hidden_target_ids
+            or card_id in actor_moving_ids
+            or card_id in actor_recent_event_card_ids
+        )
+        peer_card_observed = (
+            card_id in peer_hidden_source_ids
+            or card_id in peer_hidden_target_ids
+            or card_id in peer_moving_ids
+            or card_id in peer_recent_event_card_ids
+        )
+        actor_busy = bool(actor_summary.get("isAutomationBusy"))
+        peer_busy = bool(peer_summary.get("isAutomationBusy"))
+
+        if not (actor_card_observed or peer_card_observed or actor_busy or peer_busy):
+            return
+
+        observation = {
+            "cardId": card_id,
+            "actorStateVersion": actor_summary.get("stateVersion"),
+            "peerStateVersion": peer_summary.get("stateVersion"),
+            "actorBusy": actor_busy,
+            "peerBusy": peer_busy,
+            "actorCardObserved": actor_card_observed,
+            "peerCardObserved": peer_card_observed,
+            "actorMovingCardIds": actor_summary.get("movingCardIds") or [],
+            "peerMovingCardIds": peer_summary.get("movingCardIds") or [],
+            "actorHiddenSourceCardIds": actor_summary.get("hiddenSourceCardIds") or [],
+            "actorHiddenTargetCardIds": actor_summary.get("hiddenTargetCardIds") or [],
+            "peerHiddenSourceCardIds": peer_summary.get("hiddenSourceCardIds") or [],
+            "peerHiddenTargetCardIds": peer_summary.get("hiddenTargetCardIds") or [],
+            "actorRecentUXEventTypes": actor_summary.get("recentUXEventTypes") or [],
+            "peerRecentUXEventTypes": peer_summary.get("recentUXEventTypes") or [],
+            "actorRecentUXEventCardIds": actor_summary.get("recentUXEventCardIds") or [],
+            "peerRecentUXEventCardIds": peer_summary.get("recentUXEventCardIds") or [],
+        }
+        check["animationObserved"] = True
+        check["animationObservation"] = observation
+        self.record_event(
+            "animation.observed",
+            {
+                "actionIndex": check["actionIndex"],
+                "actorLabel": check["actorLabel"],
+                **observation,
+            },
+        )
 
     def fetch_authoritative_live_state(self, host_snapshot: dict, guest_snapshot: dict) -> dict:
         host_live = host_snapshot.get("live") or {}
@@ -1036,6 +1415,155 @@ class MultiplayerUIScenarioRunner:
                 f"actor={probe['actorLabel']} expectedCapturedTotal={expected_total} "
                 f"hostRendered={host_rendered_total} guestRendered={guest_rendered_total}"
             )
+
+    def start_draw_capture_probe(self, label: str, snapshot: dict) -> None:
+        self.finalize_draw_capture_probe("next_turn_started")
+        live = snapshot.get("live") or {}
+        actor_player_id = live.get("localPlayerId")
+        if not isinstance(actor_player_id, str) or not actor_player_id:
+            raise RuntimeError("Live UI snapshot is missing localPlayerId before play_card.")
+        self.active_draw_capture_probe = {
+            "actorLabel": label,
+            "actorPlayerId": actor_player_id,
+            "turnIndex": self.action_counts[label]["playCard"] + 1,
+            "seed": self.selected_seed,
+            "drawnCardId": None,
+            "matchedCaptureCardIds": [],
+            "actorInFlightObserved": False,
+            "peerInFlightObserved": False,
+            "renderedStateVersion": None,
+            "screenshots": None,
+        }
+
+    def finalize_draw_capture_probe(self, reason: str) -> None:
+        probe = self.active_draw_capture_probe
+        if probe is None:
+            return
+        finalized = {**probe, "finalizeReason": reason}
+        if finalized.get("drawnCardId") and (
+            finalized.get("actorInFlightObserved") or finalized.get("peerInFlightObserved")
+        ):
+            self.draw_capture_probe_success_count += 1
+        self.completed_draw_capture_probes.append(finalized)
+        self.active_draw_capture_probe = None
+
+    def draw_capture_probe_exhausted(self) -> bool:
+        return all(
+            self.action_counts[label]["playCard"] >= self.args.per_seat_turn_limit
+            for label in ("host", "guest")
+        )
+
+    def observe_draw_capture_probe(self, host_snapshot: dict, guest_snapshot: dict) -> bool:
+        probe = self.active_draw_capture_probe
+        if probe is None:
+            return False
+
+        actor_snapshot, peer_snapshot = (
+            (host_snapshot, guest_snapshot)
+            if probe["actorLabel"] == "host"
+            else (guest_snapshot, host_snapshot)
+        )
+        actor_summary = self.snapshot_screen_summary(actor_snapshot)
+        peer_summary = self.snapshot_screen_summary(peer_snapshot)
+
+        signal = (
+            self.find_draw_capture_signal(actor_summary.get("recentUXEventSummaries") or [])
+            or self.find_draw_capture_signal(peer_summary.get("recentUXEventSummaries") or [])
+        )
+        if signal is None:
+            return False
+
+        probe["drawnCardId"] = signal["drawnCardId"]
+        probe["matchedCaptureCardIds"] = signal["capturedCardIds"]
+        probe["actorInFlightObserved"] = self.draw_capture_in_flight(actor_summary, signal["drawnCardId"])
+        probe["peerInFlightObserved"] = self.draw_capture_in_flight(peer_summary, signal["drawnCardId"])
+        probe["renderedStateVersion"] = max(
+            actor_summary.get("stateVersion") or 0,
+            peer_summary.get("stateVersion") or 0,
+        )
+        probe["screenshots"] = self.capture_action_pair(
+            self.action_sequence + 1,
+            "draw_capture_animation",
+        )
+        self.record_event(
+            "draw_capture.animation_observed",
+            {
+                "actorLabel": probe["actorLabel"],
+                "turnIndex": probe["turnIndex"],
+                "seed": probe["seed"],
+                "drawnCardId": probe["drawnCardId"],
+                "capturedCardIds": probe["matchedCaptureCardIds"],
+                "actorInFlightObserved": probe["actorInFlightObserved"],
+                "peerInFlightObserved": probe["peerInFlightObserved"],
+                "renderedStateVersion": probe["renderedStateVersion"],
+            },
+        )
+        if probe["actorInFlightObserved"] or probe["peerInFlightObserved"]:
+            return True
+
+        failure = {
+            "actorLabel": probe["actorLabel"],
+            "turnIndex": probe["turnIndex"],
+            "seed": probe["seed"],
+            "drawnCardId": probe["drawnCardId"],
+            "capturedCardIds": probe["matchedCaptureCardIds"],
+            "actorSummary": actor_summary,
+            "peerSummary": peer_summary,
+        }
+        self.draw_capture_probe_failures.append(failure)
+        self.record_event("draw_capture.animation_missing_in_flight", failure)
+        raise RuntimeError(
+            "A multiplayer draw-capture turn was detected, but the table->captured in-flight animation state was not observed. "
+            f"seed={probe['seed']} actor={probe['actorLabel']} turnIndex={probe['turnIndex']}"
+        )
+
+    @staticmethod
+    def parse_recent_event_summary(summary: str) -> dict | None:
+        parts = summary.split("|", 3)
+        if len(parts) != 4:
+            return None
+        event_type, source, target, card_token = parts
+        card_ids = [] if card_token == "-" else [token for token in card_token.split(",") if token]
+        return {
+            "type": event_type,
+            "source": source,
+            "target": target,
+            "cardIds": card_ids,
+        }
+
+    def find_draw_capture_signal(self, recent_summaries: list[str]) -> dict | None:
+        events = [event for summary in recent_summaries if (event := self.parse_recent_event_summary(summary)) is not None]
+        for index, event in enumerate(events):
+            if (
+                event["type"] == "moveStart"
+                and event["source"] == "deck"
+                and event["target"] == "table"
+                and len(event["cardIds"]) == 1
+            ):
+                drawn_card_id = event["cardIds"][0]
+                for later_event in events[index + 1:]:
+                    if later_event["type"] != "moveStart":
+                        continue
+                    if later_event["source"] != "table" or later_event["target"] != "captured":
+                        continue
+                    if drawn_card_id in later_event["cardIds"]:
+                        return {
+                            "drawnCardId": drawn_card_id,
+                            "capturedCardIds": later_event["cardIds"],
+                        }
+        return None
+
+    @staticmethod
+    def draw_capture_in_flight(summary: dict, drawn_card_id: str) -> bool:
+        if summary.get("currentMoveSourceZone") != "table" or summary.get("currentMoveTargetZone") != "captured":
+            return False
+        card_sets = (
+            summary.get("movingCardIds") or [],
+            summary.get("hiddenSourceCardIds") or [],
+            summary.get("hiddenTargetCardIds") or [],
+            summary.get("recentUXEventCardIds") or [],
+        )
+        return any(drawn_card_id in card_ids for card_ids in card_sets)
 
     def start_capture_probe(self, label: str, snapshot: dict) -> None:
         self.finalize_capture_probe("next_turn_started")
@@ -1247,8 +1775,13 @@ class MultiplayerUIScenarioRunner:
             "totalGameplayActions": self.total_gameplay_actions,
             "terminalSeen": self.terminal_seen,
             "leaveSent": self.leave_sent,
+            "screenCheckSuccessCount": len(self.completed_screen_checks),
+            "screenCheckFailureCount": len(self.screen_check_failures),
             "captureProbeSuccessCount": self.capture_probe_success_count,
             "captureProbeFailures": self.capture_probe_failures,
+            "selectedSeed": self.selected_seed,
+            "drawCaptureProbeSuccessCount": self.draw_capture_probe_success_count,
+            "drawCaptureProbeFailures": self.draw_capture_probe_failures,
             "error": error_message,
         }
 
@@ -1282,6 +1815,10 @@ class MultiplayerUIScenarioRunner:
             "leaveSent": self.leave_sent,
             "captureProbeSuccessCount": self.capture_probe_success_count,
             "captureProbeFailures": self.capture_probe_failures,
+            "selectedSeed": self.selected_seed,
+            "drawCaptureProbeSuccessCount": self.draw_capture_probe_success_count,
+            "drawCaptureProbeFailures": self.draw_capture_probe_failures,
+            "drawCaptureProbes": self.completed_draw_capture_probes,
             "actionLogPath": str(self.action_log_path),
             "screenChecksPath": str(self.screen_checks_path),
             "screenCheckSuccessCount": len(self.completed_screen_checks),
@@ -1320,6 +1857,14 @@ class MultiplayerUIScenarioRunner:
                 [
                     f"- Capture Probe Success Count: {self.capture_probe_success_count}",
                     f"- Capture Probe Failure Count: {len(self.capture_probe_failures)}",
+                ]
+            )
+        if self.scenario_id == "MP-018":
+            lines.extend(
+                [
+                    f"- Selected Seed: {self.selected_seed}",
+                    f"- Draw-Capture Probe Success Count: {self.draw_capture_probe_success_count}",
+                    f"- Draw-Capture Probe Failure Count: {len(self.draw_capture_probe_failures)}",
                 ]
             )
         if error_message:
@@ -1361,7 +1906,7 @@ class MultiplayerUIScenarioRunner:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Drive a two-simulator multiplayer UI scenario end-to-end.")
-    parser.add_argument("--scenario-id", default="MP-016", choices=["MP-016", "MP-017"])
+    parser.add_argument("--scenario-id", default="MP-016", choices=["MP-016", "MP-017", "MP-018"])
     parser.add_argument("--host-udid", default=DEFAULT_HOST_UDID)
     parser.add_argument("--guest-udid", default=DEFAULT_GUEST_UDID)
     parser.add_argument("--bundle-id", default=DEFAULT_BUNDLE_ID)
@@ -1376,6 +1921,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--poll-interval", type=float, default=0.7)
     parser.add_argument("--action-delay", type=float, default=1.1)
     parser.add_argument("--max-attempts", type=int, default=5)
+    parser.add_argument("--seed-candidates", default="1,2,3,4,5")
+    parser.add_argument("--per-seat-turn-limit", type=int, default=6)
+    parser.add_argument("--success-hold-seconds", type=float, default=1.2)
     parser.add_argument("--output-root")
     parser.add_argument("--capture-final-screenshot", action="store_true")
     return parser.parse_args()

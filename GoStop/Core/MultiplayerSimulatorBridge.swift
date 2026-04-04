@@ -8,6 +8,15 @@ struct MultiplayerProductRenderProbe: Encodable, Equatable {
     let stateVersion: Int?
     let localPlayerId: String?
     let currentPlayerId: String?
+    let isAutomationBusy: Bool
+    let currentMoveSourceZone: String?
+    let currentMoveTargetZone: String?
+    let movingCardIds: [String]
+    let hiddenSourceCardIds: [String]
+    let hiddenTargetCardIds: [String]
+    let recentUXEventTypes: [String]
+    let recentUXEventCardIds: [String]
+    let recentUXEventSummaries: [String]
     let sourceLocalHandCardIds: [String]
     let renderedLocalHandCardIds: [String]
     let tableCardIds: [String]
@@ -197,7 +206,7 @@ class MultiplayerSimulatorBridge {
                 }
                 Task { @MainActor [weak self] in
                     guard let self = self, let shell = self.store else { return }
-                    shell.playCardFromLiveUI(cardId)
+                    shell.performGameplayActionFromAutomation(.playCard(cardId: cardId))
                     self.sendSimpleResponse(status: "action executed", action: action, connection: connection)
                 }
 
@@ -214,7 +223,7 @@ class MultiplayerSimulatorBridge {
                     guard let self = self, let shell = self.store else { return }
                     // Use flattened shell state for automation access
                     if let card = shell.liveState.localHandCards.first(where: { $0.month == monthIdx && $0.kind == type.rawValue }) {
-                        shell.playCardFromLiveUI(card.cardId)
+                        shell.performGameplayActionFromAutomation(.playCard(cardId: card.cardId))
                         self.sendSimpleResponse(status: "action executed", action: action, connection: connection)
                     } else {
                         self.sendErrorResponse(message: "Card not found in hand", connection: connection)
@@ -228,8 +237,8 @@ class MultiplayerSimulatorBridge {
                     return
                 }
                 Task { @MainActor [weak self] in
-                    if let pendingChoice = self?.store?.liveState.pendingChoice {
-                        self?.store?.submitChoiceFromLiveUI(pendingChoice.choiceId, optionCode: isGo ? "go" : "stop")
+                    if let store = self?.store {
+                        store.performGameplayActionFromAutomation(.respondToGoStop(isGo: isGo))
                         self?.sendSimpleResponse(status: "action executed", action: action, connection: connection)
                     }
                 }
@@ -241,8 +250,17 @@ class MultiplayerSimulatorBridge {
                     return
                 }
                 Task { @MainActor [weak self] in
-                    if let pendingChoice = self?.store?.liveState.pendingChoice {
-                        self?.store?.submitChoiceFromLiveUI(pendingChoice.choiceId, optionCode: didShake ? "shake" : "decline")
+                    if let store = self?.store {
+                        if let month = store.liveState.pendingChoice?.options
+                            .flatMap(\.cards)
+                            .first(where: { $0.zone == "hand" })?.month {
+                            store.performGameplayActionFromAutomation(.respondToShake(month: month, didShake: didShake))
+                        } else if let pendingChoice = store.liveState.pendingChoice {
+                            store.submitChoiceFromLiveUI(
+                                pendingChoice.choiceId,
+                                optionCode: didShake ? "shake_yes" : "shake_no"
+                            )
+                        }
                         self?.sendSimpleResponse(status: "action executed", action: action, connection: connection)
                     }
                 }
@@ -254,8 +272,8 @@ class MultiplayerSimulatorBridge {
                     return
                 }
                 Task { @MainActor [weak self] in
-                    if let pendingChoice = self?.store?.liveState.pendingChoice {
-                        self?.store?.submitChoiceFromLiveUI(pendingChoice.choiceId, optionCode: cardId)
+                    if let store = self?.store {
+                        store.performGameplayActionFromAutomation(.respondToCapture(cardId: cardId))
                         self?.sendSimpleResponse(status: "action executed", action: action, connection: connection)
                     }
                 }
@@ -267,8 +285,8 @@ class MultiplayerSimulatorBridge {
                     return
                 }
                 Task { @MainActor [weak self] in
-                    if let pendingChoice = self?.store?.liveState.pendingChoice {
-                        self?.store?.submitChoiceFromLiveUI(pendingChoice.choiceId, optionCode: roleStr)
+                    if let store = self?.store {
+                        store.performGameplayActionFromAutomation(.respondToChrysanthemumChoice(role: roleStr))
                         self?.sendSimpleResponse(status: "action executed", action: action, connection: connection)
                     }
                 }

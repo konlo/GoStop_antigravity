@@ -352,8 +352,9 @@ struct GameView: View {
             resyncSlotManagers()
             syncProductRenderProbe()
         }
-        .onChange(of: gameManager.uxEventLogs.count) { _ in
+        .onChange(of: productRenderProbeAnimationToken) { _ in
             updateLatestRewindSnapshot()
+            syncProductRenderProbe()
         }
         .onChange(of: gameManager.eventLogs.count) { _ in
             specialEventPopupCoordinator.process(eventLogs: gameManager.eventLogs)
@@ -1032,6 +1033,29 @@ struct GameView: View {
         tableSlotManager?.sync(with: gameManager.tableCards)
     }
 
+    private var productRenderProbeAnimationToken: String {
+        let uxEventCount = String(gameManager.uxEventLogs.count)
+        let moveSource = gameManager.currentMoveSourceZone ?? ""
+        let moveTarget = gameManager.currentMoveTargetZone ?? ""
+        let localPlayerId = gameManager.localPlayerId ?? ""
+        let movingCardIds = gameManager.currentMovingCards.map(\.id).joined(separator: ",")
+        let hiddenSourceCardIds = Array(gameManager.hiddenInSourceCardIds).sorted().joined(separator: ",")
+        let hiddenTargetCardIds = Array(gameManager.hiddenInTargetCardIds).sorted().joined(separator: ",")
+        return uxEventCount
+            + "|"
+            + moveSource
+            + "|"
+            + moveTarget
+            + "|"
+            + localPlayerId
+            + "|"
+            + movingCardIds
+            + "|"
+            + hiddenSourceCardIds
+            + "|"
+            + hiddenTargetCardIds
+    }
+
     private func syncProductRenderProbe() {
         guard let onProductRenderProbeChanged else { return }
         let localPlayer = gameManager.players.first
@@ -1045,6 +1069,36 @@ struct GameView: View {
             renderedHandCardIds = localPlayer?.hand.map(\.id) ?? []
         }
 
+        let recentUXEvents = Array(gameManager.uxEventLogs.suffix(6))
+        let recentUXEventTypes = recentUXEvents.map(\.type)
+        let recentUXEventCardIds = Array(
+            Set(
+                recentUXEvents.flatMap { event in
+                    var ids: [String] = []
+                    if let singleCardId = event.data["cardId"], !singleCardId.isEmpty {
+                        ids.append(singleCardId)
+                    }
+                    if let multipleCardIds = event.data["cardIds"], !multipleCardIds.isEmpty {
+                        ids.append(contentsOf: multipleCardIds.split(separator: ",").map { String($0) })
+                    }
+                    return ids
+                }
+            )
+        ).sorted()
+        let recentUXEventSummaries = recentUXEvents.map { event in
+            let source = event.data["source"] ?? "-"
+            let target = event.data["target"] ?? "-"
+            let cardToken: String
+            if let singleCardId = event.data["cardId"], !singleCardId.isEmpty {
+                cardToken = singleCardId
+            } else if let multipleCardIds = event.data["cardIds"], !multipleCardIds.isEmpty {
+                cardToken = multipleCardIds
+            } else {
+                cardToken = "-"
+            }
+            return "\(event.type)|\(source)|\(target)|\(cardToken)"
+        }
+
         let probe = MultiplayerProductRenderProbe(
             route: "live",
             phase: String(describing: gameManager.gameState),
@@ -1053,6 +1107,15 @@ struct GameView: View {
             currentPlayerId: gameManager.players.indices.contains(gameManager.currentTurnIndex)
                 ? gameManager.players[gameManager.currentTurnIndex].id.uuidString
                 : nil,
+            isAutomationBusy: gameManager.isAutomationBusy,
+            currentMoveSourceZone: gameManager.currentMoveSourceZone,
+            currentMoveTargetZone: gameManager.currentMoveTargetZone,
+            movingCardIds: gameManager.currentMovingCards.map(\.id),
+            hiddenSourceCardIds: Array(gameManager.hiddenInSourceCardIds).sorted(),
+            hiddenTargetCardIds: Array(gameManager.hiddenInTargetCardIds).sorted(),
+            recentUXEventTypes: recentUXEventTypes,
+            recentUXEventCardIds: recentUXEventCardIds,
+            recentUXEventSummaries: recentUXEventSummaries,
             sourceLocalHandCardIds: localPlayer?.hand.map(\.id) ?? [],
             renderedLocalHandCardIds: renderedHandCardIds,
             tableCardIds: gameManager.tableCards.map(\.id),
