@@ -11,7 +11,8 @@ build_test_cli/
 build_v*/
 build_debug_tmp/
 build_tmp/
-test_artifacts/
+test_artifacts/*
+!test_artifacts/README.md
 build_error_cli*.txt
 *.swift.tmp
 build_ios_socket/
