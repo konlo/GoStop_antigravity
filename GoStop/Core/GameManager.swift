@@ -1306,6 +1306,35 @@ class GameManager: ObservableObject {
         }
     }
 
+    private func restoreCommittedPlayCaptureForSeolsa(
+        player: Player,
+        drawnCard: Card,
+        logicalTableBeforeDraw: [Card]
+    ) {
+        let restoredCards = turnPlayPhaseCaptured
+        let restoredIds = Set(restoredCards.map(\.id))
+
+        if turnPlayPhaseCaptureCommitted {
+            player.objectWillChange.send()
+            player.capturedCards.removeAll { restoredIds.contains($0.id) }
+            player.hasCapturedThisRound = !player.capturedCards.isEmpty
+            updateScoreAndEmitScoreEvents(for: player)
+        }
+
+        var restoredTable = logicalTableBeforeDraw
+        var restoredTableIds = Set(restoredTable.map(\.id))
+        for card in restoredCards + [drawnCard] where !restoredTableIds.contains(card.id) {
+            restoredTable.append(card)
+            restoredTableIds.insert(card.id)
+        }
+
+        tableCards = restoredTable
+        hiddenInSourceCardIds.subtract(restoredIds)
+        hiddenInTargetCardIds.subtract(restoredIds)
+        monthOwners.removeValue(forKey: drawnCard.month.rawValue)
+        turnPlayPhaseCaptureCommitted = false
+    }
+
     func playTurn(card: Card) {
         guard !externalControlMode || isLocalTurn || canExecuteAuthoritativeReplayTurn else {
             gLog(gameText("log.event.playturn_blocked_not_your_turn"))
@@ -1714,6 +1743,11 @@ class GameManager: ObservableObject {
 
                     if isSeolsa {
                         let invalidOnLastHand = rules.special_moves.seolsa.invalid_on_last_hand ?? true
+                        self.restoreCommittedPlayCaptureForSeolsa(
+                            player: player,
+                            drawnCard: drawnCard,
+                            logicalTableBeforeDraw: logicalTableBeforeDraw
+                        )
                         self.showTargetCue(for: [drawnCard], tableImpactMatched: false)
                         self.turnIsSeolsa = true
                         if invalidOnLastHand && player.hand.isEmpty {

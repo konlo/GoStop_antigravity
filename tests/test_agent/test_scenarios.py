@@ -46,7 +46,16 @@ def scenario_setup_condition_and_act(agent: TestAgent):
     
     # Read state again to verify changes
     new_state = agent.get_all_information()
-    assert new_state.get("gameState") == "ready", f"App did not correctly restart. State: {new_state}"
+    scores = [player.get("score") for player in new_state.get("players", [])]
+    assert scores != [100, 50], f"Restart should clear the mocked endgame scores. State: {new_state}"
+
+    game_state = new_state.get("gameState")
+    assert game_state in {"ready", "playing", "ended"}, f"Unexpected restart result state: {new_state}"
+    if game_state == "ended":
+        assert new_state.get("gameEndReason") == "chongtong", (
+            "A restart may immediately end only if the fresh deal hits initial Chongtong. "
+            f"State: {new_state}"
+        )
 
 def scenario_force_crash_capture(agent: TestAgent):
     """
@@ -185,6 +194,7 @@ def scenario_verify_bomb_and_steal(agent: TestAgent):
     # 2. Setup mock state AFTER start_game to avoid reset
     agent.set_condition({
         "currentTurnIndex": 0,
+        "mock_gameState": "playing",
         "mock_hand": [{"month": 1, "type": "junk"}] * 3,
         "mock_table": [{"month": 1, "type": "junk"}],
         "mock_deck": [{"month": 4, "type": "junk"}], # Non-matching draw to avoid sweep
@@ -1789,6 +1799,7 @@ def scenario_verify_monthly_pair_integrity(agent: TestAgent):
     """
     logger.info("Running Monthly Pair Integrity Full Game verification...")
     
+    agent.set_condition({"rng_seed": 1})
     agent.send_user_action("start_game")
     # Keep both players externally controlled to avoid AI auto-step races in CLI mode.
     agent.set_condition({
@@ -4540,6 +4551,7 @@ def scenario_verify_ttadak_correct_detection(agent: TestAgent):
     # Result: Ttadak for Jan (4 cards of the same month resolved across play+draw).
     agent.set_condition({
         "currentTurnIndex": 0,
+        "mock_gameState": "playing",
         "mock_hand": [{"month": 1, "type": "junk"}],
         "mock_table": [{"month": 1, "type": "junk"}, {"month": 1, "type": "junk"}],
         "mock_deck": [{"month": 1, "type": "bright"}],
@@ -4624,6 +4636,7 @@ def scenario_verify_ttadak_with_initial_double_on_table(agent: TestAgent):
     # Total: Capture all 4 (Ttadak).
     agent.set_condition({
         "currentTurnIndex": 0,
+        "mock_gameState": "playing",
         "mock_hand": [{"month": 1, "type": "junk"}],
         "mock_table": [{"month": 1, "type": "junk"}, {"month": 1, "type": "junk"}],
         "mock_deck": [{"month": 1, "type": "bright"}],
@@ -4893,6 +4906,7 @@ def scenario_verify_acquisition_order(agent: TestAgent):
     # Turn 3: Capture Mar (Month 3)
     agent.set_condition({
         "currentTurnIndex": 0,
+        "mock_gameState": "playing",
         "mock_hand": [{"month": 1, "type": "junk"}, {"month": 2, "type": "junk"}, {"month": 3, "type": "junk"}],
         "mock_table": [{"month": 1, "type": "junk"}, {"month": 2, "type": "junk"}, {"month": 3, "type": "junk"}],
         "mock_deck": [{"month": 5, "type": "junk"}, {"month": 6, "type": "junk"}, {"month": 7, "type": "junk"}],

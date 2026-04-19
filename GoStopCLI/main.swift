@@ -45,6 +45,13 @@ class CLIEngine {
     }()
     var currentSeed: Int? = nil
 
+    private func drainAutomationIfNeeded(timeout: TimeInterval = 10.0) {
+        let deadline = Date().addingTimeInterval(timeout)
+        while gameManager.isAutomationBusy && Date() < deadline {
+            RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.01))
+        }
+    }
+
     private func acceptedActionCard(from card: Card) -> MultiplayerAcceptedActionCard {
         MultiplayerAcceptedActionCard(
             cardId: card.id,
@@ -158,6 +165,7 @@ class CLIEngine {
             
         case "start_game":
             gameManager.startGame()
+            drainAutomationIfNeeded()
             return ["status": "action executed", "action": "start_game"]
             
         case "play_card":
@@ -179,6 +187,7 @@ class CLIEngine {
             // print("CLI DEBUG: Found card \(card.month) \(card.type). Calling gameManager.playTurn.")
             
             gameManager.playTurn(card: card)
+            drainAutomationIfNeeded()
             return ["status": "action executed", "action": "play_card"]
             
         case "respond_go_stop":
@@ -187,6 +196,7 @@ class CLIEngine {
                 return ["status": "error", "message": "Missing isGo for respond_go_stop"]
             }
             gameManager.respondToGoStop(isGo: isGo)
+            drainAutomationIfNeeded()
             return ["status": "action executed", "action": "respond_go_stop"]
             
         case "respond_to_shake":
@@ -196,6 +206,7 @@ class CLIEngine {
                 return ["status": "error", "message": "Missing month or didShake for respond_to_shake"]
             }
             gameManager.respondToShake(month: monthIdx, didShake: didShake)
+            drainAutomationIfNeeded()
             return ["status": "action executed", "action": "respond_to_shake"]
 
         case "respond_to_capture":
@@ -207,6 +218,7 @@ class CLIEngine {
                 return ["status": "error", "message": "Card with ID \(cardId) not found on table"]
             }
             gameManager.respondToCapture(selectedCard: tableCard)
+            drainAutomationIfNeeded()
             return ["status": "action executed", "action": "respond_to_capture"]
             
         case "respond_to_chrysanthemum_choice":
@@ -216,6 +228,7 @@ class CLIEngine {
             }
             let role = TestControlSupport.parseCardRole(roleStr)
             gameManager.respondToChrysanthemumChoice(role: role)
+            drainAutomationIfNeeded()
             return ["status": "action executed", "action": "respond_to_chrysanthemum_choice"]
 
         case "get_persistence_probe_config":
@@ -255,10 +268,12 @@ class CLIEngine {
                     return ["status": "error", "message": "Failed to apply custom_rules: \(error.localizedDescription)"]
                 }
             }
+            drainAutomationIfNeeded()
             return ["status": "ok", "message": "Condition set"]
             
         case "click_restart_button":
             gameManager.setupGame(seed: currentSeed)
+            drainAutomationIfNeeded()
             return ["status": "action executed", "action": "click_restart_button"]
             
         case "mock_endgame_check":
@@ -267,10 +282,12 @@ class CLIEngine {
                 let opponent = gameManager.players[1]
                 _ = gameManager.checkEndgameConditions(player: winner, opponent: opponent, rules: rules, isAfterGo: false)
             }
+            drainAutomationIfNeeded()
             return ["status": "action executed", "action": "mock_endgame_check"]
 
         case "reset_busy_state":
             gameManager.emergencyResetBusyState()
+            drainAutomationIfNeeded()
             return ["status": "ok", "action": "reset_busy_state"]
             
         case "force_chongtong_check":
@@ -280,6 +297,7 @@ class CLIEngine {
                     gameManager.resolveChongtong(player: player, month: month, timing: timing)
                 }
             }
+            drainAutomationIfNeeded()
             return ["status": "action executed", "action": "force_chongtong_check"]
             
         case "invalid_action_triggering_crash":

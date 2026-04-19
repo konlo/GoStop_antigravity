@@ -29,6 +29,7 @@
 		29E2F53E72ED922B7A2956C2 /* LayoutContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08DC9353031FD0D4F7EDF917 /* LayoutContext.swift */; };
 		2A8689C836A3BB15DCB189A5 /* message.yaml in Resources */ = {isa = PBXBuildFile; fileRef = 6D41BFAA63A26D90E4DCE582 /* message.yaml */; };
 		2A99D27AFA716635BD8BC829 /* AudioManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40A8AF9CA959E19695C3C65E /* AudioManager.swift */; };
+		31738D1B298FA0342AAC6D3C /* MultiplayerShellDebugLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D08E59A4CD59B2C2BAD1909 /* MultiplayerShellDebugLog.swift */; };
 		331201CDECD16765570374D1 /* TestControlSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56803F9C45DB74B196110159 /* TestControlSupport.swift */; };
 		333625062232E46D6E78948F /* PlayerHandSlotManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB1897B0ADA42D7A7EEFCE34 /* PlayerHandSlotManager.swift */; };
 		33B94FCF62AD0125A4518094 /* PenaltySystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5D75C2B31530E390EDEB760 /* PenaltySystem.swift */; };
@@ -39,6 +40,7 @@
 		3C576184FE6BA2EA22548895 /* MultiplayerGameManagerHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4D6DAA7E967AEEF5608107D /* MultiplayerGameManagerHelper.swift */; };
 		3C5A692B58A2151110EAE1E0 /* jjok.wav in Resources */ = {isa = PBXBuildFile; fileRef = 5F0BB6C6AFB6A3A5CACFF486 /* jjok.wav */; };
 		3D414AAF42CA899EFC919386 /* MultiplayerStateMapperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5ED89EBCCA9AB56E02ABF54 /* MultiplayerStateMapperTests.swift */; };
+		40AE28F1221098B3558A2DCA /* MultiplayerShellDebugLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D08E59A4CD59B2C2BAD1909 /* MultiplayerShellDebugLog.swift */; };
 		41CAA6DED7E8166226000DB5 /* bomb.wav in Resources */ = {isa = PBXBuildFile; fileRef = 2114BD27414D03C58BD142C6 /* bomb.wav */; };
 		4A50B9751A33F520296AEC0D /* MockMultiplayerPayloads.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC6BB402CCFD4EE622693556 /* MockMultiplayerPayloads.swift */; };
 		4D5BBB55E012B625247EBFF1 /* MultiplayerShellViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7DA8B6E32508C8A0F16F69A /* MultiplayerShellViews.swift */; };
@@ -133,6 +135,7 @@
 		0017E840D6A35A68D6AA71CC /* AnimationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnimationManager.swift; sourceTree = "<group>"; };
 		08DC9353031FD0D4F7EDF917 /* LayoutContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutContext.swift; sourceTree = "<group>"; };
 		0C043E09FB6F416CC5D71507 /* chongtong.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = chongtong.wav; sourceTree = "<group>"; };
+		0D08E59A4CD59B2C2BAD1909 /* MultiplayerShellDebugLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultiplayerShellDebugLog.swift; sourceTree = "<group>"; };
 		1159B74760341B7FD625C040 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		116C189429DB2067520A3E08 /* GameManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameManager.swift; sourceTree = "<group>"; };
 		14BF0E201775796A2BAA1695 /* RealRoomCoordinatorShellSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealRoomCoordinatorShellSource.swift; sourceTree = "<group>"; };
@@ -276,6 +279,7 @@
 				AE6C302330205EB95797545D /* MultiplayerContract.swift */,
 				B4D6DAA7E967AEEF5608107D /* MultiplayerGameManagerHelper.swift */,
 				CBCC5E38B06C07FF37A84263 /* MultiplayerProtocol.swift */,
+				0D08E59A4CD59B2C2BAD1909 /* MultiplayerShellDebugLog.swift */,
 				35D63233D0F1747B09602733 /* MultiplayerSimulatorBridge.swift */,
 				8467632AA09FE0E285705487 /* MultiplayerStateMapper.swift */,
 				E5D75C2B31530E390EDEB760 /* PenaltySystem.swift */,
@@ -562,6 +566,7 @@
 				9DE39A2341937110DC56E9A2 /* MultiplayerContract.swift in Sources */,
 				0583E71FDBFD044D514AB46B /* MultiplayerGameManagerHelper.swift in Sources */,
 				0063B16F09E83D4C383C4998 /* MultiplayerProtocol.swift in Sources */,
+				40AE28F1221098B3558A2DCA /* MultiplayerShellDebugLog.swift in Sources */,
 				2316C840507CF28E526A33D2 /* MultiplayerSimulatorBridge.swift in Sources */,
 				37AA76F1BC1FE32708690DE4 /* MultiplayerStateMapper.swift in Sources */,
 				33B94FCF62AD0125A4518094 /* PenaltySystem.swift in Sources */,
@@ -624,6 +629,7 @@
 				3C576184FE6BA2EA22548895 /* MultiplayerGameManagerHelper.swift in Sources */,
 				C43228CA194F026816128E1B /* MultiplayerPlayCoordinator.swift in Sources */,
 				03AA8036481CDEBB09BBDFB8 /* MultiplayerProtocol.swift in Sources */,
+				31738D1B298FA0342AAC6D3C /* MultiplayerShellDebugLog.swift in Sources */,
 				A5A677E89F1C81FB7EE9DD31 /* MultiplayerShellState.swift in Sources */,
 				4D5BBB55E012B625247EBFF1 /* MultiplayerShellViews.swift in Sources */,
 				F4568ABDB969A6AA8E4BF063 /* MultiplayerSimulatorBridge.swift in Sources */,

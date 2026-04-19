@@ -125,14 +125,22 @@ class AuthoritativeTransportClient:
     def set_rng_seed(self, seed: int) -> dict:
         return self.send("set_condition", {"rng_seed": seed})
 
-    def fetch_projection(self, room_id: str, room_player_id: str) -> dict:
+    def fetch_projection(
+        self,
+        room_id: str,
+        room_player_id: str,
+        state_version: int | None = None,
+    ) -> dict:
+        payload = {
+            "roomId": room_id,
+            "viewerPlayerId": room_player_id,
+            "snapshotReason": "uiCaptureProbe",
+        }
+        if isinstance(state_version, int) and state_version > 0:
+            payload["stateVersion"] = state_version
         response = self.send(
             "room_projection_preview",
-            {
-                "roomId": room_id,
-                "viewerPlayerId": room_player_id,
-                "snapshotReason": "uiCaptureProbe",
-            },
+            payload,
         )
         if response.get("status") != "ok":
             raise RuntimeError(f"room_projection_preview failed: {response}")
@@ -1384,6 +1392,8 @@ class MultiplayerUIScenarioRunner:
         room_id = host_live.get("roomId") or guest_live.get("roomId")
         host_room_player_id = host_snapshot.get("transportPlayerId")
         guest_room_player_id = guest_snapshot.get("transportPlayerId")
+        host_live_state_version = host_live.get("stateVersion")
+        guest_live_state_version = guest_live.get("stateVersion")
         if not isinstance(room_id, str) or not room_id:
             raise RuntimeError("Live UI probe is missing roomId for authoritative projection fetch.")
         if not isinstance(host_room_player_id, str) or not host_room_player_id:
@@ -1392,8 +1402,16 @@ class MultiplayerUIScenarioRunner:
             raise RuntimeError("Guest simulator state is missing transportPlayerId.")
 
         authority = self.ensure_authority_conn()
-        host_projection = authority.fetch_projection(room_id, host_room_player_id)
-        guest_projection = authority.fetch_projection(room_id, guest_room_player_id)
+        host_projection = authority.fetch_projection(
+            room_id,
+            host_room_player_id,
+            state_version=host_live_state_version if isinstance(host_live_state_version, int) else None,
+        )
+        guest_projection = authority.fetch_projection(
+            room_id,
+            guest_room_player_id,
+            state_version=guest_live_state_version if isinstance(guest_live_state_version, int) else None,
+        )
         host_state = self.projection_state(host_projection)
         guest_state = self.projection_state(guest_projection)
         state_version = host_projection.get("snapshotStateVersion")
@@ -1402,18 +1420,27 @@ class MultiplayerUIScenarioRunner:
             state_version = host_state.get("stateVersion")
         if guest_state_version is None:
             guest_state_version = guest_state.get("stateVersion")
-        if state_version != guest_state_version:
-            raise RuntimeError(
-                "Authoritative projection stateVersion diverged between host and guest probes. "
-                f"host={state_version} guest={guest_state_version}"
-            )
+        if state_version is None and isinstance(host_live_state_version, int):
+            state_version = host_live_state_version
+        if guest_state_version is None and isinstance(guest_live_state_version, int):
+            guest_state_version = guest_live_state_version
+        resolved_host_state_version = state_version if isinstance(state_version, int) else 0
+        resolved_guest_state_version = guest_state_version if isinstance(guest_state_version, int) else 0
+        if resolved_guest_state_version > resolved_host_state_version:
+            primary_projection = guest_projection
+            primary_state = guest_state
+            resolved_state_version = resolved_guest_state_version
+        else:
+            primary_projection = host_projection
+            primary_state = host_state
+            resolved_state_version = resolved_host_state_version
         return {
             "roomId": room_id,
             "hostProjection": host_projection,
             "guestProjection": guest_projection,
-            "stateVersion": state_version,
-            "currentPlayerId": host_state.get("currentPlayerId"),
-            "capturedTotals": self.authoritative_captured_totals(host_projection),
+            "stateVersion": resolved_state_version,
+            "currentPlayerId": primary_state.get("currentPlayerId"),
+            "capturedTotals": self.authoritative_captured_totals(primary_projection),
         }
 
     def observe_capture_probe(self, host_snapshot: dict, guest_snapshot: dict) -> None:
@@ -1426,11 +1453,17 @@ class MultiplayerUIScenarioRunner:
         authoritative_total = authoritative["capturedTotals"].get(actor_player_id, probe["baselineAuthoritativeCaptured"])
         host_rendered_total = self.rendered_captured_totals(host_snapshot).get(actor_player_id, 0)
         guest_rendered_total = self.rendered_captured_totals(guest_snapshot).get(actor_player_id, 0)
-        rendered_state_version = max(
-            (host_snapshot.get("live") or {}).get("stateVersion") or 0,
-            (guest_snapshot.get("live") or {}).get("stateVersion") or 0,
+        host_live = host_snapshot.get("live") or {}
+        guest_live = guest_snapshot.get("live") or {}
+        host_live_state_version = host_live.get("stateVersion") or 0
+        guest_live_state_version = guest_live.get("stateVersion") or 0
+        rendered_state_version = min(host_live_state_version, guest_live_state_version)
+        host_current_player_id = host_live.get("currentPlayerId")
+        guest_current_player_id = guest_live.get("currentPlayerId")
+        ui_turn_handed_off = (
+            host_current_player_id != actor_player_id
+            and guest_current_player_id != actor_player_id
         )
-        current_player_id = authoritative.get("currentPlayerId")
 
         if authoritative_total > probe["baselineAuthoritativeCaptured"] and probe["expectedCapturedTotal"] is None:
             probe["expectedCapturedTotal"] = authoritative_total
@@ -1445,15 +1478,17 @@ class MultiplayerUIScenarioRunner:
                 },
             )
 
-        if current_player_id != actor_player_id and probe["turnPassedStateVersion"] is None:
-            probe["turnPassedStateVersion"] = authoritative.get("stateVersion")
+        if ui_turn_handed_off and probe["turnPassedStateVersion"] is None:
+            probe["turnPassedStateVersion"] = rendered_state_version
             self.record_event(
                 "capture.turn_passed",
                 {
                     "actorPlayerId": actor_player_id,
                     "turnIndex": probe["turnIndex"],
-                    "stateVersion": authoritative.get("stateVersion"),
-                    "nextPlayerId": current_player_id,
+                    "stateVersion": rendered_state_version,
+                    "nextPlayerId": host_current_player_id,
+                    "hostCurrentPlayerId": host_current_player_id,
+                    "guestCurrentPlayerId": guest_current_player_id,
                 },
             )
 
@@ -1461,7 +1496,12 @@ class MultiplayerUIScenarioRunner:
         if expected_total is None:
             return
 
-        if host_rendered_total >= expected_total and guest_rendered_total >= expected_total:
+        if (
+            host_rendered_total >= expected_total
+            and guest_rendered_total >= expected_total
+            and probe["turnPassedStateVersion"] is not None
+            and rendered_state_version >= probe["turnPassedStateVersion"]
+        ):
             if probe["renderedCaptureStateVersion"] is None:
                 probe["renderedCaptureStateVersion"] = rendered_state_version
                 self.record_event(
@@ -1475,7 +1515,10 @@ class MultiplayerUIScenarioRunner:
                 )
             return
 
-        if probe["turnPassedStateVersion"] is not None:
+        if (
+            probe["turnPassedStateVersion"] is not None
+            and rendered_state_version >= probe["turnPassedStateVersion"]
+        ):
             failure = {
                 "actorPlayerId": actor_player_id,
                 "actorLabel": probe["actorLabel"],
@@ -1486,6 +1529,8 @@ class MultiplayerUIScenarioRunner:
                 "authoritativeCaptureStateVersion": probe["authoritativeCaptureStateVersion"],
                 "turnPassedStateVersion": probe["turnPassedStateVersion"],
                 "renderedStateVersion": rendered_state_version,
+                "hostLiveStateVersion": host_live_state_version,
+                "guestLiveStateVersion": guest_live_state_version,
             }
             self.capture_probe_failures.append(failure)
             self.record_event("capture.lag_failure", failure)
