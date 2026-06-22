@@ -1,17 +1,18 @@
 # Project Progress Log
 
 ## Current Status
-- **Last Updated**: 2026-03-21
-- **Status**: Multiplayer UI Scenario Hardening Completed
-- **Summary**: `multi_test_scenario.py` 기반 멀티플레이 관리 체계를 세우고, 실제 2 simulator UI 경로에서 `MP-016` end-to-end와 `MP-017` short-turn render parity 시나리오까지 운영 가능한 상태로 올렸다. 오늘 ready/disconnect lifecycle, remote choice overlay 노출, same-turn capture ordering, background music default OFF, product render parity mismatch(`doubleJunk` 누락 포함)를 수정했고 최신 `MP-017`은 authoritative 상태와 실제 product 화면 렌더를 직접 대조한다.
-- **Next Session Focus**: `MP-016` 전체 게임 UI 시나리오에도 render probe parity를 확대하고, recording/frame 기반 장기 회귀로 시각적 지연을 더 자동 검출하기.
+- **Last Updated**: 2026-06-21
+- **Status**: Rebuild Planning Document Created
+- **Summary**: 기존 GoStop 문서, 규칙 설정, 멀티플레이 계약, UI 흐름, 테스트 하네스 기록을 바탕으로 새 프로젝트 재작성 기준 문서 `plan_document.md`를 작성했다. 계획은 MVP 규칙 범위, deterministic core, CLI/test-agent bridge, SwiftUI UI, multiplayer contract, two-simulator 검증을 phase별로 분리한다.
+- **Next Session Focus**: 새 SwiftUI iOS 프로젝트 skeleton을 만든 뒤 assets/config만 먼저 옮기고, UI 없이 `Core` deck/card/rule config와 deterministic engine부터 구현하기.
 
 ---
 
 ## Next Action Items
-- [ ] `MP-016` full-game UI 경로에도 product render probe 기반 hand/captured parity 검증을 연결.
-- [ ] `host.mp4`/`guest.mp4` 같은 recording에서 turn handoff 전후 프레임을 자동 추출해 시각 지연 artifact를 바로 남기는 스크립트를 추가.
-- [ ] fixture/socket/ui 주요 managed suite를 한 번 더 묶어 돌리고 commit 전 최종 artifact 묶음을 정리.
+- [ ] 새 iOS SwiftUI App skeleton 생성 및 build 확인.
+- [ ] `rule.yaml`, `message.yaml`, `layout_hwatu.json`, card assets를 새 프로젝트 resource로 이동.
+- [ ] `Core` 모듈에 `Card`, `Deck`, `RuleConfig`, seeded shuffle, deck invariant validation부터 구현.
+- [ ] CLI/test-agent bridge를 UI보다 먼저 연결해 headless validation gate를 만든다.
 
 ---
 
@@ -79,6 +80,14 @@
 - **Outcome**: "Round 10 Agent 3 작업 완료. 셸이 이제 .productPreparation 모드를 완벽히 지원하며, Agent 2의 후속 작업을 위한 구조가 잡힘."
 
 ## Log Entries
+
+### [2026-06-21 10:08:41 KST] User Request: 기존 GoStop 작성 내용을 바탕으로 프로젝트 재작성 계획서 작성
+- **Skills Planned**: ["gostop-game-builder", "game_planning", "game_engine_design", "game_UI", "project_logger"]
+- **Skills Used**: ["gostop-game-builder", "game_planning", "game_engine_design", "game_UI", "project_logger"]
+- **Trigger Reason**: "GoStop 프로젝트를 새로 만들기 전, 기존 엔진/UI/멀티플레이/테스트 문서를 근거로 구현 가능한 계획서를 작성해야 하며 프로젝트 로그에도 요청 단위 기록을 남겨야 하기 때문."
+- **Files Touched**: ["plan_document.md", "project_progress.md"]
+- **Validation**: "`gostop-game-builder`의 GoStop spec/test-agent contract, 기존 `rule.yaml`, `engine_iteration.md`, `ui_design_document.md`, `design_checklist.md`, `multiplayer_contract.md`, `room_protocol.md`, `multiplayer_ui_flow.md`, `multiplayer_test_scenarios.md`, `multiplayer_test_scenario_runbook.md`, `matgo_multiplayer_multi_agent_plan.md`, `agent_sync_board.md`를 확인했다. 생성 후 `sed`와 `git diff -- project_progress.md plan_document.md`로 문서 구조와 변경 내용을 점검했다. 문서 작성 작업이라 runtime test는 수행하지 않았다."
+- **Outcome**: "`plan_document.md`를 추가해 GoStop 재작성 계획을 제품 목표, core loop, 첫 30초 경험, MVP 규칙 범위, engine/UI/multiplayer architecture, validation strategy, phase별 deliverable/done criteria, 재사용할 기존 파일 목록, risk register, immediate next actions로 정리했다."
 
 ### [2026-04-19 20:40:39 KST] User Request: MP-017 failure를 기준으로 guest captured-zone handoff 경로 디버깅
 - **Skills Planned**: ["gostop-ui-playability", "game-external-test-agent", "project_logger"]
@@ -3498,3 +3507,123 @@
 - **Files Touched**: ["/Users/najongseong/git_repository/GoStop_antigravity/.gitignore", "/Users/najongseong/git_repository/GoStop_antigravity/docs/README.md", "/Users/najongseong/git_repository/GoStop_antigravity/docs/agent_tasks/active/.gitkeep", "/Users/najongseong/git_repository/GoStop_antigravity/docs/agent_tasks/archive/agent_code_tasks_mp_ui_round1.md", "/Users/najongseong/git_repository/GoStop_antigravity/docs/agent_tasks/archive/agent_code_tasks_round1.md", "/Users/najongseong/git_repository/GoStop_antigravity/docs/agent_tasks/archive/agent_code_tasks_round2.md", "/Users/najongseong/git_repository/GoStop_antigravity/docs/agent_tasks/archive/agent_code_tasks_round3.md", "/Users/najongseong/git_repository/GoStop_antigravity/docs/agent_tasks/archive/agent_code_tasks_round4.md", "/Users/najongseong/git_repository/GoStop_antigravity/docs/agent_tasks/archive/agent_code_tasks_round5.md", "/Users/najongseong/git_repository/GoStop_antigravity/docs/agent_tasks/archive/agent_code_tasks_round6.md", "/Users/najongseong/git_repository/GoStop_antigravity/docs/agent_tasks/archive/agent_code_tasks_round7.md", "/Users/najongseong/git_repository/GoStop_antigravity/docs/agent_tasks/archive/agent_code_tasks_round8.md", "/Users/najongseong/git_repository/GoStop_antigravity/docs/agent_tasks/archive/agent_code_tasks_round9.md", "/Users/najongseong/git_repository/GoStop_antigravity/docs/agent_tasks/archive/agent_code_tasks_round10.md", "/Users/najongseong/git_repository/GoStop_antigravity/docs/agent_tasks/archive/agent_code_tasks_round11.md", "/Users/najongseong/git_repository/GoStop_antigravity/docs/agent_tasks/archive/agent_code_tasks_round12.md", "/Users/najongseong/git_repository/GoStop_antigravity/docs/agent_tasks/archive/agent_code_tasks_round13.md", "/Users/najongseong/git_repository/GoStop_antigravity/docs/agent_tasks/archive/agent_code_tasks_round14.md", "/Users/najongseong/git_repository/GoStop_antigravity/docs/agent_tasks/archive/agent_code_tasks_round15.md", "/Users/najongseong/git_repository/GoStop_antigravity/docs/agent_tasks/archive/agent_code_tasks_round16.md", "/Users/najongseong/git_repository/GoStop_antigravity/docs/agent_tasks/archive/agent_code_tasks_round17.md", "/Users/najongseong/git_repository/GoStop_antigravity/docs/decisions/.gitkeep", "/Users/najongseong/git_repository/GoStop_antigravity/docs/logs/build_output.log", "/Users/najongseong/git_repository/GoStop_antigravity/docs/reports/anomaly_report.md", "/Users/najongseong/git_repository/GoStop_antigravity/docs/runbooks/.gitkeep", "/Users/najongseong/git_repository/GoStop_antigravity/scripts/cleanup_artifacts.sh", "/Users/najongseong/git_repository/GoStop_antigravity/test_artifacts/README.md", "/Users/najongseong/git_repository/GoStop_antigravity/project_progress.md"]
 - **Validation**: "1) 루트에서 `agent_code_tasks*.md`, `anomaly_report.md`, `build_output.log`가 사라지고 각각 `docs/agent_tasks/archive/`, `docs/reports/`, `docs/logs/` 아래로 이동한 것을 확인했다. 2) `docs/README.md`와 `test_artifacts/README.md`를 추가해 문서/산출물 보존 규칙을 고정했다. 3) `scripts/cleanup_artifacts.sh`에 실행 권한을 부여하고 `bash -n` 및 dry-run 실행으로 검증했다. 최종 dry-run은 `test_artifacts` 총량 3.4G를 보고하고, 현재 prune 후보로 `test_artifacts/multiplayer_ui/always_go/20260321_142219`, `.../20260321_142422` 두 FAIL 디렉터리를 식별했다. 4) `.gitignore`는 `test_artifacts/README.md`만 추적되도록 조정했다."
 - **Outcome**: "정리 작업 완료. 루트는 생성성 작업 문서가 줄어들어 훨씬 단순해졌고, 완료된 agent task 프롬프트는 `docs/agent_tasks/archive/`로 아카이브됐다. 앞으로는 `test_artifacts/README.md`의 구조를 기준으로 `latest`/`baselines`/`investigations`/`archive`/`tmp`를 나눠 운영할 수 있고, `scripts/cleanup_artifacts.sh`로 오래된 FAIL/tmp 산출물을 안전하게 dry-run 후 정리할 수 있다. 기존 대용량 legacy artifact 폴더는 과거 로그 경로를 깨지 않기 위해 그대로 유지했다."
+
+### [2026-04-23 21:10:27 KST] User Request: 내가 작업한 내용 Obsidian에 올려줘
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "사용자가 지금까지의 작업 내용을 다시 보고 활용하기 위해 Obsidian에 정리해 달라고 요청했다. 저장소의 진행 로그와 문서/아티팩트 인덱스를 기반으로 검색하기 좋은 Markdown 노트 묶음을 생성해야 한다."
+- **Files Touched**: ["/Users/najongseong/git_repository/GoStop_antigravity/project_progress.md", "/Users/najongseong/Documents/Obsidian Vault/GoStop/00 Index.md", "/Users/najongseong/Documents/Obsidian Vault/GoStop/01 Timeline.md", "/Users/najongseong/Documents/Obsidian Vault/GoStop/02 Architecture Map.md", "/Users/najongseong/Documents/Obsidian Vault/GoStop/03 Rule Engine Notes.md", "/Users/najongseong/Documents/Obsidian Vault/GoStop/04 UI Animation Notes.md", "/Users/najongseong/Documents/Obsidian Vault/GoStop/05 Multiplayer Notes.md", "/Users/najongseong/Documents/Obsidian Vault/GoStop/06 Test Agent and Scenarios.md", "/Users/najongseong/Documents/Obsidian Vault/GoStop/07 Debug Cases.md", "/Users/najongseong/Documents/Obsidian Vault/GoStop/08 Artifact Map.md", "/Users/najongseong/Documents/Obsidian Vault/GoStop/09 Search Tags.md", "/Users/najongseong/Documents/Obsidian Vault/GoStop/Source/README.md", "/Users/najongseong/Documents/Obsidian Vault/GoStop/Source/project_progress.md", "/Users/najongseong/Documents/Obsidian Vault/GoStop/Source/multiplayer_contract.md", "/Users/najongseong/Documents/Obsidian Vault/GoStop/Source/room_protocol.md", "/Users/najongseong/Documents/Obsidian Vault/GoStop/Source/multiplayer_ui_flow.md", "/Users/najongseong/Documents/Obsidian Vault/GoStop/Source/multiplayer_test_scenarios.md", "/Users/najongseong/Documents/Obsidian Vault/GoStop/Source/multiplayer_test_scenario_runbook.md", "/Users/najongseong/Documents/Obsidian Vault/GoStop/Source/agent_sync_board.md", "/Users/najongseong/Documents/Obsidian Vault/GoStop/Source/ui_iteration_log.md", "/Users/najongseong/Documents/Obsidian Vault/GoStop/Source/engine_iteration.md", "/Users/najongseong/Documents/Obsidian Vault/GoStop/Source/test_artifacts_README.md"]
+- **Validation**: "Obsidian 설정에서 열린 vault가 `/Users/najongseong/Documents/Obsidian Vault`임을 확인했다. `GoStop` 폴더를 만들어 주제별 요약 노트 10개와 Source 원본 문서/로그 11개를 배치했고, `find`로 총 21개 Markdown 파일이 vault 아래 존재함을 확인했다. `du -sh`로 export 크기 984K를 확인했다."
+- **Outcome**: "완료. Obsidian vault에 `GoStop` 지식 저장소를 생성했고, `00 Index.md`를 시작점으로 timeline, architecture, rule engine, UI animation, multiplayer, test agent, debug cases, artifact map, search tags를 주제별로 탐색할 수 있게 했다. 검색성을 위해 `project_progress.md`와 주요 원본 문서들도 `Source/` 아래 복사했다."
+
+### [2026-06-09 22:32:19 KST] User Request: 지금까지 남긴 내용을 이용해 LLM coding harness 교육자료 생성
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "사용자가 GoStop 과제 수행 중 남긴 작업 기록, skill 파일, harness/artifact 구조를 바탕으로 교육자료를 만들어 달라고 요청했다. 프로젝트 로그와 AGENTS.md, multiplayer scenario 문서, skill 목록을 기반으로 재사용 가능한 강의안 형태의 Markdown 자료를 생성해야 했다."
+- **Files Touched**: ["docs/llm_coding_harness_training.md", "project_progress.md"]
+- **Validation**: "`project_progress.md`, `agents.md`, `multiplayer_test_scenarios.md`, 로컬 skill 목록을 읽어 교육자료 근거를 확인했다. 생성 후 `sed -n '1,260p' docs/llm_coding_harness_training.md`로 문서 앞부분과 구조를 확인했다."
+- **Outcome**: "`docs/llm_coding_harness_training.md`를 추가했다. 문서는 LLM coding harness 정의, generation/validation/feedback harness 구분, GoStop 사례, skill/test agent/artifact 구조, 실습, 체크리스트, 60분/120분 교육 진행안까지 포함한다."
+
+### [2026-06-09 22:37:49 KST] User Request: skill 파일들을 docs에 복사해서 정리
+- **Skills Planned**: ["project_logger"]
+- **Skills Used**: ["project_logger"]
+- **Trigger Reason**: "사용자가 교육자료와 함께 skill 파일 원본도 docs 아래에 정리해 두면 좋겠다고 요청했다. 모든 원본 파일명이 `SKILL.md`로 같기 때문에 출처와 skill 이름을 보존한 고유 파일명과 인덱스가 필요했다."
+- **Files Touched**: ["docs/skills/README.md", "docs/skills/installed/*.md", "docs/skills/registry/*.md", "docs/llm_coding_harness_training.md", "project_progress.md"]
+- **Validation**: "`find /Users/najongseong/.codex/skills /Users/najongseong/git_repository/skills-registry -name SKILL.md`로 29개 skill 파일을 확인했고, `find docs/skills -type f` 및 `sed -n '1,120p' docs/skills/README.md`로 복사본과 인덱스를 점검했다. 대표 파일 `docs/skills/installed/gostop-ui-playability__gostop-ui-playability.md`의 헤더가 원본 경로와 skill 이름을 보존하는 것도 확인했다."
+- **Outcome**: "총 29개 skill 파일을 `docs/skills/installed/`와 `docs/skills/registry/`로 나눠 복사하고 `docs/skills/README.md` 인덱스를 추가했다. `docs/llm_coding_harness_training.md`에는 새 skill source index 참조를 반영했다."
+
+### [2026-06-13 20:11:14 KST] User Request: 오늘 한 일 정리
+- **Skills Planned**: []
+- **Skills Used**: []
+- **Trigger Reason**: "사용자가 현재 저장소에 남은 진행 로그와 변경 파일을 기준으로 오늘 작업 내용을 정리해 달라고 요청했다. 별도 도메인 skill 적용 없이 `project_progress.md`, git 상태, 새 docs 파일을 직접 확인해 요약했다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`git status --short`, `git log --since='2026-06-13 00:00:00 +0900'`, `tail -n 120 project_progress.md`, `rg -n '^#|^##|^###' docs/llm_coding_harness_training.md`, `sed -n '1,180p' docs/skills/README.md`, `find docs/skills -type f | wc -l`, `git diff --stat`로 오늘 커밋 여부, 최신 로그 항목, 교육자료 목차, skill 인덱스, 변경 규모를 확인했다."
+- **Outcome**: "저장소 기준 2026-06-13 KST 당일 신규 커밋은 없고, 현재 워킹트리에는 `project_progress.md` 수정과 `docs/llm_coding_harness_training.md`, `docs/skills/` 신규 문서 묶음이 남아 있음을 확인했다. 최신 실질 작업은 2026-06-09에 LLM coding harness 교육자료 생성과 skill 원본 문서화로 정리된다."
+
+### [2026-06-13 20:14:19 KST] User Request: 코드 수정 과정에서 오류가 많이 발생했던 원인 분석
+- **Skills Planned**: []
+- **Skills Used**: []
+- **Trigger Reason**: "사용자가 과거 요구사항 구현 중 코드 수정이 반복 오류를 만들었던 근본 원인을 물었다. 기존 진행 로그의 실패/검증/수정 패턴을 근거로 부족했던 하네스 요소를 분류해 설명해야 했다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`rg -n '실패|오류|FAIL|anomaly|mismatch|수정|검증|원인|문제' project_progress.md`와 `rg -n 'User Request:|Outcome|Validation' project_progress.md`로 반복 실패 사례를 확인했다. 대표 패턴으로 MP-017 false FAIL, MP-018 draw/capture animation 미관측, MP-019 authoritative replay 전달 누락, ready presence disconnect, 실폰 loopback/choice overlay 문제가 확인됐다."
+- **Outcome**: "오류의 주된 원인은 개별 요구사항의 문제가 아니라, 요구사항을 상태 계약/검증 계약/환경 계약으로 먼저 고정하지 않은 채 UI와 멀티플레이 코드를 수정한 데 있었다. 특히 single과 multiplayer의 shared engine 경계, authoritative snapshot version, accepted action 전달, render probe 타이밍, simulator와 실폰 네트워크 차이를 초기에 phase gate로 분리하지 못해 수정 후 live E2E에서 뒤늦게 문제가 드러나는 패턴이 반복됐다."
+
+### [2026-06-13 21:06:33 KST] User Request: 반복 오류 방지를 위한 skill 강화 적용
+- **Skills Planned**: ["skill-creator"]
+- **Skills Used**: ["skill-creator"]
+- **Trigger Reason**: "사용자가 앞서 제안한 방향대로 skill을 강화해 달라고 요청했다. 따라서 기존 GoStop 작업에서 자주 발동되는 skill에 requirement-to-contract gate, LOOPBACK, real E2E evidence, mock-only false success 방지 규칙을 직접 추가해야 했다."
+- **Files Touched**: ["/Users/najongseong/.codex/skills/gostop-test-reliability/SKILL.md", "/Users/najongseong/.codex/skills/gostop-test-reliability/references/failure-patterns.md", "/Users/najongseong/.codex/skills/gostop-test-reliability/agents/openai.yaml", "/Users/najongseong/.codex/skills/gostop-ui-playability/SKILL.md", "/Users/najongseong/.codex/skills/gostop-ui-playability/references/playability-checklist.md", "/Users/najongseong/.codex/skills/gostop-ui-playability/agents/openai.yaml", "/Users/najongseong/.codex/skills/game-external-test-agent/SKILL.md", "/Users/najongseong/.codex/skills/game-external-test-agent/references/validation-playbook.md", "/Users/najongseong/.codex/skills/game-external-test-agent/agents/openai.yaml", "docs/skills/installed/gostop-test-reliability__gostop-test-reliability.md", "docs/skills/installed/gostop-ui-playability__gostop-ui-playability.md", "docs/skills/installed/game-external-test-agent__game-external-test-agent.md", "project_progress.md"]
+- **Validation**: "`skill-creator` 지침을 읽고 기존 3개 skill 및 관련 reference 파일을 확인했다. 수정 후 frontmatter 직접 검사로 `name`/`description` 존재를 확인했고, `rg -n 'Requirement-to-contract|UI contract|Validation contract|LOOPBACK|False Success|mock-only|deck -> table|stateVersion'`로 강화 규칙이 원본 skill/reference에 들어간 것을 확인했다. `quick_validate.py`는 현재 Python 환경에 `yaml` 모듈이 없어 `ModuleNotFoundError: No module named 'yaml'`로 실행 검증하지 못했다."
+- **Outcome**: "`gostop-test-reliability`는 구현 전 상태 계약 작성, 실패 layer 분류, two-edit loopback 제한, probe race/stale session/snapshot regression/environment contract failure 패턴을 포함하도록 강화됐다. `gostop-ui-playability`는 UI contract gate, single-vs-multiplayer path 명시, render-probe/screenshot/action-log evidence 확인을 강제하도록 강화됐다. `game-external-test-agent`는 validation contract, environment contract, real E2E 요구, mock-only false success 방지 규칙을 포함하도록 강화됐다. `docs/skills/installed`의 세 skill 사본도 원본 SKILL.md와 동기화했다."
+
+### [2026-06-14 07:48:11 KST] User Request: AI HALO 구조 관련 자료 위치 검색
+- **Skills Planned**: []
+- **Skills Used**: []
+- **Trigger Reason**: "사용자가 AI의 HALO 구조와 관련된 내용이 저장소 어디에 있는지 찾아 달라고 요청했다. HALO라는 직접 용어뿐 아니라 harness, phase, contract, LOOPBACK, Gate, E2E 등 관련 개념 키워드로 로컬 문서를 검색해야 했다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`rg -n 'HALO|Harness|하네스|Phase|LOOPBACK|RTM|Gate|Context Rot|File = Interface|Verification|E2E' .`, `rg -n 'HALO|Context Rot|Blind Context|HBM|File = Interface|LOOPBACK|RTM|Gate|mock-only|real E2E|requirement-to-contract|UI contract|Validation contract' docs project_progress.md multi_agent_operating_guide.md agent_sync_board.md multiplayer_contract.md`, `rg -n 'Harness|하네스|Generation Harness|Validation Harness|Feedback Harness|Checklist|교육' docs/llm_coding_harness_training.md`로 관련 위치를 확인했다."
+- **Outcome**: "`HALO`라는 단어 자체는 저장소에 명시적으로 많이 남아 있지 않고, 관련 개념은 `docs/llm_coding_harness_training.md`, `multi_agent_operating_guide.md`, 강화된 `docs/skills/installed/*gostop*` 사본, `project_progress.md` 최신 회고/skill 강화 항목, `agent_sync_board.md` 및 `multiplayer_contract.md`의 Phase/contract 운영 기록에 흩어져 있음을 확인했다."
+
+### [2026-06-14 07:49:29 KST] User Request: 현재 harness가 HALO 구조 기준으로 잘 구조화됐는지 평가
+- **Skills Planned**: []
+- **Skills Used**: []
+- **Trigger Reason**: "사용자가 자신의 GoStop/LLM coding harness가 HALO 구조 기준으로 잘 설계되어 있는지 확인해 달라고 요청했다. Phase 분할, File=Interface, RTM/traceability, LOOPBACK, Gate, real E2E 검증 관점으로 기존 문서를 평가해야 했다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`docs/llm_coding_harness_training.md`, `multi_agent_operating_guide.md`, `agent_sync_board.md`, `docs/skills/installed/gostop-test-reliability__gostop-test-reliability.md`, `docs/skills/installed/gostop-ui-playability__gostop-ui-playability.md`, `docs/skills/installed/game-external-test-agent__game-external-test-agent.md`를 읽어 generation/validation/feedback harness, contract lock, shared sync board, requirement/UI/validation contract gate, LOOPBACK, real E2E evidence 구조를 확인했다."
+- **Outcome**: "현재 harness는 HALO 관점에서 중상급 이상으로 구조화되어 있다. Phase/agent 분할, contract 문서, sync board, scenario runner, artifact, progress log, skill gate는 갖춰져 있다. 다만 Gate 승인 기록, RTM 요구사항별 추적표, LOOPBACK decision log, artifact index 최신화, 작업 시작 전 contract template 강제력은 아직 약하므로 다음 개선 대상으로 정리했다."
+
+### [2026-06-14 07:53:43 KST] User Request: HALO 다음 단계 운영 흐름 보강
+- **Skills Planned**: []
+- **Skills Used**: []
+- **Trigger Reason**: "사용자가 `RTM -> Contract Gate -> 구현 -> E2E Evidence -> Loopback Log` 흐름을 반드시 타게 만드는 다음 단계 보강을 요청했다. 따라서 새 개념 설명보다 실제 작업 시작/승인/검증/실패 복구를 강제하는 운영 파일을 `docs/` 아래 추가해야 했다."
+- **Files Touched**: ["docs/runbooks/halo_operating_flow.md", "docs/rtm.md", "docs/change_contract_template.md", "docs/gate_checklist.md", "docs/e2e_evidence_log.md", "docs/loopback_log.md", "docs/README.md", "docs/llm_coding_harness_training.md", "project_progress.md"]
+- **Validation**: "`rg -n 'RTM -> Contract Gate -> Implementation -> E2E Evidence -> Loopback Log|halo_operating_flow|change_contract_template|gate_checklist|e2e_evidence_log|loopback_log|rtm.md' docs`로 새 운영 파일과 교육자료/README 연결을 확인했다. `sed -n '1,180p' docs/runbooks/halo_operating_flow.md`, `sed -n '1,120p' docs/rtm.md`, `sed -n '1,100p' docs/gate_checklist.md`로 운영 흐름, RTM bootstrap row, gate 기록을 확인했다."
+- **Outcome**: "HALO 운영 흐름을 강제하기 위한 얇은 문서 세트를 추가했다. `docs/runbooks/halo_operating_flow.md`는 전체 done criteria를 정의하고, `docs/rtm.md`는 요구사항 추적표, `docs/change_contract_template.md`는 구현 전 계약 템플릿, `docs/gate_checklist.md`는 승인/waiver 기록, `docs/e2e_evidence_log.md`는 artifact-backed PASS evidence, `docs/loopback_log.md`는 실패 시 phase/layer 복귀 결정을 맡는다. `docs/README.md`와 `docs/llm_coding_harness_training.md`도 새 흐름을 참조하도록 갱신했다."
+
+### [2026-06-19 22:17:57 KST] User Request: harness 관점에서 orchestrator agent 기능 존재 여부 확인
+- **Skills Planned**: []
+- **Skills Used**: []
+- **Trigger Reason**: "사용자가 현재 GoStop harness 안에 orchestrator agent 기능이 있는지 물었다. 실제 자동 실행 agent가 있는지와 문서/skill 기반 수동 오케스트레이션 구조가 있는지를 구분해 확인해야 했다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`rg -n 'orchestrator|orchestration|PM|통합|sync board|agent_sync|handoff|Gate|RTM|Loopback|Current Phase|Agent 1|Agent 2|Agent 3|Agent 4' docs agent_sync_board.md multi_agent_operating_guide.md project_progress.md .agents .codex`, `sed -n '1,180p' docs/skills/registry/project_management__agent_orchestration__agent_orchestration.md`, `sed -n '1,140p' multi_agent_operating_guide.md`, `sed -n '1,120p' agent_sync_board.md`로 확인했다. `.agents`와 `.codex` 디렉터리는 현재 워크스페이스에 없었다."
+- **Outcome**: "현재 harness에는 독립 실행되는 runtime orchestrator agent는 보이지 않는다. 대신 `agent_orchestration` skill 사본, `multi_agent_operating_guide.md`, `agent_sync_board.md`, RTM/Gate/E2E/Loopback 문서가 PM/통합자 역할을 문서와 절차로 수행하는 수동 또는 반자동 orchestrator layer로 존재한다."
+
+### [2026-06-19 22:23:03 KST] User Request: HALO harness에 explicit orchestrator agent 레이어 추가
+- **Skills Planned**: []
+- **Skills Used**: []
+- **Trigger Reason**: "사용자가 기존 수동/반자동 PM layer를 orchestrator agent로 만들어 달라고 요청했다. 따라서 runtime app 코드를 추가하는 대신, Codex 세션이 실제 orchestrator 역할로 시작하고 RTM/Gate/Delegation/Evidence/Loopback을 운영할 수 있는 runbook, prompt, board를 추가해야 했다."
+- **Files Touched**: ["docs/runbooks/orchestrator_agent_flow.md", "docs/orchestrator_prompt_template.md", "docs/orchestrator_board.md", "docs/README.md", "docs/rtm.md", "docs/gate_checklist.md", "docs/e2e_evidence_log.md", "docs/runbooks/halo_operating_flow.md", "docs/llm_coding_harness_training.md", "project_progress.md"]
+- **Validation**: "`rg -n 'Orchestrator Agent|orchestrator_agent_flow|orchestrator_prompt_template|orchestrator_board|ORCH-001|E-ORCH-001|G-ORCH-001|RTM -> Contract Gate -> Delegation' docs`로 새 orchestrator 레이어와 RTM/Gate/Evidence 연결을 확인했다. `sed -n '1,260p' docs/runbooks/orchestrator_agent_flow.md`, `sed -n '1,220p' docs/orchestrator_prompt_template.md`, `sed -n '1,140p' docs/orchestrator_board.md`로 역할, 상태, delegation 규칙, prompt template, board bootstrap 상태를 확인했다."
+- **Outcome**: "명시적 orchestrator agent 레이어를 추가했다. `docs/runbooks/orchestrator_agent_flow.md`는 request triage, risk classification, owner lane 선택, delegation, validation review, loopback stop condition을 정의한다. `docs/orchestrator_prompt_template.md`는 새 Codex 세션을 HALO Orchestrator Agent로 시작하기 위한 copy-paste prompt와 specialist prompt skeleton을 제공한다. `docs/orchestrator_board.md`는 orchestrator queue/decision/handoff 상태를 추적한다. `docs/rtm.md`, `docs/gate_checklist.md`, `docs/e2e_evidence_log.md`에는 `ORCH-001` bootstrap row를 추가했고, `docs/README.md`와 교육자료도 새 orchestrator layer를 참조하도록 갱신했다."
+
+### [2026-06-19 22:27:12 KST] User Request: harness 관련 파일 전체 정리
+- **Skills Planned**: []
+- **Skills Used**: []
+- **Trigger Reason**: "사용자가 harness와 관련된 모든 파일을 정리해 달라고 요청했다. 루트 문서, HALO 운영 파일, orchestrator 파일, contract 문서, agent prompt/archive, skill 사본, validation runner, artifact/report 파일을 역할별로 찾고 한 곳에서 볼 수 있는 인덱스를 만들어야 했다."
+- **Files Touched**: ["docs/harness_file_index.md", "docs/README.md", "docs/rtm.md", "docs/gate_checklist.md", "docs/e2e_evidence_log.md", "project_progress.md"]
+- **Validation**: "`find . -maxdepth 3 -type f \\( -name '*harness*' -o -name '*orchestrator*' -o -name '*agent*' -o -name '*contract*' -o -name '*scenario*' -o -name '*flow*' -o -name '*rtm*' -o -name '*gate*' -o -name '*evidence*' -o -name '*loopback*' \\) -print`, `find docs tests/test_agent scripts -maxdepth 4 -type f | sort`, `rg -n 'harness|HALO|orchestrator|RTM|Contract Gate|E2E Evidence|Loopback|agent_sync|multi-agent|scenario|artifact|SKILL|skill' ...`로 후보 파일을 확인했다. 이후 `rg -n 'Harness File Index|harness_file_index|Orchestrator Layer|HALO Operating Loop|Validation Harness Code|Practical Read Order' docs/harness_file_index.md docs/README.md`와 `rg -n 'HIDX-001|E-HIDX-001|G-HIDX-001|harness_file_index' ...`로 인덱스/RTM/Gate/Evidence 연결을 확인했다."
+- **Outcome**: "`docs/harness_file_index.md`를 추가해 harness 관련 파일을 Start Here, Orchestrator Layer, HALO Operating Loop, Durable Contract Documents, Agent Prompt and Task Archives, Skill Source Index, Validation Harness Code, Reports/Logs/Evidence, Practical Read Order로 분류했다. `docs/README.md`에는 이 인덱스를 HALO 운영 파일 목록에 추가했고, `docs/rtm.md`, `docs/gate_checklist.md`, `docs/e2e_evidence_log.md`에는 `HIDX-001` / `G-HIDX-001` / `E-HIDX-001`로 추적성을 남겼다."
+
+### [2026-06-19 22:42:13 KST] User Request: harness 관련 파일을 `git_repository/ai_harness`로 복사
+- **Skills Planned**: []
+- **Skills Used**: []
+- **Trigger Reason**: "사용자가 앞서 정리한 harness 관련 파일들을 별도 저장소/폴더인 `/Users/najongseong/git_repository/ai_harness`로 복사해 달라고 요청했다. 원본 파일 이동이 아니라 복사이며, 대용량 runtime artifact 전체는 제외하고 운영 문서, contract, skill 사본, validation runner, artifact policy 파일을 보존해야 했다."
+- **Files Touched**: ["/Users/najongseong/git_repository/ai_harness/"]
+- **Validation**: "`rsync -aR ... /Users/najongseong/git_repository/ai_harness/`로 하네스 파일 묶음을 복사했다. 이후 `find /Users/najongseong/git_repository/ai_harness -maxdepth 3 -type f | sort | sed -n '1,220p'`로 대상 구조를 확인했고, `du -sh /Users/najongseong/git_repository/ai_harness` 결과는 `2.5M`이었다. 핵심 파일 `docs/harness_file_index.md`, `docs/runbooks/orchestrator_agent_flow.md`, `docs/orchestrator_prompt_template.md`, `docs/rtm.md`, `docs/e2e_evidence_log.md`, `agent_sync_board.md`, `multi_agent_operating_guide.md`, `tests/test_agent/multi_test_scenario.py`, `test_artifacts/README.md`가 모두 대상 폴더에 존재함을 확인했다."
+- **Outcome**: "하네스 관련 파일 복사 완료. 대상 폴더는 `/Users/najongseong/git_repository/ai_harness`이며, 기존 대상의 `.git`은 그대로 두고 그 안에 하네스 문서/스킬 사본/검증 코드/정책 파일을 복사했다. `test_artifacts` 대용량 실행 결과 전체와 `tests/test_agent/build_v3` 같은 빌드 산출물은 포함하지 않았다."
+
+### [2026-06-19 22:46:58 KST] User Request: 과제 비종속 일반형 AI harness 템플릿 복사
+- **Skills Planned**: []
+- **Skills Used**: []
+- **Trigger Reason**: "사용자가 GoStop 과제에 종속된 파일이 아니라 다른 과제 시작에 재사용할 수 있는 일반적인 harness 관련 파일만 정리해 복사해 달라고 요청했다. 따라서 기존 복사본과 별도로 과제 고유 contract/test 코드 없이 generic HALO/orchestrator 템플릿만 구성해야 했다."
+- **Files Touched**: ["/Users/najongseong/git_repository/ai_harness/generic_harness/"]
+- **Validation**: "`/tmp/generic_ai_harness`에 일반형 템플릿을 만든 뒤 `rg -n 'GoStop|고스톱|Hwatu|Swift|SwiftUI|iOS|multiplayer|room_protocol|multiplayer_contract|agent_sync_board|test_scenarios.py|GoStopCLI' /tmp/generic_ai_harness || true`로 과제 종속 키워드가 없음을 확인했다. 이후 `rsync -a --delete /tmp/generic_ai_harness/ /Users/najongseong/git_repository/ai_harness/generic_harness/`로 복사했고, 대상에서도 같은 키워드 검색 결과가 비어 있음을 확인했다. `find /Users/najongseong/git_repository/ai_harness/generic_harness -type f | sort`로 16개 템플릿 파일을 확인했고, `du -sh` 결과는 `64K`였다."
+- **Outcome**: "일반형 AI harness 템플릿 복사 완료. 대상은 `/Users/najongseong/git_repository/ai_harness/generic_harness`이며, `README.md`, `AGENTS_TEMPLATE.md`, `project_progress.md`, `docs/runbooks/orchestrator_agent_flow.md`, `docs/runbooks/halo_operating_flow.md`, `docs/orchestrator_prompt_template.md`, `docs/orchestrator_board.md`, `docs/rtm.md`, `docs/change_contract_template.md`, `docs/gate_checklist.md`, `docs/e2e_evidence_log.md`, `docs/loopback_log.md`, `docs/harness_file_index.md`, `docs/skills/README.md`, `test_artifacts/README.md`로 구성했다. 이 패키지는 새 과제에 복사해 placeholder만 바꾸면 바로 사용할 수 있는 범용 HALO harness starter다."
+
+### [2026-06-22 22:45:43 KST] User Request: 사용했던 설계 문서 확인 및 표시
+- **Skills Planned**: []
+- **Skills Used**: []
+- **Trigger Reason**: "사용자가 현재 저장소에서 사용했던 설계 문서가 무엇인지 확인하고 보여 달라고 요청했다. 코드 변경 없이 로컬 Markdown 문서와 진행 로그를 검색해 실제 source of truth 문서를 식별해야 했다."
+- **Files Touched**: ["project_progress.md"]
+- **Validation**: "`rg --files`, `rg -n 'design document|설계|plan_document|ui_design_document|multiplayer_contract|multiplayer_ui_flow|engine_iteration|design_checklist' -g '*.md'`, `nl -ba plan_document.md`, `nl -ba ui_design_document.md`, `nl -ba multiplayer_contract.md`, `nl -ba room_protocol.md`, `nl -ba multiplayer_ui_flow.md`, `nl -ba design_checklist.md`, `nl -ba docs/harness_file_index.md`로 전체 설계 문서와 실제 참조 관계를 확인했다."
+- **Outcome**: "전체 재작성 기준 설계 문서는 `plan_document.md`이며, 해당 문서가 Phase 0 산출물에서 1차 source of truth로 명시되어 있음을 확인했다. 멀티플레이 상세 설계는 `multiplayer_contract.md`, `room_protocol.md`, `multiplayer_ui_flow.md`, `multiplayer_test_scenarios.md`가 지속 계약 문서로 사용됐다. UI/애니메이션 보조 설계는 `ui_design_document.md`와 `design_checklist.md`가 담당했다."
